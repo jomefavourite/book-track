@@ -5,18 +5,25 @@ import { ConvexQueryClient } from "@convex-dev/react-query";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useMemo, useEffect, useRef } from "react";
 
-const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "";
-
-if (!convexUrl) {
-  console.warn(
-    "NEXT_PUBLIC_CONVEX_URL is not set. Please run 'npx convex dev' to get your URL."
-  );
-}
-
-const convex = new ConvexReactClient(convexUrl);
-const convexQueryClient = new ConvexQueryClient(convex);
-
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
+  // Initialize Convex client inside the component to use runtime environment variables
+  const convex = useMemo(() => {
+    const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "";
+    
+    if (!convexUrl) {
+      console.warn(
+        "NEXT_PUBLIC_CONVEX_URL is not set. Please run 'npx convex dev' to get your URL."
+      );
+      // Use a placeholder URL during build time to prevent errors
+      // At runtime, this should be set via environment variables
+      return new ConvexReactClient("https://placeholder.convex.cloud");
+    }
+    
+    return new ConvexReactClient(convexUrl);
+  }, []);
+
+  const convexQueryClient = useMemo(() => new ConvexQueryClient(convex), [convex]);
+
   const queryClient = useMemo(
     () =>
       new QueryClient({
@@ -30,7 +37,7 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
           },
         },
       }),
-    []
+    [convexQueryClient]
   );
 
   // Connect ConvexQueryClient to QueryClient (only once)
@@ -40,7 +47,7 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
       convexQueryClient.connect(queryClient);
       hasConnected.current = true;
     }
-  }, [queryClient]);
+  }, [queryClient, convexQueryClient]);
 
   return (
     <ConvexProvider client={convex}>
