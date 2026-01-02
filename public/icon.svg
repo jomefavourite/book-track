@@ -1,0 +1,16 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="64" fill="#18181b"/>
+  <g transform="translate(128, 128)">
+    <!-- Book icon -->
+    <rect x="64" y="32" width="192" height="256" rx="8" fill="#ffffff" opacity="0.9"/>
+    <rect x="64" y="32" width="192" height="256" rx="8" fill="none" stroke="#18181b" stroke-width="4"/>
+    <!-- Book pages -->
+    <line x1="128" y1="80" x2="224" y2="80" stroke="#18181b" stroke-width="3" stroke-linecap="round"/>
+    <line x1="128" y1="120" x2="224" y2="120" stroke="#18181b" stroke-width="3" stroke-linecap="round"/>
+    <line x1="128" y1="160" x2="200" y2="160" stroke="#18181b" stroke-width="3" stroke-linecap="round"/>
+    <!-- Progress indicator -->
+    <rect x="64" y="240" width="192" height="8" rx="4" fill="#3b82f6"/>
+    <rect x="64" y="240" width="120" height="8" rx="4" fill="#10b981"/>
+  </g>
+</svg>
+
