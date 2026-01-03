@@ -9,7 +9,7 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
   // Initialize Convex client inside the component to use runtime environment variables
   const convex = useMemo(() => {
     const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "";
-    
+
     if (!convexUrl) {
       console.warn(
         "NEXT_PUBLIC_CONVEX_URL is not set. Please run 'npx convex dev' to get your URL."
@@ -18,11 +18,14 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
       // At runtime, this should be set via environment variables
       return new ConvexReactClient("https://placeholder.convex.cloud");
     }
-    
+
     return new ConvexReactClient(convexUrl);
   }, []);
 
-  const convexQueryClient = useMemo(() => new ConvexQueryClient(convex), [convex]);
+  const convexQueryClient = useMemo(
+    () => new ConvexQueryClient(convex),
+    [convex]
+  );
 
   const queryClient = useMemo(
     () =>
