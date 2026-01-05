@@ -353,11 +353,13 @@ export default function CalendarView({
               <div
                 key={dateKey}
                 className={`aspect-square rounded border p-1 sm:p-2 transition-colors ${
-                  isToday
-                    ? "border-primary bg-primary/10"
-                    : session?.isRead
-                      ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-900 dark:text-green-50"
-                      : "border-border bg-background"
+                  isToday && session?.isRead
+                    ? "border-primary bg-green-100 text-green-900 dark:border-primary dark:bg-green-900 dark:text-green-50"
+                    : isToday
+                      ? "border-primary bg-primary/10"
+                      : session?.isRead
+                        ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-900 dark:text-green-50"
+                        : "border-border bg-background"
                 }`}
               >
                 <div className="mb-0.5 flex items-center justify-between sm:mb-1">
@@ -373,7 +375,9 @@ export default function CalendarView({
                   <button
                     onClick={() => handleDayToggle(day)}
                     disabled={!canEdit}
-                    className={`flex h-5 w-5 items-center justify-center rounded border-2 border-input transition-all sm:h-6 sm:w-6 ${
+                    className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-all sm:h-6 sm:w-6 ${
+                      isToday ? "border-primary/20!" : ""
+                    } ${isToday && session?.isRead ? "border-input!" : ""} ${
                       canEdit
                         ? "active:scale-90 cursor-pointer hover:border-primary"
                         : "cursor-not-allowed opacity-50"

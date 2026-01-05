@@ -205,15 +205,15 @@ export default function LandingPage() {
           </div>
         ) : publicBooks && publicBooks.length > 0 ? (
           <>
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
               {publicBooks.slice(0, 6).map((book: any) => (
-                <PublicBookCard
-                  key={book._id}
-                  book={book}
-                  progress={book.progress || 0}
-                />
-              ))}
-            </div>
+              <PublicBookCard
+                key={book._id}
+                book={book}
+                progress={book.progress || 0}
+              />
+            ))}
+          </div>
             <div className="mt-8 flex justify-center">
               <Button
                 variant="outline"
