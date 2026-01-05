@@ -27,7 +27,7 @@ export default function BookDetailPage() {
 
   const isOwner = user?.id && book?.userId === user.id;
   const isPublicBook = book?.isPublic;
-  const canEdit = isOwner;
+  const canEdit = Boolean(isOwner);
 
   if (isPending || book === undefined) {
     return (

@@ -14,7 +14,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
+import { Id, Doc } from "@/convex/_generated/dataModel";
 import { useUser } from "@clerk/nextjs";
 import {
   formatDateForStorage,
@@ -30,25 +30,32 @@ import CatchUpSuggestion from "./CatchUpSuggestion";
 
 interface CalendarViewProps {
   bookId: Id<"books">;
-  book: {
-    startMonth?: string;
-    endMonth?: string;
-    startYear?: number;
-    endYear?: number;
-    startDate: string;
-    endDate: string;
-    totalPages: number;
+  book: Pick<
+    Doc<"books">,
+    | "startMonth"
+    | "endMonth"
+    | "startYear"
+    | "endYear"
+    | "startDate"
+    | "endDate"
+    | "totalPages"
+  > & {
+    [key: string]: any; // Allow additional properties
   };
   canEdit?: boolean;
 }
 
-export default function CalendarView({ bookId, book, canEdit = true }: CalendarViewProps) {
+export default function CalendarView({
+  bookId,
+  book,
+  canEdit = true,
+}: CalendarViewProps) {
   const { user, isLoaded } = useUser();
   const queryClient = useQueryClient();
   const { data: sessionsQuery, isPending } = useQuery({
-    ...convexQuery(api.readingSessions.getSessionsForBook, { 
-      bookId, 
-      userId: user?.id 
+    ...convexQuery(api.readingSessions.getSessionsForBook, {
+      bookId,
+      userId: user?.id,
     }),
     enabled: true, // Allow querying even without auth (for public books)
   });
@@ -62,9 +69,12 @@ export default function CalendarView({ bookId, book, canEdit = true }: CalendarV
         }).queryKey,
       });
       // Also invalidate the books list to update progress
-      queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getBooks, {}).queryKey,
-      });
+      if (user?.id) {
+        queryClient.invalidateQueries({
+          queryKey: convexQuery(api.books.getBooks, { userId: user.id })
+            .queryKey,
+        });
+      }
     },
   });
   const { mutateAsync: createSession } = useMutation({
@@ -77,9 +87,12 @@ export default function CalendarView({ bookId, book, canEdit = true }: CalendarV
         }).queryKey,
       });
       // Also invalidate the books list to update progress
-      queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getBooks, {}).queryKey,
-      });
+      if (user?.id) {
+        queryClient.invalidateQueries({
+          queryKey: convexQuery(api.books.getBooks, { userId: user.id })
+            .queryKey,
+        });
+      }
     },
   });
 
@@ -237,9 +250,7 @@ export default function CalendarView({ bookId, book, canEdit = true }: CalendarV
   if (isPending && sessionsQuery === undefined) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="text-muted-foreground">
-          Loading reading sessions...
-        </div>
+        <div className="text-muted-foreground">Loading reading sessions...</div>
       </div>
     );
   }
@@ -350,11 +361,13 @@ export default function CalendarView({ bookId, book, canEdit = true }: CalendarV
                 }`}
               >
                 <div className="mb-0.5 flex items-center justify-between sm:mb-1">
-                  <span className={`text-xs font-medium sm:text-sm ${
-                    session?.isRead 
-                      ? "text-green-900 dark:text-green-50" 
-                      : "text-foreground"
-                  }`}>
+                  <span
+                    className={`text-xs font-medium sm:text-sm ${
+                      session?.isRead
+                        ? "text-green-900 dark:text-green-50"
+                        : "text-foreground"
+                    }`}
+                  >
                     {format(day, "d")}
                   </span>
                   <button
@@ -369,11 +382,11 @@ export default function CalendarView({ bookId, book, canEdit = true }: CalendarV
                       session?.isRead ? "Mark as unread" : "Mark as read"
                     }
                   >
-                      {session?.isRead && (
-                        <svg
-                          className="h-3 w-3 text-green-700 dark:text-green-400 sm:h-4 sm:w-4"
-                          fill="none"
-                          stroke="currentColor"
+                    {session?.isRead && (
+                      <svg
+                        className="h-3 w-3 text-green-700 dark:text-green-400 sm:h-4 sm:w-4"
+                        fill="none"
+                        stroke="currentColor"
                         viewBox="0 0 24 24"
                       >
                         <path

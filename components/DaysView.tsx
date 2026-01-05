@@ -5,7 +5,7 @@ import { format, addDays, parseISO } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
+import { Id, Doc } from "@/convex/_generated/dataModel";
 import { useUser } from "@clerk/nextjs";
 import { formatDateForStorage, parseDateFromStorage } from "@/lib/dateUtils";
 import { calculateDailyPages } from "@/lib/readingCalculator";
@@ -13,22 +13,26 @@ import CatchUpSuggestion from "./CatchUpSuggestion";
 
 interface DaysViewProps {
   bookId: Id<"books">;
-  book: {
-    startDate: string;
-    endDate: string;
-    totalPages: number;
-    daysToRead?: number;
+  book: Pick<
+    Doc<"books">,
+    "startDate" | "endDate" | "totalPages" | "daysToRead"
+  > & {
+    [key: string]: any; // Allow additional properties
   };
   canEdit?: boolean;
 }
 
-export default function DaysView({ bookId, book, canEdit = true }: DaysViewProps) {
+export default function DaysView({
+  bookId,
+  book,
+  canEdit = true,
+}: DaysViewProps) {
   const { user, isLoaded } = useUser();
   const queryClient = useQueryClient();
   const { data: sessionsQuery, isPending } = useQuery({
-    ...convexQuery(api.readingSessions.getSessionsForBook, { 
-      bookId, 
-      userId: user?.id 
+    ...convexQuery(api.readingSessions.getSessionsForBook, {
+      bookId,
+      userId: user?.id,
     }),
     enabled: true, // Allow querying even without auth (for public books)
   });
@@ -42,9 +46,12 @@ export default function DaysView({ bookId, book, canEdit = true }: DaysViewProps
         }).queryKey,
       });
       // Also invalidate the books list to update progress
-      queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getBooks, {}).queryKey,
-      });
+      if (user?.id) {
+        queryClient.invalidateQueries({
+          queryKey: convexQuery(api.books.getBooks, { userId: user.id })
+            .queryKey,
+        });
+      }
     },
   });
   const { mutateAsync: createSession } = useMutation({
@@ -57,9 +64,12 @@ export default function DaysView({ bookId, book, canEdit = true }: DaysViewProps
         }).queryKey,
       });
       // Also invalidate the books list to update progress
-      queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getBooks, {}).queryKey,
-      });
+      if (user?.id) {
+        queryClient.invalidateQueries({
+          queryKey: convexQuery(api.books.getBooks, { userId: user.id })
+            .queryKey,
+        });
+      }
     },
   });
 
@@ -147,9 +157,7 @@ export default function DaysView({ bookId, book, canEdit = true }: DaysViewProps
   if (isPending && sessionsQuery === undefined) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="text-muted-foreground">
-          Loading reading sessions...
-        </div>
+        <div className="text-muted-foreground">Loading reading sessions...</div>
       </div>
     );
   }
