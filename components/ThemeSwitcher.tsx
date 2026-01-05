@@ -1,21 +1,60 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
+import { Button } from "@/components/ui/button";
 
 export default function ThemeSwitcher() {
-  const { setTheme, theme } = useTheme();
+  const { setTheme, theme, resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  // Prevent hydration mismatch by only rendering theme-dependent content after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const toggleTheme = () => {
-    setTheme(theme === "light" ? "dark" : "light");
+    // Handle system theme by checking resolvedTheme
+    const currentTheme = resolvedTheme || theme;
+    if (currentTheme === "light") {
+      setTheme("dark");
+    } else {
+      setTheme("light");
+    }
   };
 
+  // Render a placeholder during SSR to avoid hydration mismatch
+  if (!mounted) {
+    return (
+      <Button
+        variant="outline"
+        size="icon"
+        aria-label="Toggle theme"
+        disabled
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-5 w-5"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+        </svg>
+      </Button>
+    );
+  }
+
+  // Use resolvedTheme to get the actual theme (handles system theme)
+  const displayTheme = resolvedTheme || theme;
+
   return (
-    <button
+    <Button
+      variant="outline"
+      size="icon"
       onClick={toggleTheme}
-      className="rounded-md border border-zinc-300 p-2 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
       aria-label="Toggle theme"
     >
-      {theme === "light" ? (
+      {displayTheme === "light" ? (
         <svg
           xmlns="http://www.w3.org/2000/svg"
           className="h-5 w-5"
@@ -38,6 +77,6 @@ export default function ThemeSwitcher() {
           />
         </svg>
       )}
-    </button>
+    </Button>
   );
 }

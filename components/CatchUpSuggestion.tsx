@@ -87,8 +87,8 @@ export default function CatchUpSuggestion({
     <div
       className={`rounded-lg border p-4 ${
         suggestion.type === "overdue"
-          ? "border-red-500 bg-red-50 dark:border-red-600 dark:bg-red-950"
-          : "border-yellow-500 bg-yellow-50 dark:border-yellow-600 dark:bg-yellow-950"
+          ? "border-red-500 bg-red-100 text-red-900 dark:border-red-600 dark:bg-red-950 dark:text-red-50"
+          : "border-amber-500 bg-amber-100 text-amber-900 dark:border-yellow-600 dark:bg-yellow-950 dark:text-yellow-50"
       }`}
     >
       <h3 className="mb-2 font-semibold">

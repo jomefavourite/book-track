@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useUser } from "@clerk/nextjs";
 import { formatDateForStorage, parseDateFromStorage } from "@/lib/dateUtils";
 import { calculateDailyPages } from "@/lib/readingCalculator";
 import CatchUpSuggestion from "./CatchUpSuggestion";
@@ -18,13 +19,19 @@ interface DaysViewProps {
     totalPages: number;
     daysToRead?: number;
   };
+  canEdit?: boolean;
 }
 
-export default function DaysView({ bookId, book }: DaysViewProps) {
+export default function DaysView({ bookId, book, canEdit = true }: DaysViewProps) {
+  const { user, isLoaded } = useUser();
   const queryClient = useQueryClient();
-  const { data: sessionsQuery, isPending } = useQuery(
-    convexQuery(api.readingSessions.getSessionsForBook, { bookId })
-  );
+  const { data: sessionsQuery, isPending } = useQuery({
+    ...convexQuery(api.readingSessions.getSessionsForBook, { 
+      bookId, 
+      userId: user?.id 
+    }),
+    enabled: true, // Allow querying even without auth (for public books)
+  });
   const { mutateAsync: updateSession } = useMutation({
     mutationFn: useConvexMutation(api.readingSessions.updateSession),
     onSuccess: () => {
@@ -91,17 +98,20 @@ export default function DaysView({ bookId, book }: DaysViewProps) {
   }, [startDate, totalDays]);
 
   const handleDayToggle = async (dateKey: string) => {
+    if (!canEdit || !user?.id) return;
     const existingSession = sessionsMap.get(dateKey);
 
     if (existingSession) {
       await updateSession({
         sessionId: existingSession._id,
+        userId: user.id,
         isRead: !existingSession.isRead,
         actualPages: existingSession.actualPages,
       });
     } else {
       await createSession({
         bookId,
+        userId: user.id,
         date: dateKey,
         plannedPages: pagesPerDay,
         isRead: true,
@@ -110,11 +120,13 @@ export default function DaysView({ bookId, book }: DaysViewProps) {
   };
 
   const handlePagesUpdate = async (dateKey: string, pages: number) => {
+    if (!canEdit || !user?.id) return;
     const existingSession = sessionsMap.get(dateKey);
 
     if (existingSession) {
       await updateSession({
         sessionId: existingSession._id,
+        userId: user.id,
         isRead: existingSession.isRead,
         actualPages: pages,
       });
@@ -135,7 +147,7 @@ export default function DaysView({ bookId, book }: DaysViewProps) {
   if (isPending && sessionsQuery === undefined) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="text-zinc-600 dark:text-zinc-400">
+        <div className="text-muted-foreground">
           Loading reading sessions...
         </div>
       </div>
@@ -150,20 +162,20 @@ export default function DaysView({ bookId, book }: DaysViewProps) {
         sessions={sessions}
       />
 
-      <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="rounded-lg border border-border bg-card p-4">
         <div className="mb-4">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <span className="text-sm font-medium text-foreground">
               Progress
             </span>
-            <span className="text-sm text-zinc-600 dark:text-zinc-400">
+            <span className="text-sm text-muted-foreground">
               {totalPagesRead} / {book.totalPages} pages ({Math.round(progress)}
               %)
             </span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full bg-zinc-900 transition-all dark:bg-zinc-50"
+              className="h-full bg-primary transition-all"
               style={{ width: `${Math.min(progress, 100)}%` }}
             />
           </div>
@@ -179,25 +191,30 @@ export default function DaysView({ bookId, book }: DaysViewProps) {
                 key={dateKey}
                 className={`rounded border p-3 ${
                   isRead
-                    ? "border-green-500 bg-green-50 dark:border-green-600 dark:bg-green-950"
-                    : "border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900"
+                    ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-950 dark:text-green-50"
+                    : "border-border bg-background"
                 }`}
               >
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex-1">
                     <div className="text-sm font-medium">Day {dayNumber}</div>
-                    <div className="text-xs text-zinc-600 dark:text-zinc-400">
+                    <div className="text-xs text-muted-foreground">
                       {format(date, "MMM d, yyyy")}
                     </div>
                   </div>
                   <button
                     onClick={() => handleDayToggle(dateKey)}
-                    className="flex h-5 w-5 items-center justify-center rounded border-2 border-zinc-400 transition-all active:scale-90 sm:h-6 sm:w-6"
+                    disabled={!canEdit}
+                    className={`flex h-5 w-5 items-center justify-center rounded border-2 border-input transition-all sm:h-6 sm:w-6 ${
+                      canEdit
+                        ? "active:scale-90 cursor-pointer hover:border-primary"
+                        : "cursor-not-allowed opacity-50"
+                    }`}
                     aria-label={isRead ? "Mark as unread" : "Mark as read"}
                   >
                     {isRead && (
                       <svg
-                        className="h-3 w-3 text-green-600 sm:h-4 sm:w-4"
+                        className="h-3 w-3 text-green-700 dark:text-green-400 sm:h-4 sm:w-4"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -212,12 +229,12 @@ export default function DaysView({ bookId, book }: DaysViewProps) {
                     )}
                   </button>
                 </div>
-                <div className="mb-2 text-xs text-zinc-600 dark:text-zinc-400">
+                <div className="mb-2 text-xs text-muted-foreground">
                   Plan: {pagesPerDay} pages
                 </div>
                 {isRead && (
                   <div>
-                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                    <label className="block text-xs font-medium text-foreground">
                       Actual Pages
                     </label>
                     <input
@@ -226,8 +243,13 @@ export default function DaysView({ bookId, book }: DaysViewProps) {
                       onChange={(e) =>
                         handlePagesUpdate(dateKey, Number(e.target.value))
                       }
+                      disabled={!canEdit}
                       min="0"
-                      className="mt-1 w-full rounded border border-zinc-300 px-1.5 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50"
+                      className={`mt-1 w-full rounded border border-input bg-background px-1.5 py-1 text-xs ${
+                        canEdit
+                          ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
+                          : "cursor-not-allowed opacity-50"
+                      }`}
                     />
                   </div>
                 )}

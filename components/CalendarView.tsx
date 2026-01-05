@@ -15,12 +15,17 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useUser } from "@clerk/nextjs";
 import {
   formatDateForStorage,
   parseDateFromStorage,
   getDateRangeForMonths,
+  MONTHS,
+  getMonthDateRange,
 } from "@/lib/dateUtils";
 import { distributePagesAcrossDays } from "@/lib/readingCalculator";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import CatchUpSuggestion from "./CatchUpSuggestion";
 
 interface CalendarViewProps {
@@ -34,13 +39,19 @@ interface CalendarViewProps {
     endDate: string;
     totalPages: number;
   };
+  canEdit?: boolean;
 }
 
-export default function CalendarView({ bookId, book }: CalendarViewProps) {
+export default function CalendarView({ bookId, book, canEdit = true }: CalendarViewProps) {
+  const { user, isLoaded } = useUser();
   const queryClient = useQueryClient();
-  const { data: sessionsQuery, isPending } = useQuery(
-    convexQuery(api.readingSessions.getSessionsForBook, { bookId })
-  );
+  const { data: sessionsQuery, isPending } = useQuery({
+    ...convexQuery(api.readingSessions.getSessionsForBook, { 
+      bookId, 
+      userId: user?.id 
+    }),
+    enabled: true, // Allow querying even without auth (for public books)
+  });
   const { mutateAsync: updateSession } = useMutation({
     mutationFn: useConvexMutation(api.readingSessions.updateSession),
     onSuccess: () => {
@@ -76,24 +87,42 @@ export default function CalendarView({ bookId, book }: CalendarViewProps) {
   const sessions = sessionsQuery || [];
 
   const [currentMonth, setCurrentMonth] = useState(() => {
+    // If month/year values are available, use them to initialize the calendar view
+    // This shows the calendar starting from the selected month, not the actual start date
+    if (book.startMonth && book.startYear) {
+      const monthRange = getMonthDateRange(book.startMonth, book.startYear);
+      return startOfMonth(monthRange.start);
+    }
+    // Fall back to actual start date if month/year not available
     const start = parseDateFromStorage(book.startDate);
     return startOfMonth(start);
   });
 
   const readingPeriod = useMemo(() => {
-    if (book.startMonth && book.endMonth && book.startYear && book.endYear) {
-      return getDateRangeForMonths(
-        book.startMonth,
-        book.startYear,
-        book.endMonth,
-        book.endYear
-      );
-    }
+    // Always prefer actual startDate/endDate over month range for precise date control
+    // This ensures that when a specific number of days is selected, only those days are enabled
     return {
       start: parseDateFromStorage(book.startDate),
       end: parseDateFromStorage(book.endDate),
     };
   }, [book]);
+
+  // Calculate navigation boundaries based on selected month range if available
+  const navigationBounds = useMemo(() => {
+    if (book.startMonth && book.endMonth && book.startYear && book.endYear) {
+      const startRange = getMonthDateRange(book.startMonth, book.startYear);
+      const endRange = getMonthDateRange(book.endMonth, book.endYear);
+      return {
+        start: startOfMonth(startRange.start),
+        end: endOfMonth(endRange.end),
+      };
+    }
+    // Fall back to actual reading period
+    return {
+      start: startOfMonth(readingPeriod.start),
+      end: endOfMonth(readingPeriod.end),
+    };
+  }, [book, readingPeriod]);
 
   const pageDistribution = useMemo(() => {
     return distributePagesAcrossDays(
@@ -143,19 +172,24 @@ export default function CalendarView({ bookId, book }: CalendarViewProps) {
   };
 
   const handleDayToggle = async (date: Date) => {
+    if (!canEdit) return;
     const dateKey = formatDateForStorage(date);
     const existingSession = sessionsMap.get(dateKey);
     const plannedPages = pageDistribution.get(dateKey) || 0;
 
+    if (!user?.id) return;
+
     if (existingSession) {
       await updateSession({
         sessionId: existingSession._id,
+        userId: user.id,
         isRead: !existingSession.isRead,
         actualPages: existingSession.actualPages,
       });
     } else {
       await createSession({
         bookId,
+        userId: user.id,
         date: dateKey,
         plannedPages,
         isRead: true,
@@ -164,12 +198,14 @@ export default function CalendarView({ bookId, book }: CalendarViewProps) {
   };
 
   const handlePagesUpdate = async (date: Date, pages: number) => {
+    if (!canEdit || !user?.id) return;
     const dateKey = formatDateForStorage(date);
     const existingSession = sessionsMap.get(dateKey);
 
     if (existingSession) {
       await updateSession({
         sessionId: existingSession._id,
+        userId: user.id,
         isRead: existingSession.isRead,
         actualPages: pages,
       });
@@ -184,8 +220,8 @@ export default function CalendarView({ bookId, book }: CalendarViewProps) {
     });
   };
 
-  const canNavigatePrev = currentMonth > readingPeriod.start;
-  const canNavigateNext = currentMonth < readingPeriod.end;
+  const canNavigatePrev = currentMonth > navigationBounds.start;
+  const canNavigateNext = currentMonth < navigationBounds.end;
 
   const totalPagesRead = useMemo(() => {
     return sessions.reduce((sum, session) => {
@@ -201,7 +237,7 @@ export default function CalendarView({ bookId, book }: CalendarViewProps) {
   if (isPending && sessionsQuery === undefined) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="text-zinc-600 dark:text-zinc-400">
+        <div className="text-muted-foreground">
           Loading reading sessions...
         </div>
       </div>
@@ -216,52 +252,56 @@ export default function CalendarView({ bookId, book }: CalendarViewProps) {
         sessions={sessions}
       />
 
-      <div className="rounded-lg border border-zinc-200 bg-white p-2 sm:p-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <Card className="p-2 sm:p-4">
         <div className="mb-3 sm:mb-4">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 sm:text-sm">
+            <span className="text-xs font-medium text-foreground sm:text-sm">
               Progress
             </span>
-            <span className="text-xs text-zinc-600 dark:text-zinc-400 sm:text-sm">
+            <span className="text-xs text-muted-foreground sm:text-sm">
               {totalPagesRead} / {book.totalPages} pages ({Math.round(progress)}
               %)
             </span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full bg-zinc-900 transition-all dark:bg-zinc-50"
+              className="h-full bg-primary transition-all"
               style={{ width: `${Math.min(progress, 100)}%` }}
             />
           </div>
         </div>
 
         <div className="mb-3 sm:mb-4 flex items-center justify-between">
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => navigateMonth("prev")}
             disabled={!canNavigatePrev}
-            className="min-h-[44px] min-w-[44px] rounded-lg px-3 py-2 text-lg font-semibold transition-colors hover:bg-zinc-100 active:bg-zinc-200 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-zinc-800 dark:active:bg-zinc-700 sm:text-xl"
+            className="min-h-[44px] min-w-[44px] text-lg font-semibold sm:text-xl"
             aria-label="Previous month"
           >
             ←
-          </button>
+          </Button>
           <h2 className="text-base font-semibold sm:text-xl">
             {format(currentMonth, "MMMM yyyy")}
           </h2>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => navigateMonth("next")}
             disabled={!canNavigateNext}
-            className="min-h-[44px] min-w-[44px] rounded-lg px-3 py-2 text-lg font-semibold transition-colors hover:bg-zinc-100 active:bg-zinc-200 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-zinc-800 dark:active:bg-zinc-700 sm:text-xl"
+            className="min-h-[44px] min-w-[44px] text-lg font-semibold sm:text-xl"
             aria-label="Next month"
           >
             →
-          </button>
+          </Button>
         </div>
 
         <div className="grid grid-cols-7 gap-1 sm:gap-2">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
             <div
               key={day}
-              className="text-center text-xs font-medium text-zinc-600 dark:text-zinc-400 sm:text-sm"
+              className="text-center text-xs font-medium text-muted-foreground sm:text-sm"
             >
               <span className="hidden sm:inline">{day}</span>
               <span className="sm:hidden">{day.slice(0, 1)}</span>
@@ -289,9 +329,9 @@ export default function CalendarView({ bookId, book }: CalendarViewProps) {
               return (
                 <div
                   key={dateKey}
-                  className="aspect-square rounded border border-zinc-100 bg-zinc-50 p-1 sm:p-2 dark:border-zinc-800 dark:bg-zinc-950"
+                  className="aspect-square rounded border border-border bg-muted p-1 sm:p-2"
                 >
-                  <div className="text-xs text-zinc-400 sm:text-sm">
+                  <div className="text-xs text-muted-foreground sm:text-sm">
                     {format(day, "d")}
                   </div>
                 </div>
@@ -303,28 +343,37 @@ export default function CalendarView({ bookId, book }: CalendarViewProps) {
                 key={dateKey}
                 className={`aspect-square rounded border p-1 sm:p-2 transition-colors ${
                   isToday
-                    ? "border-zinc-900 bg-zinc-100 dark:border-zinc-50 dark:bg-zinc-800"
+                    ? "border-primary bg-primary/10"
                     : session?.isRead
-                      ? "border-green-500 bg-green-50 dark:border-green-600 dark:bg-green-950"
-                      : "border-zinc-300 bg-white dark:border-zinc-700 dark:bg-zinc-900"
+                      ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-900 dark:text-green-50"
+                      : "border-border bg-background"
                 }`}
               >
                 <div className="mb-0.5 flex items-center justify-between sm:mb-1">
-                  <span className="text-xs font-medium sm:text-sm">
+                  <span className={`text-xs font-medium sm:text-sm ${
+                    session?.isRead 
+                      ? "text-green-900 dark:text-green-50" 
+                      : "text-foreground"
+                  }`}>
                     {format(day, "d")}
                   </span>
                   <button
                     onClick={() => handleDayToggle(day)}
-                    className="flex h-5 w-5 items-center justify-center rounded border-2 border-zinc-400 transition-all active:scale-90 sm:h-6 sm:w-6"
+                    disabled={!canEdit}
+                    className={`flex h-5 w-5 items-center justify-center rounded border-2 border-input transition-all sm:h-6 sm:w-6 ${
+                      canEdit
+                        ? "active:scale-90 cursor-pointer hover:border-primary"
+                        : "cursor-not-allowed opacity-50"
+                    }`}
                     aria-label={
                       session?.isRead ? "Mark as unread" : "Mark as read"
                     }
                   >
-                    {session?.isRead && (
-                      <svg
-                        className="h-3 w-3 text-green-600 sm:h-4 sm:w-4"
-                        fill="none"
-                        stroke="currentColor"
+                      {session?.isRead && (
+                        <svg
+                          className="h-3 w-3 text-green-700 dark:text-green-400 sm:h-4 sm:w-4"
+                          fill="none"
+                          stroke="currentColor"
                         viewBox="0 0 24 24"
                       >
                         <path
@@ -339,7 +388,7 @@ export default function CalendarView({ bookId, book }: CalendarViewProps) {
                 </div>
                 {session?.isRead && (
                   <div className="space-y-0.5 sm:space-y-1">
-                    <div className="text-[10px] text-zinc-600 dark:text-zinc-400 sm:text-xs">
+                    <div className="text-[10px] text-green-800 dark:text-green-100 sm:text-xs">
                       Plan: {plannedPages}
                     </div>
                     <input
@@ -348,14 +397,19 @@ export default function CalendarView({ bookId, book }: CalendarViewProps) {
                       onChange={(e) =>
                         handlePagesUpdate(day, Number(e.target.value))
                       }
+                      disabled={!canEdit}
                       min="0"
-                      className="w-full rounded border border-zinc-300 px-1 py-0.5 text-[10px] focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:border-blue-400 sm:text-xs"
+                      className={`w-full rounded border border-input bg-background px-1 py-0.5 text-[10px] text-foreground sm:text-xs ${
+                        canEdit
+                          ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
+                          : "cursor-not-allowed opacity-50"
+                      }`}
                       placeholder="Pages"
                     />
                   </div>
                 )}
                 {!session?.isRead && plannedPages > 0 && (
-                  <div className="text-[10px] text-zinc-600 dark:text-zinc-400 sm:text-xs">
+                  <div className="text-[10px] text-muted-foreground sm:text-xs">
                     {plannedPages}{" "}
                     <span className="hidden sm:inline">pages</span>
                   </div>
@@ -364,7 +418,7 @@ export default function CalendarView({ bookId, book }: CalendarViewProps) {
             );
           })}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

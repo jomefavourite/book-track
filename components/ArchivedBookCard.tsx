@@ -15,7 +15,7 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import DeleteConfirmDialog from "./DeleteConfirmDialog";
 
-interface BookCardProps {
+interface ArchivedBookCardProps {
   book: {
     _id: Id<"books">;
     name: string;
@@ -34,14 +34,16 @@ interface BookCardProps {
   progress?: number;
 }
 
-export default function BookCard({ book, progress = 0 }: BookCardProps) {
+export default function ArchivedBookCard({
+  book,
+  progress = 0,
+}: ArchivedBookCardProps) {
   const { user } = useUser();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const queryClient = useQueryClient();
   const { mutateAsync: deleteBook } = useMutation({
     mutationFn: useConvexMutation(api.books.deleteBook),
     onSuccess: () => {
-      // Invalidate and refetch the books list query
       queryClient.invalidateQueries({
         queryKey: convexQuery(api.books.getBooks, { userId: user?.id || "" })
           .queryKey,
@@ -53,8 +55,8 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
       });
     },
   });
-  const { mutateAsync: archiveBook } = useMutation({
-    mutationFn: useConvexMutation(api.books.archiveBook),
+  const { mutateAsync: unarchiveBook } = useMutation({
+    mutationFn: useConvexMutation(api.books.unarchiveBook),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: convexQuery(api.books.getBooks, { userId: user?.id || "" })
@@ -87,64 +89,32 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
     setShowDeleteDialog(true);
   };
 
-  const handleArchive = async (e: React.MouseEvent) => {
+  const handleUnarchive = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (!user?.id) return;
     try {
-      await archiveBook({ bookId: book._id, userId: user.id });
+      await unarchiveBook({ bookId: book._id, userId: user.id });
     } catch (error) {
-      console.error("Error archiving book:", error);
-      alert("Failed to archive book. Please try again.");
+      console.error("Error unarchiving book:", error);
+      alert("Failed to unarchive book. Please try again.");
     }
   };
 
   return (
     <>
-      <Card className="relative p-3 transition-shadow hover:shadow-lg sm:p-4">
+      <Card className="relative p-3 opacity-75 transition-shadow hover:shadow-lg sm:p-4">
         <div className="absolute right-1.5 top-1.5 flex items-center gap-1 sm:right-2 sm:top-2 sm:gap-2">
-          {book.isPublic ? (
-            <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900 dark:text-green-200 sm:px-2 sm:py-1 sm:text-xs">
-              Public
-            </span>
-          ) : (
-            <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground sm:px-2 sm:py-1 sm:text-xs">
-              Private
-            </span>
-          )}
+          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200 sm:px-2 sm:py-1 sm:text-xs">
+            Archived
+          </span>
           <Button
             variant="ghost"
             size="icon"
-            asChild
+            onClick={handleUnarchive}
             className="h-8 w-8 text-muted-foreground hover:text-green-600 dark:hover:text-green-500"
-          >
-            <Link
-              href={`/books/${book._id}/edit`}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                router.push(`/books/${book._id}/edit`);
-              }}
-              aria-label="Edit book"
-              title="Edit book"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 sm:h-5 sm:w-5"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-              </svg>
-            </Link>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleArchive}
-            className="h-8 w-8 text-muted-foreground hover:text-blue-600 dark:hover:text-blue-500"
-            aria-label="Archive book"
-            title="Archive book"
+            aria-label="Unarchive book"
+            title="Unarchive book"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -186,12 +156,14 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
           className="h-full flex flex-col justify-between"
         >
           <div>
-            <h3 className="mb-2 pr-16 text-lg font-semibold text-card-foreground sm:pr-20 sm:text-xl">
+            <h3 className="mb-2 pr-16 text-lg font-semibold text-foreground sm:pr-20 sm:text-xl">
               {book.name}
             </h3>
             <div className="mb-3 space-y-1 text-xs text-muted-foreground sm:text-sm">
               {book.author && (
-                <p className="font-medium text-foreground">by {book.author}</p>
+                <p className="font-medium text-foreground">
+                  by {book.author}
+                </p>
               )}
               <p>{book.totalPages} pages</p>
               <p className="wrap-break-word sm:break-normal">
@@ -199,12 +171,7 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
                   ? (() => {
                       const days = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
                       // If month/year values are available, show them; otherwise show actual dates
-                      if (
-                        book.startMonth &&
-                        book.endMonth &&
-                        book.startYear &&
-                        book.endYear
-                      ) {
+                      if (book.startMonth && book.endMonth && book.startYear && book.endYear) {
                         return `${book.startMonth} ${book.startYear} - ${book.endMonth} ${book.endYear} (${days} day${days !== 1 ? "s" : ""})`;
                       }
                       return `${format(startDate, "MMM d, yyyy")} - ${format(endDate, "MMM d, yyyy")} (${days} day${days !== 1 ? "s" : ""})`;
@@ -219,10 +186,7 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
               <span>Progress</span>
               <span>{Math.round(progress)}%</span>
             </div>
-            <Progress
-              value={Math.min(progress, 100)}
-              className="h-2"
-            />
+            <Progress value={Math.min(progress, 100)} className="h-2" />
           </div>
         </Link>
       </Card>

@@ -1,19 +1,38 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { formatDateForStorage, parseDateFromStorage, distributePagesAcrossDays } from "./dateUtils";
+import {
+  formatDateForStorage,
+  parseDateFromStorage,
+  distributePagesAcrossDays,
+} from "./dateUtils";
 
 export const createSession = mutation({
   args: {
     bookId: v.id("books"),
+    userId: v.string(),
     date: v.string(),
     plannedPages: v.number(),
     actualPages: v.optional(v.number()),
     isRead: v.boolean(),
   },
   handler: async (ctx, args) => {
+    const userId = args.userId;
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Verify the book belongs to the user
+    const book = await ctx.db.get(args.bookId);
+    if (!book) {
+      throw new Error("Book not found");
+    }
+    if (book.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+
     const sessionId = await ctx.db.insert("readingSessions", {
       bookId: args.bookId,
-      userId: "local",
+      userId,
       date: args.date,
       plannedPages: args.plannedPages,
       actualPages: args.actualPages,
@@ -28,19 +47,35 @@ export const createSession = mutation({
 export const initializeSessionsForBook = mutation({
   args: {
     bookId: v.id("books"),
+    userId: v.string(),
     startDate: v.string(),
     endDate: v.string(),
     totalPages: v.number(),
   },
   handler: async (ctx, args) => {
+    const userId = args.userId;
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Verify the book belongs to the user
+    const book = await ctx.db.get(args.bookId);
+    if (!book) {
+      throw new Error("Book not found");
+    }
+    if (book.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+
     const start = parseDateFromStorage(args.startDate);
     const end = parseDateFromStorage(args.endDate);
     const distribution = distributePagesAcrossDays(args.totalPages, start, end);
 
-    const sessionPromises = Array.from(distribution.entries()).map(([date, plannedPages]) =>
+    const sessionPromises = Array.from(distribution.entries()).map(
+      ([date, plannedPages]) =>
       ctx.db.insert("readingSessions", {
         bookId: args.bookId,
-        userId: "local",
+          userId,
         date,
         plannedPages,
         isRead: false,
@@ -55,13 +90,24 @@ export const initializeSessionsForBook = mutation({
 export const updateSession = mutation({
   args: {
     sessionId: v.id("readingSessions"),
+    userId: v.string(),
     actualPages: v.optional(v.number()),
     isRead: v.boolean(),
   },
   handler: async (ctx, args) => {
+    const userId = args.userId;
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
     const session = await ctx.db.get(args.sessionId);
     if (!session) {
       throw new Error("Session not found");
+    }
+
+    // Verify the session belongs to the user
+    if (session.userId !== userId) {
+      throw new Error("Unauthorized");
     }
 
     await ctx.db.patch(args.sessionId, {
@@ -72,23 +118,64 @@ export const updateSession = mutation({
 });
 
 export const getSessionsForBook = query({
-  args: { bookId: v.id("books") },
+  args: {
+    bookId: v.id("books"),
+    userId: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
+    const book = await ctx.db.get(args.bookId);
+    if (!book) {
+      throw new Error("Book not found");
+    }
+
+    // If user is authenticated and owns the book, allow access
+    if (args.userId && book.userId === args.userId) {
+      return await ctx.db
+        .query("readingSessions")
+        .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
+        .order("asc")
+        .collect();
+    }
+
+    // If book is public, allow read-only access (even without auth)
+    if (book.isPublic) {
     return await ctx.db
       .query("readingSessions")
       .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
       .order("asc")
       .collect();
+    }
+
+    // If not owner and not public, unauthorized
+    if (args.userId) {
+      throw new Error("Unauthorized");
+    }
+    throw new Error("Not authenticated");
   },
 });
 
 export const getSessionsForDateRange = query({
   args: {
     bookId: v.id("books"),
+    userId: v.string(),
     startDate: v.string(),
     endDate: v.string(),
   },
   handler: async (ctx, args) => {
+    const userId = args.userId;
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Verify the book belongs to the user
+    const book = await ctx.db.get(args.bookId);
+    if (!book) {
+      throw new Error("Book not found");
+    }
+    if (book.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+
     const sessions = await ctx.db
       .query("readingSessions")
       .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
@@ -104,9 +191,24 @@ export const getSessionsForDateRange = query({
 export const getSessionByDate = query({
   args: {
     bookId: v.id("books"),
+    userId: v.string(),
     date: v.string(),
   },
   handler: async (ctx, args) => {
+    const userId = args.userId;
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Verify the book belongs to the user
+    const book = await ctx.db.get(args.bookId);
+    if (!book) {
+      throw new Error("Book not found");
+    }
+    if (book.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+
     const sessions = await ctx.db
       .query("readingSessions")
       .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
