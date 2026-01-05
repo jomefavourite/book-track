@@ -29,13 +29,6 @@ export default function BookDetailPage() {
   const isPublicBook = book?.isPublic;
   const canEdit = isOwner;
 
-  // Debug: Log all book fields
-  if (book) {
-    console.log("Book object:", book);
-    console.log("Book keys:", Object.keys(book));
-    console.log("Book author:", book.author);
-  }
-
   if (isPending || book === undefined) {
     return (
       <div className="flex min-h-screen items-center justify-center">

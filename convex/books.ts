@@ -28,10 +28,6 @@ export const createBook = mutation({
       throw new Error("Not authenticated");
     }
 
-    // Log to verify author is being received
-    console.log("createBook received author:", args.author);
-    console.log("createBook all args:", JSON.stringify(args, null, 2));
-
     const bookData: any = {
       userId,
       name: args.name,
