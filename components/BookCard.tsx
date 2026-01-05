@@ -183,7 +183,7 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
         </div>
         <Link
           href={`/books/${book._id}`}
-          className="h-full flex flex-col justify-between"
+          className="h-full flex flex-col justify-between pt-5"
         >
           <div>
             <h3 className="mb-2 pr-16 text-lg font-semibold text-card-foreground sm:pr-20 sm:text-xl">

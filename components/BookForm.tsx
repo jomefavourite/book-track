@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useConvexMutation, convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
-import { format, isSameMonth } from "date-fns";
+import { format, isSameMonth, addDays, eachDayOfInterval } from "date-fns";
 import {
   MONTHS,
   getDateRangeForMonths,
@@ -97,24 +97,27 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
   const [readingMode, setReadingMode] = useState<"calendar" | "fixed-days">(
     initialBook?.readingMode || "calendar"
   );
-  const [startMonth, setStartMonth] = useState(
-    initialBook?.startMonth || MONTHS[new Date().getMonth()]
-  );
-  const [startYear, setStartYear] = useState(
-    initialBook?.startYear || new Date().getFullYear()
-  );
-  const [endMonth, setEndMonth] = useState(
-    initialBook?.endMonth || MONTHS[new Date().getMonth()]
-  );
-  const [endYear, setEndYear] = useState(
-    initialBook?.endYear || new Date().getFullYear()
-  );
+  const currentMonthIndex = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+
+  // Default to current month for start, and same month for end (or next month if start is December)
+  const defaultStartMonth =
+    initialBook?.startMonth || MONTHS[currentMonthIndex];
+  const defaultStartYear = initialBook?.startYear || currentYear;
+  const defaultEndMonth = initialBook?.endMonth || defaultStartMonth;
+  const defaultEndYear = initialBook?.endYear || defaultStartYear;
+
+  const [startMonth, setStartMonth] = useState(defaultStartMonth);
+  const [startYear, setStartYear] = useState(defaultStartYear);
+  const [endMonth, setEndMonth] = useState(defaultEndMonth);
+  const [endYear, setEndYear] = useState(defaultEndYear);
   const [daysToRead, setDaysToRead] = useState(
     initialBook?.daysToRead?.toString() || ""
   );
   const [selectedDays, setSelectedDays] = useState<number | null>(null);
   const [customDays, setCustomDays] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [autoSelectedDays, setAutoSelectedDays] = useState<number | null>(null);
   const [isPublic, setIsPublic] = useState(initialBook?.isPublic || false);
   const [showCreatorName, setShowCreatorName] = useState(
     initialBook?.showCreatorName || false
@@ -123,8 +126,6 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
     initialBook?.showCreatorEmail || false
   );
 
-  const currentYear = new Date().getFullYear();
-  const currentMonthIndex = new Date().getMonth();
   // Show current year and next 10 years to cover future dates
   const years = Array.from({ length: 11 }, (_, i) => currentYear + i);
 
@@ -135,6 +136,63 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
     // Current year: only months from current month onwards
     return MONTHS.filter((_, index) => index >= currentMonthIndex);
   };
+
+  // Calculate total available days in the selected month range
+  const totalAvailableDays = calculateDaysInMonthRangeForBook(
+    startMonth,
+    startYear,
+    endMonth,
+    endYear
+  );
+
+  // Auto-select total days when month range changes and no manual selection exists
+  useEffect(() => {
+    if (
+      !isEditMode &&
+      readingMode === "calendar" &&
+      !selectedDays &&
+      !customDays &&
+      totalPages &&
+      !isNaN(Number(totalPages))
+    ) {
+      // Calculate actual available days based on start date
+      const selectedStartRange = getMonthDateRange(startMonth, startYear);
+      const firstDayOfSelectedMonth = selectedStartRange.start;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // If selected month is current month, start from today; otherwise use first day of month
+      const actualStartDate = isSameMonth(firstDayOfSelectedMonth, today)
+        ? today
+        : firstDayOfSelectedMonth > today
+          ? firstDayOfSelectedMonth
+          : today;
+
+      const selectedEndRange = getMonthDateRange(endMonth, endYear);
+      const lastDayOfSelectedEndMonth = selectedEndRange.end;
+
+      // Calculate actual available days from start date to end of end month using eachDayOfInterval for accuracy
+      const daysArray = eachDayOfInterval({
+        start: actualStartDate,
+        end: lastDayOfSelectedEndMonth,
+      });
+      const actualAvailableDays = daysArray.length;
+
+      setAutoSelectedDays(actualAvailableDays);
+    } else {
+      setAutoSelectedDays(null);
+    }
+  }, [
+    startMonth,
+    startYear,
+    endMonth,
+    endYear,
+    totalPages,
+    readingMode,
+    selectedDays,
+    customDays,
+    isEditMode,
+  ]);
 
   const readingOptions =
     totalPages && !isNaN(Number(totalPages))
@@ -179,6 +237,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
     setReadingMode(mode);
     setSelectedDays(null);
     setCustomDays("");
+    setAutoSelectedDays(null);
   };
 
   // Helper function to check if start date is after end date
@@ -272,58 +331,61 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
       let endYearValue: number | undefined;
 
       if (readingMode === "calendar") {
-        if (!selectedDays && !customDays) {
+        // Use manually selected days, custom days, or auto-selected days
+        const days = selectedDays || Number(customDays) || autoSelectedDays;
+        if (!days || days <= 0) {
           alert("Please select or enter number of days");
           setIsSubmitting(false);
           return;
         }
 
-        const days = selectedDays || Number(customDays);
-        if (!days || days <= 0) {
-          alert("Please enter a valid number of days");
-          setIsSubmitting(false);
-          return;
-        }
+        // Calculate actual available days based on start date
+        const selectedStartRange = getMonthDateRange(startMonth, startYear);
+        const firstDayOfSelectedMonth = selectedStartRange.start;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-        const totalDays = calculateDaysInMonthRangeForBook(
-          startMonth,
-          startYear,
-          endMonth,
-          endYear
-        );
+        // If selected month is current month, start from today; otherwise use first day of month
+        const actualStartDate = isSameMonth(firstDayOfSelectedMonth, today)
+          ? today
+          : firstDayOfSelectedMonth > today
+            ? firstDayOfSelectedMonth
+            : today;
 
-        if (days > totalDays) {
+        const selectedEndRange = getMonthDateRange(endMonth, endYear);
+        const lastDayOfSelectedEndMonth = selectedEndRange.end;
+
+        // Calculate actual available days from start date to end of end month using eachDayOfInterval for accuracy
+        const daysArray = eachDayOfInterval({
+          start: actualStartDate,
+          end: lastDayOfSelectedEndMonth,
+        });
+        const actualAvailableDays = daysArray.length;
+
+        if (days > actualAvailableDays) {
           alert(
-            `Selected days (${days}) exceed available days (${totalDays}) in the selected month range`
+            `Selected days (${days}) exceed available days (${actualAvailableDays}) from ${format(actualStartDate, "MMMM d, yyyy")} to ${format(lastDayOfSelectedEndMonth, "MMMM d, yyyy")}. Set custom days as ${actualAvailableDays} to adjust the duration.`
           );
           setIsSubmitting(false);
           return;
         }
 
-        // Calculate actual start date
-        // If the selected start month is current month, start from today
-        // If the selected start month is in the future, start from the first day of that month
-        const today = new Date();
-        today.setHours(0, 0, 0, 0); // Reset time to start of day
+        // Calculate actual end date using addDays for reliable date arithmetic
+        const actualEndDate = addDays(actualStartDate, days - 1);
 
-        const selectedStartRange = getMonthDateRange(startMonth, startYear);
-        const firstDayOfSelectedMonth = selectedStartRange.start;
+        // Compare dates by normalizing to start of day (ignore time component)
+        const actualEndDateNormalized = new Date(
+          actualEndDate.getFullYear(),
+          actualEndDate.getMonth(),
+          actualEndDate.getDate()
+        );
+        const lastDayNormalized = new Date(
+          lastDayOfSelectedEndMonth.getFullYear(),
+          lastDayOfSelectedEndMonth.getMonth(),
+          lastDayOfSelectedEndMonth.getDate()
+        );
 
-        // If selected month is current month, use today; otherwise use first day of month
-        const actualStartDate = isSameMonth(firstDayOfSelectedMonth, today)
-          ? today
-          : firstDayOfSelectedMonth > today
-            ? firstDayOfSelectedMonth
-            : today; // fallback
-
-        const actualEndDate = new Date(actualStartDate);
-        actualEndDate.setDate(actualEndDate.getDate() + days - 1);
-
-        // Validate that end date doesn't exceed selected end month range
-        const selectedEndRange = getMonthDateRange(endMonth, endYear);
-        const lastDayOfSelectedEndMonth = selectedEndRange.end;
-
-        if (actualEndDate > lastDayOfSelectedEndMonth) {
+        if (actualEndDateNormalized > lastDayNormalized) {
           alert(
             `Selected reading duration (${days} days) would extend beyond the selected end month (${endMonth} ${endYear}). Please adjust the duration or end month.`
           );
@@ -348,6 +410,18 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
         }
 
         const days = Number(daysToRead);
+
+        // Warn user if days exceed 365, but allow them to proceed
+        if (days > 365) {
+          const proceed = confirm(
+            `You've entered ${days} days, which exceeds the recommended maximum of 365 days. This may result in very low daily page targets (${calculateDailyPages(Number(totalPages), days).toFixed(1)} pages/day).\n\nDo you want to continue?`
+          );
+          if (!proceed) {
+            setIsSubmitting(false);
+            return;
+          }
+        }
+
         const today = new Date();
         startDate = formatDateForStorage(today);
         const end = new Date(today);
@@ -657,55 +731,100 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
                 </div>
 
                 <div>
-                  <p>
-                    Total days in selected month range:{" "}
-                    {calculateDaysInMonthRangeForBook(
+                  {(() => {
+                    // Calculate actual available days based on start date
+                    const selectedStartRange = getMonthDateRange(
                       startMonth,
-                      startYear,
+                      startYear
+                    );
+                    const firstDayOfSelectedMonth = selectedStartRange.start;
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    // If selected month is current month, start from today; otherwise use first day of month
+                    const actualStartDate = isSameMonth(
+                      firstDayOfSelectedMonth,
+                      today
+                    )
+                      ? today
+                      : firstDayOfSelectedMonth > today
+                        ? firstDayOfSelectedMonth
+                        : today;
+
+                    const selectedEndRange = getMonthDateRange(
                       endMonth,
                       endYear
-                    )}
-                  </p>
-                  {(selectedDays || customDays) &&
-                    (() => {
-                      const days = selectedDays || Number(customDays);
-                      if (days && days > 0) {
-                        // Get first day of selected start month
-                        const selectedStartRange = getMonthDateRange(
-                          startMonth,
-                          startYear
-                        );
-                        const firstDayOfSelectedMonth =
-                          selectedStartRange.start;
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0); // Reset time to start of day
+                    );
+                    const lastDayOfSelectedEndMonth = selectedEndRange.end;
 
-                        // If selected month is current month, use today; otherwise use first day of month
-                        const actualStartDate = isSameMonth(
-                          firstDayOfSelectedMonth,
-                          today
-                        )
-                          ? today
-                          : firstDayOfSelectedMonth > today
-                            ? firstDayOfSelectedMonth
-                            : today; // fallback
+                    // Calculate actual available days from start date to end of end month using eachDayOfInterval for accuracy
+                    const daysArray = eachDayOfInterval({
+                      start: actualStartDate,
+                      end: lastDayOfSelectedEndMonth,
+                    });
+                    const actualAvailableDays = daysArray.length;
 
-                        const actualEndDate = new Date(actualStartDate);
-                        actualEndDate.setDate(
-                          actualEndDate.getDate() + days - 1
-                        );
+                    const days =
+                      selectedDays ||
+                      Number(customDays) ||
+                      autoSelectedDays ||
+                      actualAvailableDays;
+                    const pagesPerDay =
+                      totalPages && !isNaN(Number(totalPages)) && days > 0
+                        ? calculateDailyPages(Number(totalPages), days)
+                        : 0;
 
-                        return (
-                          <p className="mt-2 font-medium text-foreground">
-                            Reading Period:{" "}
-                            {format(actualStartDate, "MMMM d, yyyy")} -{" "}
-                            {format(actualEndDate, "MMMM d, yyyy")} ({days} day
-                            {days !== 1 ? "s" : ""})
-                          </p>
-                        );
-                      }
-                      return null;
-                    })()}
+                    return (
+                      <div className="space-y-2">
+                        <p>
+                          <span className="font-medium">
+                            Total days in selected month range:
+                          </span>{" "}
+                          {totalAvailableDays}
+                        </p>
+                        <p>
+                          <span className="font-medium">
+                            Available days from start:
+                          </span>{" "}
+                          {actualAvailableDays}{" "}
+                          {actualAvailableDays !== totalAvailableDays &&
+                            `(from ${format(actualStartDate, "MMMM d, yyyy")})`}
+                        </p>
+                        {totalPages &&
+                          !isNaN(Number(totalPages)) &&
+                          days > 0 && (
+                            <>
+                              <p className="font-medium text-foreground">
+                                {selectedDays || customDays
+                                  ? `Selected: ${days} days (${pagesPerDay.toFixed(1)} pages/day)`
+                                  : `Auto-selected: ${days} days (${pagesPerDay.toFixed(1)} pages/day)`}
+                              </p>
+                              {days > 0 &&
+                                (() => {
+                                  const calculatedEndDate = addDays(
+                                    actualStartDate,
+                                    days - 1
+                                  );
+                                  // Ensure end date doesn't exceed selected end month
+                                  const finalEndDate =
+                                    calculatedEndDate >
+                                    lastDayOfSelectedEndMonth
+                                      ? lastDayOfSelectedEndMonth
+                                      : calculatedEndDate;
+                                  return (
+                                    <p className="text-sm text-muted-foreground">
+                                      Reading Period:{" "}
+                                      {format(actualStartDate, "MMMM d, yyyy")}{" "}
+                                      - {format(finalEndDate, "MMMM d, yyyy")} (
+                                      {days} day{days !== 1 ? "s" : ""})
+                                    </p>
+                                  );
+                                })()}
+                            </>
+                          )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {totalPages && !isNaN(Number(totalPages)) && (
@@ -724,7 +843,10 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
                             name="days"
                             value={option.days}
                             checked={selectedDays === option.days}
-                            onChange={() => setSelectedDays(option.days)}
+                            onChange={() => {
+                              setSelectedDays(option.days);
+                              setAutoSelectedDays(null);
+                            }}
                             className="mr-3"
                           />
                           <div>
@@ -743,6 +865,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
                           onChange={() => {
                             setSelectedDays(null);
                             setCustomDays("");
+                            setAutoSelectedDays(null);
                           }}
                           className="mr-2"
                         />
@@ -753,6 +876,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
                           onChange={(e) => {
                             setCustomDays(e.target.value);
                             setSelectedDays(null);
+                            setAutoSelectedDays(null);
                           }}
                           placeholder="Enter days"
                           min="1"
@@ -788,6 +912,15 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
                   min="1"
                   className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
                 />
+                {daysToRead &&
+                  !isNaN(Number(daysToRead)) &&
+                  Number(daysToRead) > 365 && (
+                    <p className="mt-2 text-sm font-medium text-amber-600 dark:text-amber-500">
+                      ⚠️ The recommended maximum is 365 days. You've entered{" "}
+                      {daysToRead} days. This may result in very low daily page
+                      targets.
+                    </p>
+                  )}
                 {daysToRead &&
                   !isNaN(Number(daysToRead)) &&
                   totalPages &&

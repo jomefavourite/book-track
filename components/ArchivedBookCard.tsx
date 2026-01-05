@@ -153,7 +153,7 @@ export default function ArchivedBookCard({
         </div>
         <Link
           href={`/books/${book._id}`}
-          className="h-full flex flex-col justify-between"
+          className="h-full flex flex-col justify-between pt-5"
         >
           <div>
             <h3 className="mb-2 pr-16 text-lg font-semibold text-foreground sm:pr-20 sm:text-xl">
@@ -161,9 +161,7 @@ export default function ArchivedBookCard({
             </h3>
             <div className="mb-3 space-y-1 text-xs text-muted-foreground sm:text-sm">
               {book.author && (
-                <p className="font-medium text-foreground">
-                  by {book.author}
-                </p>
+                <p className="font-medium text-foreground">by {book.author}</p>
               )}
               <p>{book.totalPages} pages</p>
               <p className="wrap-break-word sm:break-normal">
@@ -171,7 +169,12 @@ export default function ArchivedBookCard({
                   ? (() => {
                       const days = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
                       // If month/year values are available, show them; otherwise show actual dates
-                      if (book.startMonth && book.endMonth && book.startYear && book.endYear) {
+                      if (
+                        book.startMonth &&
+                        book.endMonth &&
+                        book.startYear &&
+                        book.endYear
+                      ) {
                         return `${book.startMonth} ${book.startYear} - ${book.endMonth} ${book.endYear} (${days} day${days !== 1 ? "s" : ""})`;
                       }
                       return `${format(startDate, "MMM d, yyyy")} - ${format(endDate, "MMM d, yyyy")} (${days} day${days !== 1 ? "s" : ""})`;
@@ -186,7 +189,10 @@ export default function ArchivedBookCard({
               <span>Progress</span>
               <span>{Math.round(progress)}%</span>
             </div>
-            <Progress value={Math.min(progress, 100)} className="h-2" />
+            <Progress
+              value={Math.min(progress, 100)}
+              className="h-2"
+            />
           </div>
         </Link>
       </Card>
