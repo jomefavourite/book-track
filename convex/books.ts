@@ -80,7 +80,7 @@ export const getBooks = query({
       .order("desc")
       .collect();
 
-    const books = allBooks.filter((book) => !(book as any).isArchived);
+    const books = allBooks.filter((book) => !(book.isArchived ?? false));
 
     // Calculate progress for each book
     const booksWithProgress = await Promise.all(
@@ -154,6 +154,14 @@ export const updateBook = mutation({
     name: v.optional(v.string()),
     author: v.optional(v.string()),
     totalPages: v.optional(v.number()),
+    readingMode: v.optional(v.union(v.literal("calendar"), v.literal("fixed-days"))),
+    startMonth: v.optional(v.string()),
+    endMonth: v.optional(v.string()),
+    startYear: v.optional(v.number()),
+    endYear: v.optional(v.number()),
+    daysToRead: v.optional(v.number()),
+    startDate: v.optional(v.string()),
+    endDate: v.optional(v.string()),
     isPublic: v.optional(v.boolean()),
     showCreatorName: v.optional(v.boolean()),
     showCreatorEmail: v.optional(v.boolean()),
@@ -180,6 +188,14 @@ export const updateBook = mutation({
       name?: string;
       author?: string;
       totalPages?: number;
+      readingMode?: "calendar" | "fixed-days";
+      startMonth?: string;
+      endMonth?: string;
+      startYear?: number;
+      endYear?: number;
+      daysToRead?: number;
+      startDate?: string;
+      endDate?: string;
       isPublic?: boolean;
       showCreatorName?: boolean;
       showCreatorEmail?: boolean;
@@ -195,6 +211,30 @@ export const updateBook = mutation({
     }
     if (args.totalPages !== undefined) {
       updates.totalPages = args.totalPages;
+    }
+    if (args.readingMode !== undefined) {
+      updates.readingMode = args.readingMode;
+    }
+    if (args.startMonth !== undefined) {
+      updates.startMonth = args.startMonth;
+    }
+    if (args.endMonth !== undefined) {
+      updates.endMonth = args.endMonth;
+    }
+    if (args.startYear !== undefined) {
+      updates.startYear = args.startYear;
+    }
+    if (args.endYear !== undefined) {
+      updates.endYear = args.endYear;
+    }
+    if (args.daysToRead !== undefined) {
+      updates.daysToRead = args.daysToRead;
+    }
+    if (args.startDate !== undefined) {
+      updates.startDate = args.startDate;
+    }
+    if (args.endDate !== undefined) {
+      updates.endDate = args.endDate;
     }
     if (args.isPublic !== undefined) {
       updates.isPublic = args.isPublic;
@@ -233,7 +273,7 @@ export const getArchivedBooks = query({
       .order("desc")
       .collect();
 
-    const books = allBooks.filter((book) => (book as any).isArchived);
+    const books = allBooks.filter((book) => book.isArchived ?? false);
 
     // Calculate progress for each book
     const booksWithProgress = await Promise.all(
@@ -358,7 +398,7 @@ export const getPublicBooks = query({
       .collect();
 
     // Filter out archived books from public view
-    const books = allBooks.filter((book) => !(book as any).isArchived);
+    const books = allBooks.filter((book) => !(book.isArchived ?? false));
 
     // Calculate progress and filter creator info based on visibility flags
     const booksWithProgress = await Promise.all(

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useConvexMutation, convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
-import { format, isSameMonth, addDays, eachDayOfInterval } from "date-fns";
+import { format, isSameMonth, addDays, eachDayOfInterval, differenceInDays } from "date-fns";
 import {
   MONTHS,
   getDateRangeForMonths,
@@ -24,6 +24,7 @@ import ThemeSwitcher from "@/components/ThemeSwitcher";
 import { Button } from "@/components/ui/button";
 import { Id } from "@/convex/_generated/dataModel";
 import { useEffect } from "react";
+import DatePicker from "@/components/DatePicker";
 
 interface BookFormProps {
   book?: {
@@ -100,7 +101,26 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
   const currentMonthIndex = new Date().getMonth();
   const currentYear = new Date().getFullYear();
 
-  // Default to current month for start, and same month for end (or next month if start is December)
+  // Initialize start and end dates from initialBook or defaults
+  const getInitialStartDate = (): Date => {
+    if (initialBook?.startDate) {
+      return parseDateFromStorage(initialBook.startDate);
+    }
+    return new Date();
+  };
+
+  const getInitialEndDate = (): Date | null => {
+    if (initialBook?.endDate) {
+      return parseDateFromStorage(initialBook.endDate);
+    }
+    // No default end date - user must select it
+    return null;
+  };
+
+  const [startDate, setStartDate] = useState<Date | null>(getInitialStartDate());
+  const [endDate, setEndDate] = useState<Date | null>(getInitialEndDate());
+
+  // Keep month/year for backward compatibility and derived values
   const defaultStartMonth =
     initialBook?.startMonth || MONTHS[currentMonthIndex];
   const defaultStartYear = initialBook?.startYear || currentYear;
@@ -137,91 +157,48 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
     return MONTHS.filter((_, index) => index >= currentMonthIndex);
   };
 
-  // Calculate total available days in the selected month range
-  const totalAvailableDays = calculateDaysInMonthRangeForBook(
-    startMonth,
-    startYear,
-    endMonth,
-    endYear
-  );
+  // Calculate total days from selected dates
+  const calculateTotalDays = (): number | null => {
+    if (!startDate || !endDate) return null;
+    if (endDate < startDate) return null;
+    return differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
+  };
 
-  // Auto-select total days when month range changes and no manual selection exists
+  const totalDays = calculateTotalDays();
+
+  // Update month/year when dates change (for backward compatibility)
   useEffect(() => {
-    if (
-      !isEditMode &&
-      readingMode === "calendar" &&
-      !selectedDays &&
-      !customDays &&
-      totalPages &&
-      !isNaN(Number(totalPages))
-    ) {
-      // Calculate actual available days based on start date
-      const selectedStartRange = getMonthDateRange(startMonth, startYear);
-      const firstDayOfSelectedMonth = selectedStartRange.start;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      // If selected month is current month, start from today; otherwise use first day of month
-      const actualStartDate = isSameMonth(firstDayOfSelectedMonth, today)
-        ? today
-        : firstDayOfSelectedMonth > today
-          ? firstDayOfSelectedMonth
-          : today;
-
-      const selectedEndRange = getMonthDateRange(endMonth, endYear);
-      const lastDayOfSelectedEndMonth = selectedEndRange.end;
-
-      // Calculate actual available days from start date to end of end month using eachDayOfInterval for accuracy
-      const daysArray = eachDayOfInterval({
-        start: actualStartDate,
-        end: lastDayOfSelectedEndMonth,
-      });
-      const actualAvailableDays = daysArray.length;
-
-      setAutoSelectedDays(actualAvailableDays);
-    } else {
-      setAutoSelectedDays(null);
+    if (startDate) {
+      const monthIndex = startDate.getMonth();
+      setStartMonth(MONTHS[monthIndex]);
+      setStartYear(startDate.getFullYear());
     }
-  }, [
-    startMonth,
-    startYear,
-    endMonth,
-    endYear,
-    totalPages,
-    readingMode,
-    selectedDays,
-    customDays,
-    isEditMode,
-  ]);
+  }, [startDate]);
+
+  useEffect(() => {
+    if (endDate) {
+      const monthIndex = endDate.getMonth();
+      setEndMonth(MONTHS[monthIndex]);
+      setEndYear(endDate.getFullYear());
+    }
+  }, [endDate]);
 
   const readingOptions =
     totalPages && !isNaN(Number(totalPages))
       ? generateReadingOptions(Number(totalPages))
       : [];
 
-  // Calculate pages per day for edit mode
-  const calculateEditModePagesPerDay = () => {
-    if (
-      !isEditMode ||
-      !initialBook ||
-      !totalPages ||
-      isNaN(Number(totalPages))
-    ) {
+  // Calculate pages per day based on current form state
+  const calculateCurrentPagesPerDay = () => {
+    if (!totalPages || isNaN(Number(totalPages))) {
       return null;
     }
 
     let days: number | undefined;
-    if (initialBook.readingMode === "fixed-days" && initialBook.daysToRead) {
-      days = initialBook.daysToRead;
-    } else if (
-      initialBook.readingMode === "calendar" &&
-      initialBook.startDate &&
-      initialBook.endDate
-    ) {
-      const start = parseDateFromStorage(initialBook.startDate);
-      const end = parseDateFromStorage(initialBook.endDate);
-      const timeDiff = end.getTime() - start.getTime();
-      days = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end days
+    if (readingMode === "fixed-days" && daysToRead && !isNaN(Number(daysToRead))) {
+      days = Number(daysToRead);
+    } else if (readingMode === "calendar" && totalDays !== null) {
+      days = totalDays;
     }
 
     if (days && days > 0) {
@@ -231,7 +208,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
     return null;
   };
 
-  const editModePagesInfo = calculateEditModePagesPerDay();
+  const currentPagesInfo = calculateCurrentPagesPerDay();
 
   const handleModeChange = (mode: "calendar" | "fixed-days") => {
     setReadingMode(mode);
@@ -288,42 +265,15 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
     setIsSubmitting(true);
 
     try {
-      // In edit mode, we only update name, author, totalPages, and visibility settings
-      if (isEditMode && initialBook && user?.id) {
-        const authorValue = author.trim() || undefined;
-
-        await updateBook({
-          bookId: initialBook._id,
-          userId: user.id,
-          name,
-          author: authorValue,
-          totalPages: Number(totalPages),
-          isPublic,
-          showCreatorName: isPublic ? showCreatorName : false,
-          showCreatorEmail: isPublic ? showCreatorEmail : false,
-          creatorName:
-            isPublic && showCreatorName
-              ? user.fullName || undefined
-              : undefined,
-          creatorEmail:
-            isPublic && showCreatorEmail
-              ? user.primaryEmailAddress?.emailAddress || undefined
-              : undefined,
-        });
-
-        router.push(`/books/${initialBook._id}`);
-        return;
-      }
-
       if (!user?.id) {
         alert("Please sign in to create a book");
         setIsSubmitting(false);
         return;
       }
 
-      // Create mode - calculate dates
-      let startDate: string;
-      let endDate: string;
+      // Calculate dates and related values
+      let startDateValue: string;
+      let endDateValue: string;
       let daysToReadValue: number | undefined;
       let startMonthValue: string | undefined;
       let endMonthValue: string | undefined;
@@ -331,78 +281,34 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
       let endYearValue: number | undefined;
 
       if (readingMode === "calendar") {
-        // Use manually selected days, custom days, or auto-selected days
-        const days = selectedDays || Number(customDays) || autoSelectedDays;
-        if (!days || days <= 0) {
-          alert("Please select or enter number of days");
+        // Validate dates are selected
+        if (!startDate || !endDate) {
+          alert("Please select both start and end dates");
           setIsSubmitting(false);
           return;
         }
 
-        // Calculate actual available days based on start date
-        const selectedStartRange = getMonthDateRange(startMonth, startYear);
-        const firstDayOfSelectedMonth = selectedStartRange.start;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // If selected month is current month, start from today; otherwise use first day of month
-        const actualStartDate = isSameMonth(firstDayOfSelectedMonth, today)
-          ? today
-          : firstDayOfSelectedMonth > today
-            ? firstDayOfSelectedMonth
-            : today;
-
-        const selectedEndRange = getMonthDateRange(endMonth, endYear);
-        const lastDayOfSelectedEndMonth = selectedEndRange.end;
-
-        // Calculate actual available days from start date to end of end month using eachDayOfInterval for accuracy
-        const daysArray = eachDayOfInterval({
-          start: actualStartDate,
-          end: lastDayOfSelectedEndMonth,
-        });
-        const actualAvailableDays = daysArray.length;
-
-        if (days > actualAvailableDays) {
-          alert(
-            `Selected days (${days}) exceed available days (${actualAvailableDays}) from ${format(actualStartDate, "MMMM d, yyyy")} to ${format(lastDayOfSelectedEndMonth, "MMMM d, yyyy")}. Set custom days as ${actualAvailableDays} to adjust the duration.`
-          );
+        // Validate end date is after or equal to start date
+        if (endDate < startDate) {
+          alert("End date must be after or equal to start date");
           setIsSubmitting(false);
           return;
         }
 
-        // Calculate actual end date using addDays for reliable date arithmetic
-        const actualEndDate = addDays(actualStartDate, days - 1);
+        startDateValue = formatDateForStorage(startDate);
+        endDateValue = formatDateForStorage(endDate);
 
-        // Compare dates by normalizing to start of day (ignore time component)
-        const actualEndDateNormalized = new Date(
-          actualEndDate.getFullYear(),
-          actualEndDate.getMonth(),
-          actualEndDate.getDate()
-        );
-        const lastDayNormalized = new Date(
-          lastDayOfSelectedEndMonth.getFullYear(),
-          lastDayOfSelectedEndMonth.getMonth(),
-          lastDayOfSelectedEndMonth.getDate()
-        );
+        // Calculate total days
+        const days = differenceInDays(endDate, startDate) + 1;
+        daysToReadValue = days;
 
-        if (actualEndDateNormalized > lastDayNormalized) {
-          alert(
-            `Selected reading duration (${days} days) would extend beyond the selected end month (${endMonth} ${endYear}). Please adjust the duration or end month.`
-          );
-          setIsSubmitting(false);
-          return;
-        }
-
-        startDate = formatDateForStorage(actualStartDate);
-        endDate = formatDateForStorage(actualEndDate);
-
-        // Store the user's selected month/year values (not the calculated ones)
-        // This ensures the dropdowns show the correct values when editing
-        startMonthValue = startMonth;
-        startYearValue = startYear;
-        endMonthValue = endMonth;
-        endYearValue = endYear;
+        // Derive month/year values for backward compatibility
+        startMonthValue = MONTHS[startDate.getMonth()];
+        startYearValue = startDate.getFullYear();
+        endMonthValue = MONTHS[endDate.getMonth()];
+        endYearValue = endDate.getFullYear();
       } else {
+        // Fixed days mode
         if (!daysToRead || isNaN(Number(daysToRead))) {
           alert("Please enter number of days");
           setIsSubmitting(false);
@@ -423,23 +329,38 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
         }
 
         const today = new Date();
-        startDate = formatDateForStorage(today);
+        today.setHours(0, 0, 0, 0);
+        startDateValue = formatDateForStorage(today);
         const end = new Date(today);
         end.setDate(end.getDate() + days - 1);
-        endDate = formatDateForStorage(end);
+        endDateValue = formatDateForStorage(end);
         daysToReadValue = days;
+
+        // Derive month/year values
+        startMonthValue = MONTHS[today.getMonth()];
+        startYearValue = today.getFullYear();
+        endMonthValue = MONTHS[end.getMonth()];
+        endYearValue = end.getFullYear();
       }
 
-      // In edit mode, we only update name, author, totalPages, and visibility settings
-      if (isEditMode && initialBook && user?.id) {
-        const authorValue = author.trim() || undefined;
+      const authorValue = author.trim() || undefined;
 
+      if (isEditMode && initialBook) {
+        // Update existing book with all fields
         await updateBook({
           bookId: initialBook._id,
           userId: user.id,
           name,
           author: authorValue,
           totalPages: Number(totalPages),
+          readingMode,
+          startDate: startDateValue,
+          endDate: endDateValue,
+          startMonth: startMonthValue,
+          endMonth: endMonthValue,
+          startYear: startYearValue,
+          endYear: endYearValue,
+          daysToRead: daysToReadValue,
           isPublic,
           showCreatorName: isPublic ? showCreatorName : false,
           showCreatorEmail: isPublic ? showCreatorEmail : false,
@@ -454,19 +375,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
         });
 
         router.push(`/books/${initialBook._id}`);
-        return;
-      }
-
-      if (!user?.id) {
-        alert("Please sign in to create a book");
-        setIsSubmitting(false);
-        return;
-      }
-
-      const authorValue = author.trim() || undefined;
-
-      // Create new book
-      {
+      } else {
         // Create new book
         const bookId = await createBook({
           userId: user.id,
@@ -479,8 +388,8 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
           startYear: startYearValue,
           endYear: endYearValue,
           daysToRead: daysToReadValue,
-          startDate,
-          endDate,
+          startDate: startDateValue,
+          endDate: endDateValue,
           isPublic,
           showCreatorName: isPublic ? showCreatorName : false,
           showCreatorEmail: isPublic ? showCreatorEmail : false,
@@ -517,14 +426,6 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
         </h1>
         <ThemeSwitcher />
       </div>
-      {isEditMode && (
-        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
-          <p className="text-sm text-blue-700 dark:text-blue-300">
-            You can edit the book name, author, total pages, and visibility
-            settings. Reading schedule and dates cannot be changed.
-          </p>
-        </div>
-      )}
       <form
         onSubmit={handleSubmit}
         className="space-y-6"
@@ -567,375 +468,147 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
             min="1"
             className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           />
-          {editModePagesInfo && (
+          {currentPagesInfo && (
             <p className="mt-2 text-sm text-muted-foreground">
-              With {editModePagesInfo.days} day
-              {editModePagesInfo.days !== 1 ? "s" : ""} to read:{" "}
+              With {currentPagesInfo.days} day
+              {currentPagesInfo.days !== 1 ? "s" : ""} to read:{" "}
               <span className="font-medium text-foreground">
-                {editModePagesInfo.pagesPerDay.toFixed(1)} pages per day
+                {currentPagesInfo.pagesPerDay.toFixed(1)} pages per day
               </span>
             </p>
           )}
         </div>
 
-        {!isEditMode && (
+        <div>
+          <label className="block text-sm font-medium text-foreground">
+            Reading Mode
+          </label>
+          <div className="mt-2 flex gap-4">
+            <label className="flex items-center">
+              <input
+                type="radio"
+                value="calendar"
+                checked={readingMode === "calendar"}
+                onChange={() => handleModeChange("calendar")}
+                className="mr-2"
+              />
+              Calendar
+            </label>
+            <label className="flex items-center">
+              <input
+                type="radio"
+                value="fixed-days"
+                checked={readingMode === "fixed-days"}
+                onChange={() => handleModeChange("fixed-days")}
+                className="mr-2"
+              />
+              Fixed Days
+            </label>
+          </div>
+        </div>
+
+        {readingMode === "calendar" && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-foreground">
-                Reading Mode
-              </label>
-              <div className="mt-2 flex gap-4">
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    value="calendar"
-                    checked={readingMode === "calendar"}
-                    onChange={() => handleModeChange("calendar")}
-                    className="mr-2"
-                  />
-                  Calendar
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="radio"
-                    value="fixed-days"
-                    checked={readingMode === "fixed-days"}
-                    onChange={() => handleModeChange("fixed-days")}
-                    className="mr-2"
-                  />
-                  Fixed Days
-                </label>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <DatePicker
+                selectedDate={startDate}
+                onDateSelect={(date) => {
+                  setStartDate(date);
+                  // If end date is before new start date, update end date
+                  if (endDate && date > endDate) {
+                    setEndDate(date);
+                  }
+                }}
+                allowPastDates={true}
+                maxDate={endDate || undefined}
+                label="Start Date"
+              />
+              <DatePicker
+                selectedDate={endDate}
+                onDateSelect={(date) => {
+                  setEndDate(date);
+                  // If start date is after new end date, update start date
+                  if (startDate && date < startDate) {
+                    setStartDate(date);
+                  }
+                }}
+                allowPastDates={true}
+                minDate={startDate || undefined}
+                label="End Date"
+              />
             </div>
 
-            {readingMode === "calendar" && (
-              <>
-                <div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-foreground">
-                        Start Month
-                      </label>
-                      <select
-                        value={startMonth}
-                        onChange={(e) =>
-                          handleStartMonthChange(
-                            e.target.value as (typeof MONTHS)[number]
-                          )
-                        }
-                        className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-                      >
-                        {getAvailableMonths(startYear).map((month) => (
-                          <option
-                            key={month}
-                            value={month}
-                          >
-                            {month}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-foreground">
-                        Start Year
-                      </label>
-                      <select
-                        value={startYear}
-                        onChange={(e) => {
-                          const newYear = Number(e.target.value);
-                          handleStartYearChange(newYear);
-                          // If year changes and current start month is not available, reset to first available month
-                          const availableMonths = getAvailableMonths(newYear);
-                          if (
-                            availableMonths.length > 0 &&
-                            !availableMonths.includes(
-                              startMonth as (typeof MONTHS)[number]
-                            )
-                          ) {
-                            setStartMonth(
-                              availableMonths[0] as (typeof MONTHS)[number]
-                            );
-                          }
-                        }}
-                        className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-                      >
-                        {years.map((year) => (
-                          <option
-                            key={year}
-                            value={year}
-                          >
-                            {year}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-foreground">
-                      End Month
-                    </label>
-                    <select
-                      value={endMonth}
-                      onChange={(e) =>
-                        setEndMonth(e.target.value as (typeof MONTHS)[number])
-                      }
-                      className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-                    >
-                      {getAvailableMonths(endYear).map((month) => (
-                        <option
-                          key={month}
-                          value={month}
-                        >
-                          {month}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-foreground">
-                      End Year
-                    </label>
-                    <select
-                      value={endYear}
-                      onChange={(e) => {
-                        const newYear = Number(e.target.value);
-                        setEndYear(newYear);
-                        // If year changes and current end month is not available, reset to first available month
-                        const availableMonths = getAvailableMonths(newYear);
-                        if (
-                          availableMonths.length > 0 &&
-                          !availableMonths.includes(
-                            endMonth as (typeof MONTHS)[number]
-                          )
-                        ) {
-                          setEndMonth(
-                            availableMonths[0] as (typeof MONTHS)[number]
-                          );
-                        }
-                      }}
-                      className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-                    >
-                      {years.map((year) => (
-                        <option
-                          key={year}
-                          value={year}
-                        >
-                          {year}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  {(() => {
-                    // Calculate actual available days based on start date
-                    const selectedStartRange = getMonthDateRange(
-                      startMonth,
-                      startYear
-                    );
-                    const firstDayOfSelectedMonth = selectedStartRange.start;
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-
-                    // If selected month is current month, start from today; otherwise use first day of month
-                    const actualStartDate = isSameMonth(
-                      firstDayOfSelectedMonth,
-                      today
-                    )
-                      ? today
-                      : firstDayOfSelectedMonth > today
-                        ? firstDayOfSelectedMonth
-                        : today;
-
-                    const selectedEndRange = getMonthDateRange(
-                      endMonth,
-                      endYear
-                    );
-                    const lastDayOfSelectedEndMonth = selectedEndRange.end;
-
-                    // Calculate actual available days from start date to end of end month using eachDayOfInterval for accuracy
-                    const daysArray = eachDayOfInterval({
-                      start: actualStartDate,
-                      end: lastDayOfSelectedEndMonth,
-                    });
-                    const actualAvailableDays = daysArray.length;
-
-                    const days =
-                      selectedDays ||
-                      Number(customDays) ||
-                      autoSelectedDays ||
-                      actualAvailableDays;
-                    const pagesPerDay =
-                      totalPages && !isNaN(Number(totalPages)) && days > 0
-                        ? calculateDailyPages(Number(totalPages), days)
-                        : 0;
-
-                    return (
-                      <div className="space-y-2">
-                        <p>
-                          <span className="font-medium">
-                            Total days in selected month range:
-                          </span>{" "}
-                          {totalAvailableDays}
-                        </p>
-                        <p>
-                          <span className="font-medium">
-                            Available days from start:
-                          </span>{" "}
-                          {actualAvailableDays}{" "}
-                          {actualAvailableDays !== totalAvailableDays &&
-                            `(from ${format(actualStartDate, "MMMM d, yyyy")})`}
+            {startDate && endDate && (
+              <div className="space-y-2 rounded-lg border border-border bg-muted p-4">
+                {endDate < startDate ? (
+                  <p className="text-sm font-medium text-destructive">
+                    ⚠️ End date must be after or equal to start date
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-foreground">
+                      Reading Period: {format(startDate, "MMMM d, yyyy")} -{" "}
+                      {format(endDate, "MMMM d, yyyy")}
+                    </p>
+                    {totalDays !== null && (
+                      <>
+                        <p className="text-sm text-muted-foreground">
+                          Total days: <span className="font-medium text-foreground">{totalDays}</span>
                         </p>
                         {totalPages &&
                           !isNaN(Number(totalPages)) &&
-                          days > 0 && (
-                            <>
-                              <p className="font-medium text-foreground">
-                                {selectedDays || customDays
-                                  ? `Selected: ${days} days (${pagesPerDay.toFixed(1)} pages/day)`
-                                  : `Auto-selected: ${days} days (${pagesPerDay.toFixed(1)} pages/day)`}
-                              </p>
-                              {days > 0 &&
-                                (() => {
-                                  const calculatedEndDate = addDays(
-                                    actualStartDate,
-                                    days - 1
-                                  );
-                                  // Ensure end date doesn't exceed selected end month
-                                  const finalEndDate =
-                                    calculatedEndDate >
-                                    lastDayOfSelectedEndMonth
-                                      ? lastDayOfSelectedEndMonth
-                                      : calculatedEndDate;
-                                  return (
-                                    <p className="text-sm text-muted-foreground">
-                                      Reading Period:{" "}
-                                      {format(actualStartDate, "MMMM d, yyyy")}{" "}
-                                      - {format(finalEndDate, "MMMM d, yyyy")} (
-                                      {days} day{days !== 1 ? "s" : ""})
-                                    </p>
-                                  );
-                                })()}
-                            </>
+                          totalDays > 0 && (
+                            <p className="text-sm text-muted-foreground">
+                              Pages per day:{" "}
+                              <span className="font-medium text-foreground">
+                                {calculateDailyPages(Number(totalPages), totalDays).toFixed(1)}
+                              </span>
+                            </p>
                           )}
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {totalPages && !isNaN(Number(totalPages)) && (
-                  <div>
-                    <label className="block text-sm font-medium text-foreground">
-                      Select Reading Duration
-                    </label>
-                    <div className="mt-2 space-y-2">
-                      {readingOptions.map((option) => (
-                        <label
-                          key={option.days}
-                          className="flex cursor-pointer items-center rounded-md border border-input p-3 hover:bg-accent"
-                        >
-                          <input
-                            type="radio"
-                            name="days"
-                            value={option.days}
-                            checked={selectedDays === option.days}
-                            onChange={() => {
-                              setSelectedDays(option.days);
-                              setAutoSelectedDays(null);
-                            }}
-                            className="mr-3"
-                          />
-                          <div>
-                            <div className="font-medium">
-                              {option.days} days ({option.pagesPerDay}{" "}
-                              pages/day)
-                            </div>
-                          </div>
-                        </label>
-                      ))}
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="days"
-                          checked={selectedDays === null && customDays !== ""}
-                          onChange={() => {
-                            setSelectedDays(null);
-                            setCustomDays("");
-                            setAutoSelectedDays(null);
-                          }}
-                          className="mr-2"
-                        />
-                        <span className="mr-2">Custom:</span>
-                        <input
-                          type="number"
-                          value={customDays}
-                          onChange={(e) => {
-                            setCustomDays(e.target.value);
-                            setSelectedDays(null);
-                            setAutoSelectedDays(null);
-                          }}
-                          placeholder="Enter days"
-                          min="1"
-                          className="w-32 rounded-md border border-input bg-background px-2 py-1"
-                        />
-                        {customDays && !isNaN(Number(customDays)) && (
-                          <span className="text-sm text-muted-foreground">
-                            (
-                            {calculateDailyPages(
-                              Number(totalPages),
-                              Number(customDays)
-                            )}{" "}
-                            pages/day)
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                      </>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-
-            {readingMode === "fixed-days" && (
-              <div>
-                <label className="block text-sm font-medium text-foreground">
-                  Number of Days
-                </label>
-                <input
-                  type="number"
-                  value={daysToRead}
-                  onChange={(e) => setDaysToRead(e.target.value)}
-                  required
-                  min="1"
-                  className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-                />
-                {daysToRead &&
-                  !isNaN(Number(daysToRead)) &&
-                  Number(daysToRead) > 365 && (
-                    <p className="mt-2 text-sm font-medium text-amber-600 dark:text-amber-500">
-                      ⚠️ The recommended maximum is 365 days. You've entered{" "}
-                      {daysToRead} days. This may result in very low daily page
-                      targets.
-                    </p>
-                  )}
-                {daysToRead &&
-                  !isNaN(Number(daysToRead)) &&
-                  totalPages &&
-                  !isNaN(Number(totalPages)) && (
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {calculateDailyPages(
-                        Number(totalPages),
-                        Number(daysToRead)
-                      )}{" "}
-                      pages per day
-                    </p>
-                  )}
               </div>
             )}
           </>
+        )}
+
+        {readingMode === "fixed-days" && (
+          <div>
+            <label className="block text-sm font-medium text-foreground">
+              Number of Days
+            </label>
+            <input
+              type="number"
+              value={daysToRead}
+              onChange={(e) => setDaysToRead(e.target.value)}
+              required
+              min="1"
+              className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            {daysToRead &&
+              !isNaN(Number(daysToRead)) &&
+              Number(daysToRead) > 365 && (
+                <p className="mt-2 text-sm font-medium text-amber-600 dark:text-amber-500">
+                  ⚠️ The recommended maximum is 365 days. You've entered{" "}
+                  {daysToRead} days. This may result in very low daily page
+                  targets.
+                </p>
+              )}
+            {daysToRead &&
+              !isNaN(Number(daysToRead)) &&
+              totalPages &&
+              !isNaN(Number(totalPages)) && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {calculateDailyPages(
+                    Number(totalPages),
+                    Number(daysToRead)
+                  )}{" "}
+                  pages per day
+                </p>
+              )}
+          </div>
         )}
 
         <div className="rounded-lg border border-border bg-muted p-4">

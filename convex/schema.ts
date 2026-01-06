@@ -22,7 +22,7 @@ export default defineSchema({
     showCreatorEmail: v.optional(v.boolean()),
     creatorName: v.optional(v.string()),
     creatorEmail: v.optional(v.string()),
-    isArchived: v.boolean(),
+    isArchived: v.optional(v.boolean()),
   })
     .index("by_user", ["userId"])
     .index("by_user_and_order", ["userId", "bookOrder"])
