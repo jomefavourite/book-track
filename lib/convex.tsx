@@ -45,11 +45,36 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
 
   // Connect ConvexQueryClient to QueryClient (only once)
   const hasConnected = useRef(false);
+  const disconnectRef = useRef<(() => void) | null>(null);
+  
   useEffect(() => {
-    if (!hasConnected.current) {
-      convexQueryClient.connect(queryClient);
-      hasConnected.current = true;
+    if (!hasConnected.current && convexQueryClient && queryClient) {
+      try {
+        const disconnect = convexQueryClient.connect(queryClient);
+        hasConnected.current = true;
+        
+        // Store disconnect function if it exists
+        if (disconnect && typeof disconnect === 'function') {
+          disconnectRef.current = disconnect;
+        }
+      } catch (error) {
+        console.warn('Error connecting ConvexQueryClient:', error);
+      }
     }
+    
+    // Return cleanup function to properly disconnect on unmount
+    return () => {
+      if (disconnectRef.current) {
+        try {
+          disconnectRef.current();
+          disconnectRef.current = null;
+        } catch (error) {
+          // Silently handle cleanup errors to prevent unsubscribe errors
+          console.warn('Error during ConvexQueryClient cleanup:', error);
+        }
+      }
+      hasConnected.current = false;
+    };
   }, [queryClient, convexQueryClient]);
 
   return (

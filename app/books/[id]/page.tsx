@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import CalendarView from "@/components/CalendarView";
 import DaysView from "@/components/DaysView";
-import ThemeSwitcher from "@/components/ThemeSwitcher";
+import Navigation from "@/components/Navigation";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Share2, Check } from "lucide-react";
@@ -233,16 +233,18 @@ export default function BookDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-3 sm:p-6">
-      <div className="mb-4 sm:mb-6">
-        <div className="mb-3 flex items-center justify-between sm:mb-4">
-          <Link
-            href={user ? "/dashboard" : "/"}
-            className="text-sm text-primary hover:underline sm:text-base"
-          >
-            ← Back
-          </Link>
-          <div className="flex items-center gap-3">
+    <>
+      <Navigation showAuth={false} />
+      <div className="mx-auto max-w-6xl p-3 sm:p-6">
+        <div className="mb-4 sm:mb-6">
+          <div className="mb-3 flex items-center justify-between sm:mb-4">
+            <Link
+              href={user ? "/dashboard" : "/"}
+              className="text-sm text-primary hover:underline sm:text-base"
+            >
+              ← Back
+            </Link>
+            <div className="flex items-center gap-3">
             {isPublicBook && (
               <Button
                 variant="outline"
@@ -272,7 +274,6 @@ export default function BookDetailPage() {
                 <Link href={`/books/${bookId}/edit`}>Edit</Link>
               </Button>
             )}
-            <ThemeSwitcher />
           </div>
         </div>
         <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -419,6 +420,7 @@ export default function BookDetailPage() {
           canEdit={canEdit}
         />
       )}
-    </div>
+      </div>
+    </>
   );
 }

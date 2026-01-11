@@ -7,7 +7,7 @@ import { SignInButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import ThemeSwitcher from "@/components/ThemeSwitcher";
+import Navigation from "@/components/Navigation";
 import PublicBookCard from "@/components/PublicBookCard";
 
 export default function LandingPage() {
@@ -18,24 +18,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border">
-        <div className="mx-auto max-w-6xl px-6 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-foreground">Book-Track</h1>
-            <div className="flex items-center gap-4">
-              <SignInButton mode="modal">
-                <Button
-                  variant="default"
-                  size="sm"
-                >
-                  Sign In
-                </Button>
-              </SignInButton>
-              <ThemeSwitcher />
-            </div>
-          </div>
-        </div>
-      </header>
+      <Navigation isLandingPage={true} />
 
       {/* Hero Section */}
       <section className="mx-auto max-w-6xl px-6 py-16 text-center">
@@ -205,15 +188,15 @@ export default function LandingPage() {
           </div>
         ) : publicBooks && publicBooks.length > 0 ? (
           <>
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
               {publicBooks.slice(0, 6).map((book: any) => (
-              <PublicBookCard
-                key={book._id}
-                book={book}
-                progress={book.progress || 0}
-              />
-            ))}
-          </div>
+                <PublicBookCard
+                  key={book._id}
+                  book={book}
+                  progress={book.progress || 0}
+                />
+              ))}
+            </div>
             <div className="mt-8 flex justify-center">
               <Button
                 variant="outline"
