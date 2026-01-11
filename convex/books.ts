@@ -139,11 +139,10 @@ export const getBook = query({
       return result;
     }
 
-    // If not owner and not public, unauthorized
-    if (args.userId) {
-      throw new Error("Unauthorized");
-    }
-    throw new Error("Not authenticated");
+    // If not owner and not public, return null instead of throwing
+    // This allows the frontend to handle the case gracefully
+    // (e.g., show "private book" message instead of error)
+    return null;
   },
 });
 

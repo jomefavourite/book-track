@@ -92,6 +92,7 @@ export const updateSession = mutation({
     sessionId: v.id("readingSessions"),
     userId: v.string(),
     actualPages: v.optional(v.number()),
+    plannedPages: v.optional(v.number()),
     isRead: v.boolean(),
   },
   handler: async (ctx, args) => {
@@ -110,10 +111,23 @@ export const updateSession = mutation({
       throw new Error("Unauthorized");
     }
 
-    await ctx.db.patch(args.sessionId, {
-      actualPages: args.actualPages,
+    const updateData: {
+      actualPages?: number;
+      plannedPages?: number;
+      isRead: boolean;
+    } = {
       isRead: args.isRead,
-    });
+    };
+
+    if (args.actualPages !== undefined) {
+      updateData.actualPages = args.actualPages;
+    }
+
+    if (args.plannedPages !== undefined) {
+      updateData.plannedPages = args.plannedPages;
+    }
+
+    await ctx.db.patch(args.sessionId, updateData);
   },
 });
 

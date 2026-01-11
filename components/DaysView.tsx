@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { format, addDays, parseISO } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
@@ -76,6 +76,26 @@ export default function DaysView({
   // Use empty array as default to ensure hooks are always called
   const sessions = sessionsQuery || [];
 
+  // Local state for input values to allow smooth typing
+  const [inputValues, setInputValues] = useState<Map<string, string>>(
+    new Map()
+  );
+
+  // Sync input values with sessions when they change
+  useEffect(() => {
+    const newInputValues = new Map<string, string>();
+    sessions.forEach((session) => {
+      if (session.isRead) {
+        const value =
+          session.actualPages?.toString() ||
+          session.plannedPages?.toString() ||
+          "";
+        newInputValues.set(session.date, value);
+      }
+    });
+    setInputValues(newInputValues);
+  }, [sessions]);
+
   const startDate = parseDateFromStorage(book.startDate);
   const endDate = parseDateFromStorage(book.endDate);
   const totalDays =
@@ -112,12 +132,71 @@ export default function DaysView({
     const existingSession = sessionsMap.get(dateKey);
 
     if (existingSession) {
+      const newIsRead = !existingSession.isRead;
       await updateSession({
         sessionId: existingSession._id,
         userId: user.id,
-        isRead: !existingSession.isRead,
+        isRead: newIsRead,
         actualPages: existingSession.actualPages,
       });
+
+      // Redistribute pages after toggling
+      if (newIsRead) {
+        // Day marked as read - redistribute remaining pages
+        const actualPages =
+          existingSession.actualPages ||
+          existingSession.plannedPages ||
+          pagesPerDay;
+        await redistributePages(dateKey, actualPages, new Set([dateKey]));
+      } else if (!newIsRead) {
+        // Day marked as unread - redistribute including this day's pages
+        // Calculate total pages read excluding this day
+        let totalPagesRead = 0;
+        days.forEach(({ dateKey: dKey }) => {
+          const sess = sessionsMap.get(dKey);
+          if (sess?.isRead && dKey !== dateKey) {
+            totalPagesRead += sess.actualPages || sess.plannedPages || 0;
+          }
+        });
+        const remainingPages = Math.max(0, book.totalPages - totalPagesRead);
+        const unreadDays = days.filter(({ dateKey: dKey }) => {
+          const sess = sessionsMap.get(dKey);
+          return !sess?.isRead || dKey === dateKey; // Include the toggled day
+        });
+
+        if (unreadDays.length > 0) {
+          const pagesPerDay = Math.floor(remainingPages / unreadDays.length);
+          const remainder = remainingPages % unreadDays.length;
+
+          const updatePromises: Promise<any>[] = [];
+          unreadDays.forEach(({ dateKey: dKey }, index) => {
+            const sess = sessionsMap.get(dKey);
+            const newPlannedPages = pagesPerDay + (index < remainder ? 1 : 0);
+
+            if (sess) {
+              updatePromises.push(
+                updateSession({
+                  sessionId: sess._id,
+                  userId: user.id,
+                  isRead: false,
+                  plannedPages: newPlannedPages,
+                })
+              );
+            } else if (dKey === dateKey) {
+              updatePromises.push(
+                createSession({
+                  bookId,
+                  userId: user.id,
+                  date: dKey,
+                  plannedPages: newPlannedPages,
+                  isRead: false,
+                })
+              );
+            }
+          });
+          await Promise.all(updatePromises);
+        }
+      }
     } else {
       await createSession({
         bookId,
@@ -126,21 +205,142 @@ export default function DaysView({
         plannedPages: pagesPerDay,
         isRead: true,
       });
+
+      // Redistribute after marking as read
+      // Exclude the newly created session from being treated as unread
+      await redistributePages(dateKey, pagesPerDay, new Set([dateKey]));
     }
+  };
+
+  const redistributePages = async (
+    updatedDateKey: string,
+    newActualPages: number,
+    excludeDateKeys: Set<string> = new Set()
+  ) => {
+    if (!user?.id) return;
+
+    // Calculate total pages read (including the updated one)
+    let totalPagesRead = 0;
+
+    days.forEach(({ dateKey }) => {
+      // Skip excluded dateKeys (newly created sessions that should be treated as read)
+      if (excludeDateKeys.has(dateKey)) {
+        const actualPages = dateKey === updatedDateKey ? newActualPages : 0;
+        totalPagesRead += actualPages;
+        return;
+      }
+
+      const session = sessionsMap.get(dateKey);
+
+      if (session?.isRead) {
+        const actualPages =
+          dateKey === updatedDateKey
+            ? newActualPages
+            : session.actualPages || session.plannedPages || 0;
+        totalPagesRead += actualPages;
+      }
+    });
+
+    // Calculate remaining pages and unread days
+    const remainingPages = Math.max(0, book.totalPages - totalPagesRead);
+    const unreadDays = days.filter(({ dateKey }) => {
+      // Exclude dateKeys that are marked as read (even if not in sessionsMap yet)
+      if (excludeDateKeys.has(dateKey)) return false;
+
+      const session = sessionsMap.get(dateKey);
+      return !session?.isRead;
+    });
+
+    if (unreadDays.length === 0) return;
+
+    // Redistribute remaining pages across unread days
+    const pagesPerDay = Math.floor(remainingPages / unreadDays.length);
+    const remainder = remainingPages % unreadDays.length;
+
+    // Update planned pages for unread days
+    const updatePromises: Promise<any>[] = [];
+
+    unreadDays.forEach(({ dateKey }, index) => {
+      const session = sessionsMap.get(dateKey);
+      const newPlannedPages = pagesPerDay + (index < remainder ? 1 : 0);
+
+      if (session) {
+        // Update existing session's planned pages
+        updatePromises.push(
+          updateSession({
+            sessionId: session._id,
+            userId: user.id,
+            isRead: false,
+            plannedPages: newPlannedPages,
+          })
+        );
+      } else {
+        // Create new session with new planned pages
+        updatePromises.push(
+          createSession({
+            bookId,
+            userId: user.id,
+            date: dateKey,
+            plannedPages: newPlannedPages,
+            isRead: false,
+          })
+        );
+      }
+    });
+
+    await Promise.all(updatePromises);
+  };
+
+  const handleInputChange = (dateKey: string, value: string) => {
+    // Update local state immediately for smooth typing
+    setInputValues((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(dateKey, value);
+      return newMap;
+    });
   };
 
   const handlePagesUpdate = async (dateKey: string, pages: number) => {
     if (!canEdit || !user?.id) return;
     const existingSession = sessionsMap.get(dateKey);
 
-    if (existingSession) {
+    if (existingSession && existingSession.isRead) {
+      // Update the actual pages
       await updateSession({
         sessionId: existingSession._id,
         userId: user.id,
         isRead: existingSession.isRead,
         actualPages: pages,
       });
+
+      // Redistribute pages across unread days
+      await redistributePages(dateKey, pages);
     }
+  };
+
+  const handleInputBlur = async (dateKey: string) => {
+    const inputValue = inputValues.get(dateKey);
+
+    if (inputValue === undefined || inputValue === "") return;
+
+    const pages = Number(inputValue);
+    if (isNaN(pages) || pages < 0) {
+      // Reset to original value if invalid
+      const session = sessionsMap.get(dateKey);
+      if (session) {
+        setInputValues((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(
+            dateKey,
+            (session.actualPages || session.plannedPages || 0).toString()
+          );
+          return newMap;
+        });
+      }
+      return;
+    }
+
+    await handlePagesUpdate(dateKey, pages);
   };
 
   const totalPagesRead = useMemo(() => {
@@ -199,7 +399,7 @@ export default function DaysView({
                 key={dateKey}
                 className={`rounded border p-3 ${
                   isRead
-                    ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-950 dark:text-green-50"
+                    ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-900 dark:text-green-50"
                     : "border-border bg-background"
                 }`}
               >
@@ -237,8 +437,8 @@ export default function DaysView({
                     )}
                   </button>
                 </div>
-                <div className="mb-2 text-xs text-muted-foreground">
-                  Plan: {pagesPerDay} pages
+                <div className="mb-2 text-xs ">
+                  Plan: {session?.plannedPages ?? pagesPerDay} pages
                 </div>
                 {isRead && (
                   <div>
@@ -247,10 +447,23 @@ export default function DaysView({
                     </label>
                     <input
                       type="number"
-                      value={session?.actualPages || pagesPerDay}
-                      onChange={(e) =>
-                        handlePagesUpdate(dateKey, Number(e.target.value))
+                      value={
+                        inputValues.get(dateKey) ??
+                        (
+                          session?.actualPages ||
+                          session?.plannedPages ||
+                          pagesPerDay
+                        ).toString()
                       }
+                      onChange={(e) =>
+                        handleInputChange(dateKey, e.target.value)
+                      }
+                      onBlur={() => handleInputBlur(dateKey)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.currentTarget.blur();
+                        }
+                      }}
                       disabled={!canEdit}
                       min="0"
                       className={`mt-1 w-full rounded border border-input bg-background px-1.5 py-1 text-xs ${
