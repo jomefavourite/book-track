@@ -27,6 +27,7 @@ import {
 import { distributePagesAcrossDays } from "@/lib/readingCalculator";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -34,6 +35,15 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerClose,
+} from "@/components/ui/drawer";
 import CatchUpSuggestion from "./CatchUpSuggestion";
 
 interface CalendarViewProps {
@@ -198,6 +208,8 @@ export default function CalendarView({
 
   // Mobile modal state
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [desktopDrawerOpen, setDesktopDrawerOpen] = useState(false);
+  const [desktopDrawerDay, setDesktopDrawerDay] = useState<Date | null>(null);
   const isMobileModalOpen = selectedDay !== null;
 
   // Handle day cell click (mobile only)
@@ -210,6 +222,20 @@ export default function CalendarView({
       target.tagName !== "INPUT"
     ) {
       setSelectedDay(day);
+    }
+  };
+
+  // Handle desktop drawer open
+  const handleDesktopDrawerOpen = (day: Date, e: React.MouseEvent) => {
+    // Only open drawer on desktop, and only if clicking the cell itself (not checkboxes or other interactive elements)
+    const target = e.target as HTMLElement;
+    if (
+      window.innerWidth >= 640 &&
+      target.closest("button") === null &&
+      target.tagName !== "INPUT"
+    ) {
+      setDesktopDrawerDay(day);
+      setDesktopDrawerOpen(true);
     }
   };
 
@@ -796,7 +822,10 @@ export default function CalendarView({
             return (
               <div
                 key={dateKey}
-                onClick={(e) => handleDayCellClick(day, e)}
+                onClick={(e) => {
+                  handleDayCellClick(day, e);
+                  handleDesktopDrawerOpen(day, e);
+                }}
                 className={`relative aspect-square rounded border transition-colors overflow-hidden ${
                   isToday && isRead
                     ? "border-primary bg-green-100 text-green-900 dark:border-primary dark:bg-green-900 dark:text-green-50"
@@ -809,7 +838,7 @@ export default function CalendarView({
                           : isMissed
                             ? "border-red-600 bg-red-100 text-red-900 dark:border-red-600 dark:bg-red-900 dark:text-red-50"
                             : "border-border bg-background"
-                } cursor-pointer sm:cursor-default`}
+                } cursor-pointer`}
               >
                 {/* Mobile Layout - Simplified */}
                 <div className="flex h-full flex-col p-0.5 sm:p-2">
@@ -935,38 +964,11 @@ export default function CalendarView({
                     </div>
                   </div>
 
-                  {/* Bottom section: Content (hidden on mobile when read/missed, shown on desktop) */}
+                  {/* Bottom section: Minimal info on desktop (full details in drawer) */}
                   <div className="hidden flex-1 flex-col justify-end sm:flex">
                     {isRead && (
-                      <div className="space-y-0.5 sm:space-y-1">
-                        <div className="text-[10px] text-green-800 dark:text-green-100 sm:text-xs">
-                          Plan: {plannedPages}
-                        </div>
-                        <p className="text-[10px] sm:text-xs">Actual pages:</p>
-                        <input
-                          type="number"
-                          value={
-                            inputValues.get(dateKey) ??
-                            (session?.actualPages || plannedPages).toString()
-                          }
-                          onChange={(e) =>
-                            handleInputChange(dateKey, e.target.value)
-                          }
-                          onBlur={() => handleInputBlur(day)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.currentTarget.blur();
-                            }
-                          }}
-                          disabled={!canEdit}
-                          min="0"
-                          className={`w-full rounded border border-input bg-background px-1 py-0.5 text-[10px] text-foreground sm:text-xs ${
-                            canEdit
-                              ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
-                              : "cursor-not-allowed opacity-50"
-                          }`}
-                          placeholder="Pages"
-                        />
+                      <div className="text-[10px] text-green-800 dark:text-green-100 sm:text-xs">
+                        Plan: {plannedPages}
                       </div>
                     )}
                     {isMissed && (
@@ -1020,7 +1022,7 @@ export default function CalendarView({
       {selectedDay && (
         <Sheet
           open={isMobileModalOpen}
-          onOpenChange={(open) => !open && setSelectedDay(null)}
+          onOpenChange={(open: boolean) => !open && setSelectedDay(null)}
         >
           <SheetContent
             side="bottom"
@@ -1068,6 +1070,143 @@ export default function CalendarView({
           </SheetContent>
         </Sheet>
       )}
+
+      {/* Desktop Drawer for Day Details */}
+      {desktopDrawerDay && (
+        <Drawer
+          open={desktopDrawerOpen}
+          onOpenChange={(open: boolean) => {
+            setDesktopDrawerOpen(open);
+            if (!open) {
+              setDesktopDrawerDay(null);
+            }
+          }}
+        >
+          <DrawerContent className="hidden sm:block">
+            <DrawerHeader>
+              <DrawerTitle className="text-foreground">
+                {format(desktopDrawerDay, "EEEE, MMMM d, yyyy")}
+              </DrawerTitle>
+              <DrawerDescription className="text-muted-foreground">
+                {(() => {
+                  const drawerDateKey = formatDateForStorage(desktopDrawerDay);
+                  const drawerSession = sessionsMap.get(drawerDateKey);
+                  const drawerPlannedPages =
+                    drawerSession?.plannedPages ??
+                    pageDistribution.get(drawerDateKey) ??
+                    0;
+                  return `Planned: ${drawerPlannedPages} pages`;
+                })()}
+              </DrawerDescription>
+            </DrawerHeader>
+            <div className="space-y-4 px-4 pb-4">
+              {(() => {
+                const drawerDateKey = formatDateForStorage(desktopDrawerDay);
+                const drawerSession = sessionsMap.get(drawerDateKey);
+                const drawerPlannedPages =
+                  drawerSession?.plannedPages ??
+                  pageDistribution.get(drawerDateKey) ??
+                  0;
+                const drawerIsRead = drawerSession?.isRead || false;
+                const drawerIsMissed = drawerSession?.isMissed || false;
+
+                return (
+                  <>
+                    {drawerIsRead && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label
+                            htmlFor="actual-pages"
+                            className="text-sm font-medium text-foreground"
+                          >
+                            Actual pages read:
+                          </label>
+                          <span className="text-sm text-muted-foreground">
+                            Plan: {drawerPlannedPages}
+                          </span>
+                        </div>
+                        <Input
+                          id="actual-pages"
+                          type="number"
+                          value={
+                            inputValues.get(drawerDateKey) ??
+                            (
+                              drawerSession?.actualPages || drawerPlannedPages
+                            ).toString()
+                          }
+                          onChange={(e) =>
+                            handleInputChange(drawerDateKey, e.target.value)
+                          }
+                          onBlur={() => handleInputBlur(desktopDrawerDay)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.currentTarget.blur();
+                            }
+                          }}
+                          disabled={!canEdit}
+                          min="0"
+                          placeholder="Pages"
+                          className="w-full"
+                        />
+                      </div>
+                    )}
+                    {drawerIsMissed && (
+                      <div className="rounded-md bg-red-100 p-3 text-sm text-red-900 dark:bg-red-900 dark:text-red-50">
+                        This day has been marked as missed.
+                      </div>
+                    )}
+                    {!drawerIsRead &&
+                      !drawerIsMissed &&
+                      drawerPlannedPages > 0 && (
+                        <div className="text-sm text-muted-foreground">
+                          Planned: {drawerPlannedPages} pages
+                        </div>
+                      )}
+                    <div className="flex gap-2">
+                      {!drawerIsMissed && (
+                        <Button
+                          variant={drawerIsRead ? "default" : "outline"}
+                          onClick={() => {
+                            handleDayToggle(desktopDrawerDay);
+                          }}
+                          disabled={!canEdit}
+                          className="flex-1"
+                        >
+                          {drawerIsRead ? "Mark as Unread" : "Mark as Read"}
+                        </Button>
+                      )}
+                      {!drawerIsRead && (
+                        <Button
+                          variant={drawerIsMissed ? "destructive" : "outline"}
+                          onClick={() => {
+                            handleMissedToggle(desktopDrawerDay);
+                          }}
+                          disabled={!canEdit}
+                          className="flex-1"
+                        >
+                          {drawerIsMissed
+                            ? "Mark as Not Missed"
+                            : "Mark as Missed"}
+                        </Button>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+            <DrawerFooter>
+              <DrawerClose asChild>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                >
+                  Close
+                </Button>
+              </DrawerClose>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
+      )}
     </div>
   );
 }
@@ -1103,10 +1242,10 @@ function DayDetailModal({
   return (
     <div className="space-y-6">
       <SheetHeader>
-        <SheetTitle className="text-2xl">
+        <SheetTitle className="text-2xl text-foreground">
           {format(day, "EEEE, MMMM d, yyyy")}
         </SheetTitle>
-        <SheetDescription>
+        <SheetDescription className="text-muted-foreground">
           {isRead
             ? "Marked as read"
             : isMissed
@@ -1118,7 +1257,7 @@ function DayDetailModal({
       <div className="space-y-4">
         {/* Status Section */}
         <div>
-          <h3 className="mb-3 text-sm font-semibold">Status</h3>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">Status</h3>
           <div className="flex gap-4">
             {/* Read Checkbox */}
             {!isMissed && (
@@ -1127,11 +1266,11 @@ function DayDetailModal({
                 disabled={!canEdit}
                 className={`flex h-12 w-12 flex-col items-center justify-center gap-1 rounded-lg border-2 transition-all ${
                   isRead
-                    ? "border-green-600 bg-green-600 text-white"
-                    : "border-input bg-background"
+                    ? "border-green-600 bg-green-600 text-white dark:border-green-500 dark:bg-green-500"
+                    : "border-input bg-background text-foreground"
                 } ${
                   canEdit
-                    ? "active:scale-95 cursor-pointer hover:border-green-600"
+                    ? "active:scale-95 cursor-pointer hover:border-green-600 dark:hover:border-green-500"
                     : "cursor-not-allowed opacity-50"
                 }`}
                 aria-label={isRead ? "Mark as unread" : "Mark as read"}
@@ -1165,7 +1304,11 @@ function DayDetailModal({
                     />
                   </svg>
                 )}
-                <span className="text-xs font-medium">Read</span>
+                <span
+                  className={`text-xs font-medium ${isRead ? "text-white" : "text-foreground"}`}
+                >
+                  Read
+                </span>
               </button>
             )}
 
@@ -1176,11 +1319,11 @@ function DayDetailModal({
                 disabled={!canEdit}
                 className={`flex h-12 w-12 flex-col items-center justify-center gap-1 rounded-lg border-2 transition-all ${
                   isMissed
-                    ? "border-red-600 bg-red-600 text-white"
-                    : "border-input bg-background"
+                    ? "border-red-600 bg-red-600 text-white dark:border-red-500 dark:bg-red-500"
+                    : "border-input bg-background text-foreground"
                 } ${
                   canEdit
-                    ? "active:scale-95 cursor-pointer hover:border-red-600"
+                    ? "active:scale-95 cursor-pointer hover:border-red-600 dark:hover:border-red-500"
                     : "cursor-not-allowed opacity-50"
                 }`}
                 aria-label={isMissed ? "Mark as not missed" : "Mark as missed"}
@@ -1214,7 +1357,11 @@ function DayDetailModal({
                     />
                   </svg>
                 )}
-                <span className="text-xs font-medium">Missed</span>
+                <span
+                  className={`text-xs font-medium ${isMissed ? "text-white" : "text-foreground"}`}
+                >
+                  Missed
+                </span>
               </button>
             )}
           </div>
@@ -1223,20 +1370,20 @@ function DayDetailModal({
         {/* Pages Section */}
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-sm font-medium">
+            <label className="mb-1 block text-sm font-medium text-foreground">
               Planned Pages
             </label>
-            <div className="rounded-lg border border-input bg-muted px-4 py-2 text-lg font-semibold">
+            <div className="rounded-lg border border-input bg-muted px-4 py-2 text-lg font-semibold text-foreground">
               {plannedPages} pages
             </div>
           </div>
 
           {isRead && (
             <div>
-              <label className="mb-1 block text-sm font-medium">
+              <label className="mb-1 block text-sm font-medium text-foreground">
                 Actual Pages Read
               </label>
-              <input
+              <Input
                 type="number"
                 value={inputValue}
                 onChange={(e) => onInputChange(e.target.value)}
@@ -1248,11 +1395,7 @@ function DayDetailModal({
                 }}
                 disabled={!canEdit}
                 min="0"
-                className={`w-full rounded-lg border border-input bg-background px-4 py-3 text-lg font-semibold ${
-                  canEdit
-                    ? "focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:border-blue-400"
-                    : "cursor-not-allowed opacity-50"
-                }`}
+                className="w-full px-4 py-3 text-lg font-semibold"
                 placeholder="Enter pages"
               />
             </div>

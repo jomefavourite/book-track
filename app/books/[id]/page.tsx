@@ -234,7 +234,7 @@ export default function BookDetailPage() {
 
   return (
     <>
-      <Navigation showAuth={false} />
+      <Navigation />
       <div className="mx-auto max-w-6xl p-3 sm:p-6">
         <div className="mb-4 sm:mb-6">
           <div className="mb-3 flex items-center justify-between sm:mb-4">
@@ -245,181 +245,184 @@ export default function BookDetailPage() {
               ← Back
             </Link>
             <div className="flex items-center gap-3">
-            {isPublicBook && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleShare}
-                className="h-8 gap-2"
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4" />
-                    <span className="hidden sm:inline">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Share2 className="h-4 w-4" />
-                    <span className="hidden sm:inline">Share</span>
-                  </>
-                )}
-              </Button>
-            )}
-            {canEdit && (
-              <Button
-                variant="outline"
-                size="sm"
-                asChild
-              >
-                <Link href={`/books/${bookId}/edit`}>Edit</Link>
-              </Button>
-            )}
+              {isPublicBook && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleShare}
+                  className="h-8 gap-2"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-4 w-4" />
+                      <span className="hidden sm:inline">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="h-4 w-4" />
+                      <span className="hidden sm:inline">Share</span>
+                    </>
+                  )}
+                </Button>
+              )}
+              {canEdit && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                >
+                  <Link href={`/books/${bookId}/edit`}>Edit</Link>
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
-              {book.name}
-            </h1>
-            {book.author && (
-              <p className="mt-1 text-lg text-muted-foreground sm:text-xl">
-                Author: {book.author}
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
+                {book.name}
+              </h1>
+              {book.author && (
+                <p className="mt-1 text-lg text-muted-foreground sm:text-xl">
+                  Author: {book.author}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {isPublicBook && (
+                <>
+                  <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
+                    Public
+                  </span>
+                </>
+              )}
+              {!canEdit && isPublicBook && (
+                <span className="rounded-full bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
+                  Read Only
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="mt-2 space-y-1 text-sm text-muted-foreground sm:text-base">
+            <p>Total Pages: {book.totalPages}</p>
+            <p>
+              Mode:{" "}
+              {book.readingMode === "calendar" ? "Calendar" : "Fixed Days"}
+            </p>
+            {book.readingMode === "calendar" &&
+              (() => {
+                const start = parseDateFromStorage(book.startDate);
+                const end = parseDateFromStorage(book.endDate);
+                const days = differenceInDays(end, start) + 1; // +1 to include both start and end days
+
+                // Always show actual dates with month, day, and year
+                return (
+                  <p>
+                    Period: {format(start, "MMMM d, yyyy")} -{" "}
+                    {format(end, "MMMM d, yyyy")} ({days} day
+                    {days !== 1 ? "s" : ""})
+                  </p>
+                );
+              })()}
+            {book.readingMode === "fixed-days" && book.daysToRead && (
+              <p>Days to Read: {book.daysToRead}</p>
+            )}
+            {isPublicBook && (book.creatorName || book.creatorEmail) && (
+              <p className="italic">
+                Created by:{" "}
+                {book.creatorName ||
+                  book.creatorEmail?.split("@")[0] ||
+                  "Anonymous"}
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {isPublicBook && (
-              <>
-                <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
-                  Public
-                </span>
-              </>
-            )}
-            {!canEdit && isPublicBook && (
-              <span className="rounded-full bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
-                Read Only
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="mt-2 space-y-1 text-sm text-muted-foreground sm:text-base">
-          <p>Total Pages: {book.totalPages}</p>
-          <p>
-            Mode: {book.readingMode === "calendar" ? "Calendar" : "Fixed Days"}
-          </p>
-          {book.readingMode === "calendar" &&
-            (() => {
-              const start = parseDateFromStorage(book.startDate);
-              const end = parseDateFromStorage(book.endDate);
-              const days = differenceInDays(end, start) + 1; // +1 to include both start and end days
-
-              // Always show actual dates with month, day, and year
-              return (
-                <p>
-                  Period: {format(start, "MMMM d, yyyy")} -{" "}
-                  {format(end, "MMMM d, yyyy")} ({days} day
-                  {days !== 1 ? "s" : ""})
-                </p>
-              );
-            })()}
-          {book.readingMode === "fixed-days" && book.daysToRead && (
-            <p>Days to Read: {book.daysToRead}</p>
+          {!user && isPublicBook && (
+            <Card className="mt-4 p-4">
+              <p className="mb-2 text-sm text-card-foreground">
+                Want to track your own reading? Sign in to create your own book
+                tracker!
+              </p>
+              <SignInButton mode="modal">
+                <Button
+                  variant="default"
+                  size="sm"
+                >
+                  Sign In
+                </Button>
+              </SignInButton>
+            </Card>
           )}
-          {isPublicBook && (book.creatorName || book.creatorEmail) && (
-            <p className="italic">
-              Created by:{" "}
-              {book.creatorName ||
-                book.creatorEmail?.split("@")[0] ||
-                "Anonymous"}
-            </p>
-          )}
-        </div>
-        {!user && isPublicBook && (
-          <Card className="mt-4 p-4">
-            <p className="mb-2 text-sm text-card-foreground">
-              Want to track your own reading? Sign in to create your own book
-              tracker!
-            </p>
-            <SignInButton mode="modal">
-              <Button
-                variant="default"
-                size="sm"
-              >
-                Sign In
-              </Button>
-            </SignInButton>
-          </Card>
-        )}
 
-        {/* Progress Summary */}
-        {progressSummary && (
-          <Card className="mt-4 p-4">
-            <h3 className="mb-3 text-lg font-semibold text-foreground">
-              Reading Progress Summary
-            </h3>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  Pages Read:
-                </span>
-                <span className="font-medium text-foreground">
-                  {progressSummary.totalPagesRead} /{" "}
-                  {progressSummary.totalPages}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Progress:</span>
-                <span className="font-medium text-foreground">
-                  {progressSummary.progressPercentage.toFixed(1)}%
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  Expected by Today:
-                </span>
-                <span className="font-medium text-foreground">
-                  Page {progressSummary.expectedPageByToday}
-                </span>
-              </div>
-              {progressSummary.isAhead &&
-                progressSummary.pagesDifference > 0 && (
-                  <div className="mt-2 rounded-md bg-green-100 p-2 text-sm text-green-800 dark:bg-green-900 dark:text-green-200">
-                    🎉 You're {progressSummary.pagesDifference} page
-                    {progressSummary.pagesDifference !== 1 ? "s" : ""} ahead of
-                    schedule!
-                  </div>
-                )}
-              {progressSummary.isBehind &&
-                progressSummary.pagesDifference > 0 && (
-                  <div className="mt-2 rounded-md bg-amber-100 p-2 text-sm text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                    ⚠️ You're {progressSummary.pagesDifference} page
-                    {progressSummary.pagesDifference !== 1 ? "s" : ""} behind
-                    schedule. Keep going!
-                  </div>
-                )}
-              {!progressSummary.isAhead && !progressSummary.isBehind && (
-                <div className="mt-2 rounded-md bg-blue-100 p-2 text-sm text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                  ✓ You're right on track!
+          {/* Progress Summary */}
+          {progressSummary && (
+            <Card className="mt-4 p-4">
+              <h3 className="mb-3 text-lg font-semibold text-foreground">
+                Reading Progress Summary
+              </h3>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    Pages Read:
+                  </span>
+                  <span className="font-medium text-foreground">
+                    {progressSummary.totalPagesRead} /{" "}
+                    {progressSummary.totalPages}
+                  </span>
                 </div>
-              )}
-            </div>
-          </Card>
-        )}
-      </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    Progress:
+                  </span>
+                  <span className="font-medium text-foreground">
+                    {progressSummary.progressPercentage.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    Expected by Today:
+                  </span>
+                  <span className="font-medium text-foreground">
+                    Page {progressSummary.expectedPageByToday}
+                  </span>
+                </div>
+                {progressSummary.isAhead &&
+                  progressSummary.pagesDifference > 0 && (
+                    <div className="mt-2 rounded-md bg-green-100 p-2 text-sm text-green-800 dark:bg-green-900 dark:text-green-200">
+                      🎉 You're {progressSummary.pagesDifference} page
+                      {progressSummary.pagesDifference !== 1 ? "s" : ""} ahead
+                      of schedule!
+                    </div>
+                  )}
+                {progressSummary.isBehind &&
+                  progressSummary.pagesDifference > 0 && (
+                    <div className="mt-2 rounded-md bg-amber-100 p-2 text-sm text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                      ⚠️ You're {progressSummary.pagesDifference} page
+                      {progressSummary.pagesDifference !== 1 ? "s" : ""} behind
+                      schedule. Keep going!
+                    </div>
+                  )}
+                {!progressSummary.isAhead && !progressSummary.isBehind && (
+                  <div className="mt-2 rounded-md bg-blue-100 p-2 text-sm text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                    ✓ You're right on track!
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+        </div>
 
-      {book.readingMode === "calendar" ? (
-        <CalendarView
-          bookId={bookId}
-          book={book}
-          canEdit={canEdit}
-        />
-      ) : (
-        <DaysView
-          bookId={bookId}
-          book={book}
-          canEdit={canEdit}
-        />
-      )}
+        {book.readingMode === "calendar" ? (
+          <CalendarView
+            bookId={bookId}
+            book={book}
+            canEdit={canEdit}
+          />
+        ) : (
+          <DaysView
+            bookId={bookId}
+            book={book}
+            canEdit={canEdit}
+          />
+        )}
       </div>
     </>
   );

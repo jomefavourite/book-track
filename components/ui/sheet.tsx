@@ -1,17 +1,17 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import * as DialogPrimitive from "@radix-ui/react-dialog"
+import * as React from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
-const Sheet = DialogPrimitive.Root
+const Sheet = DialogPrimitive.Root;
 
-const SheetTrigger = DialogPrimitive.Trigger
+const SheetTrigger = DialogPrimitive.Trigger;
 
-const SheetClose = DialogPrimitive.Close
+const SheetClose = DialogPrimitive.Close;
 
-const SheetPortal = DialogPrimitive.Portal
+const SheetPortal = DialogPrimitive.Portal;
 
 const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
@@ -25,12 +25,13 @@ const SheetOverlay = React.forwardRef<
     {...props}
     ref={ref}
   />
-))
-SheetOverlay.displayName = DialogPrimitive.Overlay.displayName
+));
+SheetOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
-interface SheetContentProps
-  extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
-  side?: "top" | "right" | "bottom" | "left"
+interface SheetContentProps extends React.ComponentPropsWithoutRef<
+  typeof DialogPrimitive.Content
+> {
+  side?: "top" | "right" | "bottom" | "left";
 }
 
 const SheetContent = React.forwardRef<
@@ -42,7 +43,7 @@ const SheetContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed z-50 gap-4 bg-white p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500 dark:bg-zinc-900",
+        "fixed z-50 gap-4 bg-background p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
         side === "top" &&
           "inset-x-0 top-0 border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
         side === "bottom" &&
@@ -56,7 +57,7 @@ const SheetContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-zinc-100 data-[state=open]:text-zinc-500 dark:ring-offset-zinc-950 dark:focus:ring-zinc-300 dark:data-[state=open]:bg-zinc-800 dark:data-[state=open]:text-zinc-400">
+      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           className="h-4 w-4"
@@ -75,8 +76,8 @@ const SheetContent = React.forwardRef<
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </SheetPortal>
-))
-SheetContent.displayName = DialogPrimitive.Content.displayName
+));
+SheetContent.displayName = DialogPrimitive.Content.displayName;
 
 const SheetHeader = ({
   className,
@@ -89,8 +90,8 @@ const SheetHeader = ({
     )}
     {...props}
   />
-)
-SheetHeader.displayName = "SheetHeader"
+);
+SheetHeader.displayName = "SheetHeader";
 
 const SheetFooter = ({
   className,
@@ -103,8 +104,8 @@ const SheetFooter = ({
     )}
     {...props}
   />
-)
-SheetFooter.displayName = "SheetFooter"
+);
+SheetFooter.displayName = "SheetFooter";
 
 const SheetTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
@@ -112,14 +113,11 @@ const SheetTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn(
-      "text-lg font-semibold text-zinc-950 dark:text-zinc-50",
-      className
-    )}
+    className={cn("text-lg font-semibold text-foreground", className)}
     {...props}
   />
-))
-SheetTitle.displayName = DialogPrimitive.Title.displayName
+));
+SheetTitle.displayName = DialogPrimitive.Title.displayName;
 
 const SheetDescription = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Description>,
@@ -127,11 +125,11 @@ const SheetDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-zinc-500 dark:text-zinc-400", className)}
+    className={cn("text-sm text-muted-foreground", className)}
     {...props}
   />
-))
-SheetDescription.displayName = DialogPrimitive.Description.displayName
+));
+SheetDescription.displayName = DialogPrimitive.Description.displayName;
 
 export {
   Sheet,
@@ -144,5 +142,4 @@ export {
   SheetFooter,
   SheetTitle,
   SheetDescription,
-}
-
+};
