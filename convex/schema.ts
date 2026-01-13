@@ -35,6 +35,7 @@ export default defineSchema({
     plannedPages: v.number(),
     actualPages: v.optional(v.number()),
     isRead: v.boolean(),
+    isMissed: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index("by_book", ["bookId"])

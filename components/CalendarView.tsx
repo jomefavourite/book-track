@@ -27,6 +27,13 @@ import {
 import { distributePagesAcrossDays } from "@/lib/readingCalculator";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import CatchUpSuggestion from "./CatchUpSuggestion";
 
 interface CalendarViewProps {
@@ -60,16 +67,51 @@ export default function CalendarView({
     }),
     enabled: true, // Allow querying even without auth (for public books)
   });
+  const sessionsQueryKey = convexQuery(api.readingSessions.getSessionsForBook, {
+    bookId,
+  }).queryKey;
+
+  const updateSessionMutation = useConvexMutation(
+    api.readingSessions.updateSession
+  );
   const { mutateAsync: updateSession } = useMutation({
-    mutationFn: useConvexMutation(api.readingSessions.updateSession),
-    onSuccess: () => {
-      // Invalidate and refetch the sessions query for this book
-      queryClient.invalidateQueries({
-        queryKey: convexQuery(api.readingSessions.getSessionsForBook, {
-          bookId,
-        }).queryKey,
+    mutationFn: updateSessionMutation,
+    onMutate: async (variables) => {
+      // Cancel any outgoing refetches to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: sessionsQueryKey });
+
+      // Snapshot the previous value
+      const previousSessions = queryClient.getQueryData(sessionsQueryKey);
+
+      // Optimistically update the cache
+      queryClient.setQueryData(sessionsQueryKey, (old: any) => {
+        if (!old) return old;
+        return old.map((session: any) => {
+          if (session._id === variables.sessionId) {
+            return {
+              ...session,
+              isRead: variables.isRead ?? session.isRead,
+              isMissed: variables.isMissed ?? session.isMissed,
+              actualPages: variables.actualPages ?? session.actualPages,
+              plannedPages: variables.plannedPages ?? session.plannedPages,
+            };
+          }
+          return session;
+        });
       });
-      // Also invalidate the books list to update progress
+
+      // Return context with snapshot value
+      return { previousSessions };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previousSessions) {
+        queryClient.setQueryData(sessionsQueryKey, context.previousSessions);
+      }
+    },
+    onSettled: () => {
+      // Always refetch after error or success to ensure consistency
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
       if (user?.id) {
         queryClient.invalidateQueries({
           queryKey: convexQuery(api.books.getBooks, { userId: user.id })
@@ -78,16 +120,65 @@ export default function CalendarView({
       }
     },
   });
+
+  const createSessionMutationFn = useConvexMutation(
+    api.readingSessions.createSession
+  );
   const { mutateAsync: createSession } = useMutation({
-    mutationFn: useConvexMutation(api.readingSessions.createSession),
-    onSuccess: () => {
-      // Invalidate and refetch the sessions query for this book
-      queryClient.invalidateQueries({
-        queryKey: convexQuery(api.readingSessions.getSessionsForBook, {
-          bookId,
-        }).queryKey,
+    mutationFn: createSessionMutationFn,
+    onMutate: async (
+      variables: Parameters<typeof createSessionMutationFn>[0]
+    ) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: sessionsQueryKey });
+
+      // Snapshot the previous value
+      const previousSessions = queryClient.getQueryData(sessionsQueryKey);
+
+      // Optimistically add the new session (we'll use a temporary ID)
+      const tempId = `temp-${Date.now()}`;
+      const optimisticSession = {
+        _id: tempId as any,
+        bookId: variables.bookId,
+        userId: variables.userId,
+        date: variables.date,
+        plannedPages: variables.plannedPages,
+        actualPages: variables.actualPages,
+        isRead: variables.isRead,
+        isMissed: variables.isMissed ?? false,
+        createdAt: Date.now(),
+      };
+
+      queryClient.setQueryData(sessionsQueryKey, (old: any) => {
+        if (!old) return [optimisticSession];
+        // Check if session already exists for this date
+        const existingIndex = old.findIndex(
+          (s: any) => s.date === variables.date
+        );
+        if (existingIndex >= 0) {
+          // Update existing
+          const updated = [...old];
+          updated[existingIndex] = {
+            ...updated[existingIndex],
+            ...optimisticSession,
+            _id: updated[existingIndex]._id, // Keep original ID
+          };
+          return updated;
+        }
+        return [...old, optimisticSession];
       });
-      // Also invalidate the books list to update progress
+
+      return { previousSessions };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previousSessions) {
+        queryClient.setQueryData(sessionsQueryKey, context.previousSessions);
+      }
+    },
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
       if (user?.id) {
         queryClient.invalidateQueries({
           queryKey: convexQuery(api.books.getBooks, { userId: user.id })
@@ -101,14 +192,36 @@ export default function CalendarView({
   const sessions = sessionsQuery || [];
 
   // Local state for input values to allow smooth typing
-  const [inputValues, setInputValues] = useState<Map<string, string>>(new Map());
+  const [inputValues, setInputValues] = useState<Map<string, string>>(
+    new Map()
+  );
+
+  // Mobile modal state
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const isMobileModalOpen = selectedDay !== null;
+
+  // Handle day cell click (mobile only)
+  const handleDayCellClick = (day: Date, e: React.MouseEvent) => {
+    // Only open modal on mobile, and only if clicking the cell itself (not checkboxes or other interactive elements)
+    const target = e.target as HTMLElement;
+    if (
+      window.innerWidth < 640 &&
+      target.closest("button") === null &&
+      target.tagName !== "INPUT"
+    ) {
+      setSelectedDay(day);
+    }
+  };
 
   // Sync input values with sessions when they change
   useEffect(() => {
     const newInputValues = new Map<string, string>();
     sessions.forEach((session) => {
       if (session.isRead) {
-        const value = session.actualPages?.toString() || session.plannedPages?.toString() || "";
+        const value =
+          session.actualPages?.toString() ||
+          session.plannedPages?.toString() ||
+          "";
         newInputValues.set(session.date, value);
       }
     });
@@ -201,92 +314,204 @@ export default function CalendarView({
   };
 
   const handleDayToggle = async (date: Date) => {
-    if (!canEdit) return;
+    if (!canEdit || !user?.id) return;
     const dateKey = formatDateForStorage(date);
     const existingSession = sessionsMap.get(dateKey);
     const plannedPages = pageDistribution.get(dateKey) || 0;
 
-    if (!user?.id) return;
-
     if (existingSession) {
-      const newIsRead = !existingSession.isRead;
-      await updateSession({
-        sessionId: existingSession._id,
-        userId: user.id,
-        isRead: newIsRead,
-        actualPages: existingSession.actualPages,
-      });
-      
-      // Redistribute pages after toggling
-      if (newIsRead) {
-        // Day marked as read - redistribute remaining pages
-        const plannedPages = pageDistribution.get(dateKey) || 0;
-        const actualPages = existingSession.actualPages || existingSession.plannedPages || plannedPages;
-        await redistributePages(dateKey, actualPages, new Set([dateKey]));
-      } else if (!newIsRead) {
-        // Day marked as unread - redistribute including this day's pages
-        const allDays = getAllDaysInRange(readingPeriod.start, readingPeriod.end);
+      // If already read, toggle to unrecorded (remove session)
+      if (existingSession.isRead) {
+        // Update session - optimistic update will handle UI immediately
+        updateSession({
+          sessionId: existingSession._id,
+          userId: user.id,
+          isRead: false,
+          isMissed: false,
+          actualPages: existingSession.actualPages,
+        }).catch(console.error);
+        // Redistribute pages after unmarking as read
+        const allDays = getAllDaysInRange(
+          readingPeriod.start,
+          readingPeriod.end
+        );
         let totalPagesRead = 0;
         allDays.forEach((day) => {
           const dKey = formatDateForStorage(day);
           const sess = sessionsMap.get(dKey);
-          if (sess?.isRead && dKey !== dateKey) {
-            totalPagesRead += (sess.actualPages || sess.plannedPages || 0);
+          if (sess?.isRead && !sess?.isMissed && dKey !== dateKey) {
+            totalPagesRead += sess.actualPages || sess.plannedPages || 0;
           }
         });
         const remainingPages = Math.max(0, book.totalPages - totalPagesRead);
         const unreadDays = allDays.filter((day) => {
           const dKey = formatDateForStorage(day);
           const sess = sessionsMap.get(dKey);
-          return !sess?.isRead || dKey === dateKey; // Include the toggled day
+          return (!sess?.isRead && !sess?.isMissed) || dKey === dateKey;
         });
-        
+
         if (unreadDays.length > 0) {
           const pagesPerDay = Math.floor(remainingPages / unreadDays.length);
           const remainder = remainingPages % unreadDays.length;
-          
+
           const updatePromises: Promise<any>[] = [];
           unreadDays.forEach((day, index) => {
             const dKey = formatDateForStorage(day);
             const sess = sessionsMap.get(dKey);
             const newPlannedPages = pagesPerDay + (index < remainder ? 1 : 0);
-            
-            if (sess) {
+
+            if (sess && dKey !== dateKey) {
               updatePromises.push(
                 updateSession({
                   sessionId: sess._id,
                   userId: user.id,
                   isRead: false,
+                  isMissed: false,
                   plannedPages: newPlannedPages,
                 })
               );
-            } else if (dKey === dateKey) {
+            } else if (dKey === dateKey && sess) {
               updatePromises.push(
-                createSession({
-                  bookId,
+                updateSession({
+                  sessionId: sess._id,
                   userId: user.id,
-                  date: dKey,
-                  plannedPages: newPlannedPages,
                   isRead: false,
+                  isMissed: false,
+                  plannedPages: newPlannedPages,
                 })
               );
             }
           });
           await Promise.all(updatePromises);
         }
+      } else {
+        // Not read - mark as read
+        await updateSession({
+          sessionId: existingSession._id,
+          userId: user.id,
+          isRead: true,
+          isMissed: false,
+          actualPages: existingSession.actualPages,
+        });
+        // Redistribute after marking as read
+        const actualPages =
+          existingSession.actualPages ||
+          existingSession.plannedPages ||
+          plannedPages;
+        await redistributePages(dateKey, actualPages, new Set([dateKey]));
       }
     } else {
+      // No session exists - create one as read
       await createSession({
         bookId,
         userId: user.id,
         date: dateKey,
         plannedPages,
         isRead: true,
+        isMissed: false,
       });
-      
+
       // Redistribute after marking as read
-      // Exclude the newly created session from being treated as unread
       await redistributePages(dateKey, plannedPages, new Set([dateKey]));
+    }
+  };
+
+  const handleMissedToggle = async (date: Date) => {
+    if (!canEdit || !user?.id) return;
+    const dateKey = formatDateForStorage(date);
+    const existingSession = sessionsMap.get(dateKey);
+    const plannedPages = pageDistribution.get(dateKey) || 0;
+
+    if (existingSession) {
+      // If already missed, toggle to unrecorded
+      if (existingSession.isMissed) {
+        updateSession({
+          sessionId: existingSession._id,
+          userId: user.id,
+          isRead: false,
+          isMissed: false,
+          actualPages: existingSession.actualPages,
+        }).catch(console.error);
+        // Redistribute pages after unmarking as missed (non-blocking)
+        setTimeout(() => {
+          redistributePagesAfterUnread(dateKey).catch(console.error);
+        }, 0);
+      } else {
+        // Not missed - mark as missed
+        updateSession({
+          sessionId: existingSession._id,
+          userId: user.id,
+          isRead: false,
+          isMissed: true,
+          actualPages: existingSession.actualPages,
+        }).catch(console.error);
+        // No redistribution needed when marking as missed - missed days are excluded from redistribution
+      }
+    } else {
+      // No session exists - create one as missed
+      createSession({
+        bookId,
+        userId: user.id,
+        date: dateKey,
+        plannedPages,
+        isRead: false,
+        isMissed: true,
+      }).catch(console.error);
+      // No redistribution needed when marking as missed - missed days are excluded from redistribution
+    }
+  };
+
+  const redistributePagesAfterUnread = async (dateKey: string) => {
+    if (!user?.id) return;
+    const allDays = getAllDaysInRange(readingPeriod.start, readingPeriod.end);
+    let totalPagesRead = 0;
+    allDays.forEach((day) => {
+      const dKey = formatDateForStorage(day);
+      const sess = sessionsMap.get(dKey);
+      if (sess?.isRead && !sess?.isMissed && dKey !== dateKey) {
+        totalPagesRead += sess.actualPages || sess.plannedPages || 0;
+      }
+    });
+    const remainingPages = Math.max(0, book.totalPages - totalPagesRead);
+    const unreadDays = allDays.filter((day) => {
+      const dKey = formatDateForStorage(day);
+      const sess = sessionsMap.get(dKey);
+      return (!sess?.isRead && !sess?.isMissed) || dKey === dateKey;
+    });
+
+    if (unreadDays.length > 0) {
+      const pagesPerDay = Math.floor(remainingPages / unreadDays.length);
+      const remainder = remainingPages % unreadDays.length;
+
+      const updatePromises: Promise<any>[] = [];
+      unreadDays.forEach((day, index) => {
+        const dKey = formatDateForStorage(day);
+        const sess = sessionsMap.get(dKey);
+        const newPlannedPages = pagesPerDay + (index < remainder ? 1 : 0);
+
+        if (sess && dKey !== dateKey) {
+          updatePromises.push(
+            updateSession({
+              sessionId: sess._id,
+              userId: user.id,
+              isRead: false,
+              isMissed: false,
+              plannedPages: newPlannedPages,
+            })
+          );
+        } else if (dKey === dateKey && sess) {
+          updatePromises.push(
+            updateSession({
+              sessionId: sess._id,
+              userId: user.id,
+              isRead: false,
+              isMissed: false,
+              plannedPages: newPlannedPages,
+            })
+          );
+        }
+      });
+      await Promise.all(updatePromises);
     }
   };
 
@@ -299,41 +524,44 @@ export default function CalendarView({
 
     // Get all days in reading period
     const allDays = getAllDaysInRange(readingPeriod.start, readingPeriod.end);
-    
+
     // Calculate total pages read (including the updated one)
     let totalPagesRead = 0;
     const readSessions: Array<{ dateKey: string; actualPages: number }> = [];
-    
+
     allDays.forEach((day) => {
       const dateKey = formatDateForStorage(day);
-      
+
       // Skip excluded dateKeys (newly created sessions that should be treated as read)
       if (excludeDateKeys.has(dateKey)) {
         const actualPages = dateKey === updatedDateKey ? newActualPages : 0;
         totalPagesRead += actualPages;
         return;
       }
-      
+
       const session = sessionsMap.get(dateKey);
-      
-      if (session?.isRead) {
-        const actualPages = dateKey === updatedDateKey 
-          ? newActualPages 
-          : (session.actualPages || session.plannedPages || 0);
+
+      // Only count pages from read days (not missed days)
+      if (session?.isRead && !session?.isMissed) {
+        const actualPages =
+          dateKey === updatedDateKey
+            ? newActualPages
+            : session.actualPages || session.plannedPages || 0;
         totalPagesRead += actualPages;
         readSessions.push({ dateKey, actualPages });
       }
     });
 
-    // Calculate remaining pages and unread days
+    // Calculate remaining pages and unread days (exclude missed days from redistribution)
     const remainingPages = Math.max(0, book.totalPages - totalPagesRead);
     const unreadDays = allDays.filter((day) => {
       const dateKey = formatDateForStorage(day);
       // Exclude dateKeys that are marked as read (even if not in sessionsMap yet)
       if (excludeDateKeys.has(dateKey)) return false;
-      
+
       const session = sessionsMap.get(dateKey);
-      return !session?.isRead;
+      // Exclude read days and missed days from redistribution
+      return !session?.isRead && !session?.isMissed;
     });
 
     if (unreadDays.length === 0) return;
@@ -351,15 +579,18 @@ export default function CalendarView({
       const newPlannedPages = pagesPerDay + (index < remainder ? 1 : 0);
 
       if (session) {
-        // Update existing session's planned pages
-        updatePromises.push(
-          updateSession({
-            sessionId: session._id,
-            userId: user.id,
-            isRead: false,
-            plannedPages: newPlannedPages,
-          })
-        );
+        // Update existing session's planned pages (only if not missed)
+        if (!session.isMissed) {
+          updatePromises.push(
+            updateSession({
+              sessionId: session._id,
+              userId: user.id,
+              isRead: false,
+              isMissed: false,
+              plannedPages: newPlannedPages,
+            })
+          );
+        }
       } else {
         // Create new session with new planned pages
         updatePromises.push(
@@ -369,6 +600,7 @@ export default function CalendarView({
             date: dateKey,
             plannedPages: newPlannedPages,
             isRead: false,
+            isMissed: false,
           })
         );
       }
@@ -408,7 +640,7 @@ export default function CalendarView({
   const handleInputBlur = async (date: Date) => {
     const dateKey = formatDateForStorage(date);
     const inputValue = inputValues.get(dateKey);
-    
+
     if (inputValue === undefined || inputValue === "") return;
 
     const pages = Number(inputValue);
@@ -418,7 +650,10 @@ export default function CalendarView({
       if (session) {
         setInputValues((prev) => {
           const newMap = new Map(prev);
-          newMap.set(dateKey, (session.actualPages || session.plannedPages || 0).toString());
+          newMap.set(
+            dateKey,
+            (session?.actualPages || session?.plannedPages || 0).toString()
+          );
           return newMap;
         });
       }
@@ -441,10 +676,11 @@ export default function CalendarView({
 
   const totalPagesRead = useMemo(() => {
     return sessions.reduce((sum, session) => {
-      return (
-        sum +
-        (session.actualPages || (session.isRead ? session.plannedPages : 0))
-      );
+      // Only count pages from read days, exclude missed days
+      if (session.isRead && !session.isMissed) {
+        return sum + (session.actualPages || session.plannedPages || 0);
+      }
+      return sum;
     }, 0);
   }, [sessions]);
 
@@ -511,11 +747,11 @@ export default function CalendarView({
           </Button>
         </div>
 
-        <div className="grid grid-cols-7 gap-1 sm:gap-2">
+        <div className="grid grid-cols-7 gap-0.5 sm:gap-2">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
             <div
               key={day}
-              className="text-center text-xs font-medium text-muted-foreground sm:text-sm"
+              className="text-center text-[10px] font-medium text-muted-foreground sm:text-sm"
             >
               <span className="hidden sm:inline">{day}</span>
               <span className="sm:hidden">{day.slice(0, 1)}</span>
@@ -528,7 +764,7 @@ export default function CalendarView({
               return (
                 <div
                   key={`empty-${index}`}
-                  className="aspect-square rounded border border-transparent p-1 sm:p-2"
+                  className="aspect-square rounded border border-transparent p-0.5 sm:p-2"
                 />
               );
             }
@@ -536,7 +772,8 @@ export default function CalendarView({
             const dateKey = formatDateForStorage(day);
             const session = sessionsMap.get(dateKey);
             // Use session's plannedPages if available (dynamically calculated), otherwise use initial distribution
-            const plannedPages = session?.plannedPages ?? (pageDistribution.get(dateKey) || 0);
+            const plannedPages =
+              session?.plannedPages ?? (pageDistribution.get(dateKey) || 0);
             const isInPeriod = isInReadingPeriod(day);
             const isToday = isSameDay(day, new Date());
 
@@ -544,107 +781,492 @@ export default function CalendarView({
               return (
                 <div
                   key={dateKey}
-                  className="aspect-square rounded border border-border bg-muted p-1 sm:p-2"
+                  className="aspect-square rounded border border-border bg-muted p-0.5 sm:p-2"
                 >
-                  <div className="text-xs text-muted-foreground sm:text-sm">
+                  <div className="text-[10px] text-muted-foreground sm:text-sm">
                     {format(day, "d")}
                   </div>
                 </div>
               );
             }
 
+            const isRead = session?.isRead || false;
+            const isMissed = session?.isMissed || false;
+
             return (
               <div
                 key={dateKey}
-                className={`aspect-square rounded border p-1 sm:p-2 transition-colors ${
-                  isToday && session?.isRead
+                onClick={(e) => handleDayCellClick(day, e)}
+                className={`relative aspect-square rounded border transition-colors overflow-hidden ${
+                  isToday && isRead
                     ? "border-primary bg-green-100 text-green-900 dark:border-primary dark:bg-green-900 dark:text-green-50"
-                    : isToday
-                      ? "border-primary bg-primary/10"
-                      : session?.isRead
-                        ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-900 dark:text-green-50"
-                        : "border-border bg-background"
-                }`}
+                    : isToday && isMissed
+                      ? "border-primary bg-red-100 text-red-900 dark:border-primary dark:bg-red-900 dark:text-red-50"
+                      : isToday
+                        ? "border-primary bg-primary/10"
+                        : isRead
+                          ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-900 dark:text-green-50"
+                          : isMissed
+                            ? "border-red-600 bg-red-100 text-red-900 dark:border-red-600 dark:bg-red-900 dark:text-red-50"
+                            : "border-border bg-background"
+                } cursor-pointer sm:cursor-default`}
               >
-                <div className="mb-0.5 flex items-center justify-between sm:mb-1">
-                  <span
-                    className={`text-xs font-medium sm:text-sm ${
-                      session?.isRead
-                        ? "text-green-900 dark:text-green-50"
-                        : "text-foreground"
-                    }`}
-                  >
-                    {format(day, "d")}
-                  </span>
-                  <button
-                    onClick={() => handleDayToggle(day)}
-                    disabled={!canEdit}
-                    className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-all sm:h-6 sm:w-6 ${
-                      isToday ? "border-primary/20!" : ""
-                    } ${isToday && session?.isRead ? "border-input!" : ""} ${
-                      canEdit
-                        ? "active:scale-90 cursor-pointer hover:border-primary"
-                        : "cursor-not-allowed opacity-50"
-                    }`}
-                    aria-label={
-                      session?.isRead ? "Mark as unread" : "Mark as read"
-                    }
-                  >
-                    {session?.isRead && (
-                      <svg
-                        className="h-3 w-3 text-green-700 dark:text-green-400 sm:h-4 sm:w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={3}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-                {session?.isRead && (
-                  <div className="space-y-0.5 sm:space-y-1">
-                    <div className="text-[10px] text-green-800 dark:text-green-100 sm:text-xs">
-                      Plan: {plannedPages}
-                    </div>
-                    <p className="text-[10px] sm:text-xs">Actual pages:</p>
-                    <input
-                      type="number"
-                      value={inputValues.get(dateKey) ?? (session.actualPages || plannedPages).toString()}
-                      onChange={(e) => handleInputChange(dateKey, e.target.value)}
-                      onBlur={() => handleInputBlur(day)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.currentTarget.blur();
-                        }
-                      }}
-                      disabled={!canEdit}
-                      min="0"
-                      className={`w-full rounded border border-input bg-background px-1 py-0.5 text-[10px] text-foreground sm:text-xs ${
-                        canEdit
-                          ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
-                          : "cursor-not-allowed opacity-50"
+                {/* Mobile Layout - Simplified */}
+                <div className="flex h-full flex-col p-0.5 sm:p-2">
+                  {/* Top row: Date and Checkboxes */}
+                  <div className="flex min-h-0 flex-1 items-start justify-between gap-0.5 sm:mb-1">
+                    <span
+                      className={`text-[10px] font-semibold leading-tight sm:text-sm ${
+                        isRead
+                          ? "text-green-900 dark:text-green-50"
+                          : isMissed
+                            ? "text-red-900 dark:text-red-50"
+                            : "text-foreground"
                       }`}
-                      placeholder="Pages"
-                    />
+                    >
+                      {format(day, "d")}
+                    </span>
+                    {/* Checkboxes - Stacked vertically on mobile, horizontal on desktop */}
+                    <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-1">
+                      {/* Read Checkbox - only show if not missed */}
+                      {!isMissed && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDayToggle(day);
+                          }}
+                          disabled={!canEdit}
+                          className={`hidden sm:flex h-5 w-5 min-w-[20px] items-center justify-center rounded border-2 transition-all sm:h-6 sm:w-6 sm:min-w-[24px] ${
+                            isRead
+                              ? "border-green-600 bg-green-600"
+                              : "border-input bg-background"
+                          } ${
+                            canEdit
+                              ? "active:scale-90 cursor-pointer hover:border-green-600 touch-manipulation"
+                              : "cursor-not-allowed opacity-50"
+                          }`}
+                          aria-label={
+                            isRead ? "Mark as unread" : "Mark as read"
+                          }
+                        >
+                          {isRead ? (
+                            <svg
+                              className="h-3 w-3 text-white sm:h-4 sm:w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={3}
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                          ) : (
+                            <svg
+                              className="h-3 w-3 text-muted-foreground opacity-30 sm:h-4 sm:w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={3}
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                      )}
+                      {/* Missed Checkbox - only show if not read */}
+                      {!isRead && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMissedToggle(day);
+                          }}
+                          disabled={!canEdit}
+                          className={`hidden sm:flex h-5 w-5 min-w-[20px] items-center justify-center rounded border-2 transition-all sm:h-6 sm:w-6 sm:min-w-[24px] ${
+                            isMissed
+                              ? "border-red-600 bg-red-600"
+                              : "border-input bg-background"
+                          } ${
+                            canEdit
+                              ? "active:scale-90 cursor-pointer hover:border-red-600 touch-manipulation"
+                              : "cursor-not-allowed opacity-50"
+                          }`}
+                          aria-label={
+                            isMissed ? "Mark as not missed" : "Mark as missed"
+                          }
+                        >
+                          {isMissed ? (
+                            <svg
+                              className="h-3 w-3 text-white sm:h-4 sm:w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={3}
+                                d="M6 18L18 6M6 6l12 12"
+                              />
+                            </svg>
+                          ) : (
+                            <svg
+                              className="h-3 w-3 text-muted-foreground opacity-30 sm:h-4 sm:w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={3}
+                                d="M6 18L18 6M6 6l12 12"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                )}
-                {!session?.isRead && (
-                  <div className="text-[10px] text-muted-foreground sm:text-xs">
-                    {session?.plannedPages || plannedPages}{" "}
-                    <span className="hidden sm:inline">pages</span>
+
+                  {/* Bottom section: Content (hidden on mobile when read/missed, shown on desktop) */}
+                  <div className="hidden flex-1 flex-col justify-end sm:flex">
+                    {isRead && (
+                      <div className="space-y-0.5 sm:space-y-1">
+                        <div className="text-[10px] text-green-800 dark:text-green-100 sm:text-xs">
+                          Plan: {plannedPages}
+                        </div>
+                        <p className="text-[10px] sm:text-xs">Actual pages:</p>
+                        <input
+                          type="number"
+                          value={
+                            inputValues.get(dateKey) ??
+                            (session?.actualPages || plannedPages).toString()
+                          }
+                          onChange={(e) =>
+                            handleInputChange(dateKey, e.target.value)
+                          }
+                          onBlur={() => handleInputBlur(day)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.currentTarget.blur();
+                            }
+                          }}
+                          disabled={!canEdit}
+                          min="0"
+                          className={`w-full rounded border border-input bg-background px-1 py-0.5 text-[10px] text-foreground sm:text-xs ${
+                            canEdit
+                              ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
+                              : "cursor-not-allowed opacity-50"
+                          }`}
+                          placeholder="Pages"
+                        />
+                      </div>
+                    )}
+                    {isMissed && (
+                      <div className="text-[10px] text-red-800 dark:text-red-100 sm:text-xs">
+                        Missed
+                      </div>
+                    )}
+                    {!isRead && !isMissed && plannedPages > 0 && (
+                      <div className="text-[10px] text-muted-foreground sm:text-xs">
+                        {session?.plannedPages || plannedPages}{" "}
+                        <span className="hidden sm:inline">pages</span>
+                      </div>
+                    )}
                   </div>
-                )}
+
+                  {/* Mobile: Show minimal info at bottom */}
+                  <div className="mt-auto flex items-center justify-center sm:hidden">
+                    {isRead && (
+                      <div className="truncate text-[9px] font-medium text-green-800 dark:text-green-100">
+                        <span className="block">
+                          Plan:
+                          {inputValues.get(dateKey) ??
+                            (session?.actualPages || plannedPages).toString()}
+                        </span>
+                        <span className="block">
+                          Read:
+                          {inputValues.get(dateKey) ??
+                            (session?.actualPages || plannedPages).toString()}
+                        </span>
+                      </div>
+                    )}
+                    {isMissed && (
+                      <div className="truncate text-[9px] font-medium text-red-800 dark:text-red-100">
+                        Missed
+                      </div>
+                    )}
+                    {!isRead && !isMissed && plannedPages > 0 && (
+                      <div className="truncate text-[9px] text-muted-foreground">
+                        {session?.plannedPages || plannedPages} pages
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             );
           })}
         </div>
       </Card>
+
+      {/* Mobile Modal for Day Details */}
+      {selectedDay && (
+        <Sheet
+          open={isMobileModalOpen}
+          onOpenChange={(open) => !open && setSelectedDay(null)}
+        >
+          <SheetContent
+            side="bottom"
+            className="max-h-[80vh] overflow-y-auto sm:hidden"
+          >
+            <DayDetailModal
+              day={selectedDay}
+              session={sessionsMap.get(formatDateForStorage(selectedDay))}
+              plannedPages={
+                sessionsMap.get(formatDateForStorage(selectedDay))
+                  ?.plannedPages ??
+                (pageDistribution.get(formatDateForStorage(selectedDay)) || 0)
+              }
+              isRead={
+                sessionsMap.get(formatDateForStorage(selectedDay))?.isRead ||
+                false
+              }
+              isMissed={
+                sessionsMap.get(formatDateForStorage(selectedDay))?.isMissed ||
+                false
+              }
+              canEdit={canEdit}
+              onReadToggle={() => {
+                handleDayToggle(selectedDay);
+              }}
+              onMissedToggle={() => {
+                handleMissedToggle(selectedDay);
+              }}
+              inputValue={
+                inputValues.get(formatDateForStorage(selectedDay)) ??
+                (
+                  sessionsMap.get(formatDateForStorage(selectedDay))
+                    ?.actualPages ||
+                  sessionsMap.get(formatDateForStorage(selectedDay))
+                    ?.plannedPages ||
+                  pageDistribution.get(formatDateForStorage(selectedDay)) ||
+                  0
+                ).toString()
+              }
+              onInputChange={(value) =>
+                handleInputChange(formatDateForStorage(selectedDay), value)
+              }
+              onInputBlur={() => handleInputBlur(selectedDay)}
+            />
+          </SheetContent>
+        </Sheet>
+      )}
+    </div>
+  );
+}
+
+// Mobile Day Detail Modal Component
+interface DayDetailModalProps {
+  day: Date;
+  session: any;
+  plannedPages: number;
+  isRead: boolean;
+  isMissed: boolean;
+  canEdit: boolean;
+  onReadToggle: () => void;
+  onMissedToggle: () => void;
+  inputValue: string;
+  onInputChange: (value: string) => void;
+  onInputBlur: () => void;
+}
+
+function DayDetailModal({
+  day,
+  session,
+  plannedPages,
+  isRead,
+  isMissed,
+  canEdit,
+  onReadToggle,
+  onMissedToggle,
+  inputValue,
+  onInputChange,
+  onInputBlur,
+}: DayDetailModalProps) {
+  return (
+    <div className="space-y-6">
+      <SheetHeader>
+        <SheetTitle className="text-2xl">
+          {format(day, "EEEE, MMMM d, yyyy")}
+        </SheetTitle>
+        <SheetDescription>
+          {isRead
+            ? "Marked as read"
+            : isMissed
+              ? "Marked as missed"
+              : "Not yet recorded"}
+        </SheetDescription>
+      </SheetHeader>
+
+      <div className="space-y-4">
+        {/* Status Section */}
+        <div>
+          <h3 className="mb-3 text-sm font-semibold">Status</h3>
+          <div className="flex gap-4">
+            {/* Read Checkbox */}
+            {!isMissed && (
+              <button
+                onClick={onReadToggle}
+                disabled={!canEdit}
+                className={`flex h-12 w-12 flex-col items-center justify-center gap-1 rounded-lg border-2 transition-all ${
+                  isRead
+                    ? "border-green-600 bg-green-600 text-white"
+                    : "border-input bg-background"
+                } ${
+                  canEdit
+                    ? "active:scale-95 cursor-pointer hover:border-green-600"
+                    : "cursor-not-allowed opacity-50"
+                }`}
+                aria-label={isRead ? "Mark as unread" : "Mark as read"}
+              >
+                {isRead ? (
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={3}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="h-6 w-6 text-muted-foreground opacity-30"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={3}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                )}
+                <span className="text-xs font-medium">Read</span>
+              </button>
+            )}
+
+            {/* Missed Checkbox */}
+            {!isRead && (
+              <button
+                onClick={onMissedToggle}
+                disabled={!canEdit}
+                className={`flex h-12 w-12 flex-col items-center justify-center gap-1 rounded-lg border-2 transition-all ${
+                  isMissed
+                    ? "border-red-600 bg-red-600 text-white"
+                    : "border-input bg-background"
+                } ${
+                  canEdit
+                    ? "active:scale-95 cursor-pointer hover:border-red-600"
+                    : "cursor-not-allowed opacity-50"
+                }`}
+                aria-label={isMissed ? "Mark as not missed" : "Mark as missed"}
+              >
+                {isMissed ? (
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={3}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="h-6 w-6 text-muted-foreground opacity-30"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={3}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                )}
+                <span className="text-xs font-medium">Missed</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Pages Section */}
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium">
+              Planned Pages
+            </label>
+            <div className="rounded-lg border border-input bg-muted px-4 py-2 text-lg font-semibold">
+              {plannedPages} pages
+            </div>
+          </div>
+
+          {isRead && (
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                Actual Pages Read
+              </label>
+              <input
+                type="number"
+                value={inputValue}
+                onChange={(e) => onInputChange(e.target.value)}
+                onBlur={onInputBlur}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.currentTarget.blur();
+                  }
+                }}
+                disabled={!canEdit}
+                min="0"
+                className={`w-full rounded-lg border border-input bg-background px-4 py-3 text-lg font-semibold ${
+                  canEdit
+                    ? "focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:border-blue-400"
+                    : "cursor-not-allowed opacity-50"
+                }`}
+                placeholder="Enter pages"
+              />
+            </div>
+          )}
+
+          {isMissed && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-center dark:border-red-800 dark:bg-red-950">
+              <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                This day was marked as missed
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

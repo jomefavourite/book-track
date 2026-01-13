@@ -91,7 +91,8 @@ export const getBooks = query({
           .collect();
 
         const totalPagesRead = sessions.reduce((sum, session) => {
-          if (session.isRead) {
+          // Only count pages from read days, exclude missed days
+          if (session.isRead && !session.isMissed) {
             return sum + (session.actualPages || session.plannedPages);
           }
           return sum;
@@ -283,7 +284,8 @@ export const getArchivedBooks = query({
           .collect();
 
         const totalPagesRead = sessions.reduce((sum, session) => {
-          if (session.isRead) {
+          // Only count pages from read days, exclude missed days
+          if (session.isRead && !session.isMissed) {
             return sum + (session.actualPages || session.plannedPages);
           }
           return sum;
@@ -408,7 +410,8 @@ export const getPublicBooks = query({
           .collect();
 
         const totalPagesRead = sessions.reduce((sum, session) => {
-          if (session.isRead) {
+          // Only count pages from read days, exclude missed days
+          if (session.isRead && !session.isMissed) {
             return sum + (session.actualPages || session.plannedPages);
           }
           return sum;

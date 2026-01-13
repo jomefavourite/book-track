@@ -36,16 +36,49 @@ export default function DaysView({
     }),
     enabled: true, // Allow querying even without auth (for public books)
   });
+  const sessionsQueryKey = convexQuery(api.readingSessions.getSessionsForBook, {
+    bookId,
+  }).queryKey;
+
+  const updateSessionMutation = useConvexMutation(api.readingSessions.updateSession);
   const { mutateAsync: updateSession } = useMutation({
-    mutationFn: useConvexMutation(api.readingSessions.updateSession),
-    onSuccess: () => {
-      // Invalidate and refetch the sessions query for this book
-      queryClient.invalidateQueries({
-        queryKey: convexQuery(api.readingSessions.getSessionsForBook, {
-          bookId,
-        }).queryKey,
+    mutationFn: updateSessionMutation,
+    onMutate: async (variables) => {
+      // Cancel any outgoing refetches to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: sessionsQueryKey });
+
+      // Snapshot the previous value
+      const previousSessions = queryClient.getQueryData(sessionsQueryKey);
+
+      // Optimistically update the cache
+      queryClient.setQueryData(sessionsQueryKey, (old: any) => {
+        if (!old) return old;
+        return old.map((session: any) => {
+          if (session._id === variables.sessionId) {
+            return {
+              ...session,
+              isRead: variables.isRead ?? session.isRead,
+              isMissed: variables.isMissed ?? session.isMissed,
+              actualPages: variables.actualPages ?? session.actualPages,
+              plannedPages: variables.plannedPages ?? session.plannedPages,
+            };
+          }
+          return session;
+        });
       });
-      // Also invalidate the books list to update progress
+
+      // Return context with snapshot value
+      return { previousSessions };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previousSessions) {
+        queryClient.setQueryData(sessionsQueryKey, context.previousSessions);
+      }
+    },
+    onSettled: () => {
+      // Always refetch after error or success to ensure consistency
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
       if (user?.id) {
         queryClient.invalidateQueries({
           queryKey: convexQuery(api.books.getBooks, { userId: user.id })
@@ -54,16 +87,61 @@ export default function DaysView({
       }
     },
   });
+
+  const createSessionMutationFn = useConvexMutation(api.readingSessions.createSession);
   const { mutateAsync: createSession } = useMutation({
-    mutationFn: useConvexMutation(api.readingSessions.createSession),
-    onSuccess: () => {
-      // Invalidate and refetch the sessions query for this book
-      queryClient.invalidateQueries({
-        queryKey: convexQuery(api.readingSessions.getSessionsForBook, {
-          bookId,
-        }).queryKey,
+    mutationFn: createSessionMutationFn,
+    onMutate: async (variables: Parameters<typeof createSessionMutationFn>[0]) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: sessionsQueryKey });
+
+      // Snapshot the previous value
+      const previousSessions = queryClient.getQueryData(sessionsQueryKey);
+
+      // Optimistically add the new session (we'll use a temporary ID)
+      const tempId = `temp-${Date.now()}`;
+      const optimisticSession = {
+        _id: tempId as any,
+        bookId: variables.bookId,
+        userId: variables.userId,
+        date: variables.date,
+        plannedPages: variables.plannedPages,
+        actualPages: variables.actualPages,
+        isRead: variables.isRead,
+        isMissed: variables.isMissed ?? false,
+        createdAt: Date.now(),
+      };
+
+      queryClient.setQueryData(sessionsQueryKey, (old: any) => {
+        if (!old) return [optimisticSession];
+        // Check if session already exists for this date
+        const existingIndex = old.findIndex(
+          (s: any) => s.date === variables.date
+        );
+        if (existingIndex >= 0) {
+          // Update existing
+          const updated = [...old];
+          updated[existingIndex] = {
+            ...updated[existingIndex],
+            ...optimisticSession,
+            _id: updated[existingIndex]._id, // Keep original ID
+          };
+          return updated;
+        }
+        return [...old, optimisticSession];
       });
-      // Also invalidate the books list to update progress
+
+      return { previousSessions };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previousSessions) {
+        queryClient.setQueryData(sessionsQueryKey, context.previousSessions);
+      }
+    },
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
       if (user?.id) {
         queryClient.invalidateQueries({
           queryKey: convexQuery(api.books.getBooks, { userId: user.id })
@@ -132,36 +210,80 @@ export default function DaysView({
     const existingSession = sessionsMap.get(dateKey);
 
     if (existingSession) {
-      const newIsRead = !existingSession.isRead;
-      await updateSession({
-        sessionId: existingSession._id,
-        userId: user.id,
-        isRead: newIsRead,
-        actualPages: existingSession.actualPages,
-      });
-
-      // Redistribute pages after toggling
-      if (newIsRead) {
-        // Day marked as read - redistribute remaining pages
+      // If already read, toggle to unrecorded
+      if (existingSession.isRead) {
+        updateSession({
+          sessionId: existingSession._id,
+          userId: user.id,
+          isRead: false,
+          isMissed: false,
+          actualPages: existingSession.actualPages,
+        }).catch(console.error);
+        // Redistribute pages after unmarking as read (non-blocking)
+        setTimeout(() => {
+          redistributePagesAfterUnread(dateKey).catch(console.error);
+        }, 0);
+      } else {
+        // Not read - mark as read
+        updateSession({
+          sessionId: existingSession._id,
+          userId: user.id,
+          isRead: true,
+          isMissed: false,
+          actualPages: existingSession.actualPages,
+        }).catch(console.error);
+        // Redistribute after marking as read (non-blocking)
         const actualPages =
           existingSession.actualPages ||
           existingSession.plannedPages ||
           pagesPerDay;
-        await redistributePages(dateKey, actualPages, new Set([dateKey]));
-      } else if (!newIsRead) {
-        // Day marked as unread - redistribute including this day's pages
-        // Calculate total pages read excluding this day
+        setTimeout(() => {
+          redistributePages(dateKey, actualPages, new Set([dateKey])).catch(console.error);
+        }, 0);
+      }
+    } else {
+      createSession({
+        bookId,
+        userId: user.id,
+        date: dateKey,
+        plannedPages: pagesPerDay,
+        isRead: true,
+        isMissed: false,
+      }).catch(console.error);
+
+      // Redistribute after marking as read (non-blocking)
+      setTimeout(() => {
+        redistributePages(dateKey, pagesPerDay, new Set([dateKey])).catch(console.error);
+      }, 0);
+    }
+  };
+
+  const handleMissedToggle = async (dateKey: string) => {
+    if (!canEdit || !user?.id) return;
+    const existingSession = sessionsMap.get(dateKey);
+
+    if (existingSession) {
+      // If already missed, toggle to unrecorded
+      if (existingSession.isMissed) {
+        updateSession({
+          sessionId: existingSession._id,
+          userId: user.id,
+          isRead: false,
+          isMissed: false,
+          actualPages: existingSession.actualPages,
+        }).catch(console.error);
+        // Redistribute pages after unmarking as missed
         let totalPagesRead = 0;
         days.forEach(({ dateKey: dKey }) => {
           const sess = sessionsMap.get(dKey);
-          if (sess?.isRead && dKey !== dateKey) {
+          if (sess?.isRead && !sess?.isMissed && dKey !== dateKey) {
             totalPagesRead += sess.actualPages || sess.plannedPages || 0;
           }
         });
         const remainingPages = Math.max(0, book.totalPages - totalPagesRead);
         const unreadDays = days.filter(({ dateKey: dKey }) => {
           const sess = sessionsMap.get(dKey);
-          return !sess?.isRead || dKey === dateKey; // Include the toggled day
+          return (!sess?.isRead && !sess?.isMissed) || dKey === dateKey;
         });
 
         if (unreadDays.length > 0) {
@@ -173,42 +295,105 @@ export default function DaysView({
             const sess = sessionsMap.get(dKey);
             const newPlannedPages = pagesPerDay + (index < remainder ? 1 : 0);
 
-            if (sess) {
+            if (sess && dKey !== dateKey) {
               updatePromises.push(
                 updateSession({
                   sessionId: sess._id,
                   userId: user.id,
                   isRead: false,
+                  isMissed: false,
                   plannedPages: newPlannedPages,
                 })
               );
-            } else if (dKey === dateKey) {
+            } else if (dKey === dateKey && sess) {
               updatePromises.push(
-                createSession({
-                  bookId,
+                updateSession({
+                  sessionId: sess._id,
                   userId: user.id,
-                  date: dKey,
-                  plannedPages: newPlannedPages,
                   isRead: false,
+                  isMissed: false,
+                  plannedPages: newPlannedPages,
                 })
               );
             }
           });
           await Promise.all(updatePromises);
         }
+      } else {
+        // Not missed - mark as missed
+        await updateSession({
+          sessionId: existingSession._id,
+          userId: user.id,
+          isRead: false,
+          isMissed: true,
+          actualPages: existingSession.actualPages,
+        });
+        // No redistribution needed when marking as missed - missed days are excluded from redistribution
+        return; // Exit early - no redistribution needed for missed days
       }
     } else {
+      // No session exists - create one as missed
       await createSession({
         bookId,
         userId: user.id,
         date: dateKey,
         plannedPages: pagesPerDay,
-        isRead: true,
+        isRead: false,
+        isMissed: true,
       });
 
-      // Redistribute after marking as read
-      // Exclude the newly created session from being treated as unread
-      await redistributePages(dateKey, pagesPerDay, new Set([dateKey]));
+      // No redistribution needed when marking as missed - missed days are excluded from redistribution
+      return; // Exit early - no redistribution needed for missed days
+    }
+  };
+
+  const redistributePagesAfterUnread = async (dateKey: string) => {
+    if (!user?.id) return;
+    let totalPagesRead = 0;
+    days.forEach(({ dateKey: dKey }) => {
+      const sess = sessionsMap.get(dKey);
+      if (sess?.isRead && !sess?.isMissed && dKey !== dateKey) {
+        totalPagesRead += sess.actualPages || sess.plannedPages || 0;
+      }
+    });
+    const remainingPages = Math.max(0, book.totalPages - totalPagesRead);
+    const unreadDays = days.filter(({ dateKey: dKey }) => {
+      const sess = sessionsMap.get(dKey);
+      return (!sess?.isRead && !sess?.isMissed) || dKey === dateKey;
+    });
+
+    if (unreadDays.length > 0) {
+      const pagesPerDay = Math.floor(remainingPages / unreadDays.length);
+      const remainder = remainingPages % unreadDays.length;
+
+      const updatePromises: Promise<any>[] = [];
+      unreadDays.forEach(({ dateKey: dKey }, index) => {
+        const sess = sessionsMap.get(dKey);
+        const newPlannedPages = pagesPerDay + (index < remainder ? 1 : 0);
+
+        if (sess && dKey !== dateKey) {
+          updatePromises.push(
+            updateSession({
+              sessionId: sess._id,
+              userId: user.id,
+              isRead: false,
+              isMissed: false,
+              plannedPages: newPlannedPages,
+            })
+          );
+        } else if (dKey === dateKey && sess) {
+          updatePromises.push(
+            updateSession({
+              sessionId: sess._id,
+              userId: user.id,
+              isRead: false,
+              isMissed: false,
+              plannedPages: newPlannedPages,
+            })
+          );
+        }
+      });
+      await Promise.all(updatePromises);
     }
   };
 
@@ -232,7 +417,8 @@ export default function DaysView({
 
       const session = sessionsMap.get(dateKey);
 
-      if (session?.isRead) {
+      // Only count pages from read days (not missed days)
+      if (session?.isRead && !session?.isMissed) {
         const actualPages =
           dateKey === updatedDateKey
             ? newActualPages
@@ -241,14 +427,15 @@ export default function DaysView({
       }
     });
 
-    // Calculate remaining pages and unread days
+    // Calculate remaining pages and unread days (exclude missed days from redistribution)
     const remainingPages = Math.max(0, book.totalPages - totalPagesRead);
     const unreadDays = days.filter(({ dateKey }) => {
       // Exclude dateKeys that are marked as read (even if not in sessionsMap yet)
       if (excludeDateKeys.has(dateKey)) return false;
 
       const session = sessionsMap.get(dateKey);
-      return !session?.isRead;
+      // Exclude read days and missed days from redistribution
+      return !session?.isRead && !session?.isMissed;
     });
 
     if (unreadDays.length === 0) return;
@@ -264,28 +451,32 @@ export default function DaysView({
       const session = sessionsMap.get(dateKey);
       const newPlannedPages = pagesPerDay + (index < remainder ? 1 : 0);
 
-      if (session) {
-        // Update existing session's planned pages
-        updatePromises.push(
-          updateSession({
-            sessionId: session._id,
-            userId: user.id,
-            isRead: false,
-            plannedPages: newPlannedPages,
-          })
-        );
-      } else {
-        // Create new session with new planned pages
-        updatePromises.push(
-          createSession({
-            bookId,
-            userId: user.id,
-            date: dateKey,
-            plannedPages: newPlannedPages,
-            isRead: false,
-          })
-        );
-      }
+            if (session) {
+              // Update existing session's planned pages (only if not missed)
+              if (!session.isMissed) {
+                updatePromises.push(
+                  updateSession({
+                    sessionId: session._id,
+                    userId: user.id,
+                    isRead: false,
+                    isMissed: false,
+                    plannedPages: newPlannedPages,
+                  })
+                );
+              }
+            } else {
+              // Create new session with new planned pages
+              updatePromises.push(
+                createSession({
+                  bookId,
+                  userId: user.id,
+                  date: dateKey,
+                  plannedPages: newPlannedPages,
+                  isRead: false,
+                  isMissed: false,
+                })
+              );
+            }
     });
 
     await Promise.all(updatePromises);
@@ -345,10 +536,14 @@ export default function DaysView({
 
   const totalPagesRead = useMemo(() => {
     return sessions.reduce((sum, session) => {
-      return (
-        sum +
-        (session.actualPages || (session.isRead ? session.plannedPages : 0))
-      );
+      // Only count pages from read days, exclude missed days
+      if (session.isRead && !session.isMissed) {
+        return (
+          sum +
+          (session.actualPages || session.plannedPages || 0)
+        );
+      }
+      return sum;
     }, 0);
   }, [sessions]);
 
@@ -393,6 +588,7 @@ export default function DaysView({
           {days.map(({ dayNumber, date, dateKey }) => {
             const session = sessionsMap.get(dateKey);
             const isRead = session?.isRead || false;
+            const isMissed = session?.isMissed || false;
 
             return (
               <div
@@ -400,46 +596,126 @@ export default function DaysView({
                 className={`rounded border p-3 ${
                   isRead
                     ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-900 dark:text-green-50"
-                    : "border-border bg-background"
+                    : isMissed
+                      ? "border-red-600 bg-red-100 text-red-900 dark:border-red-600 dark:bg-red-900 dark:text-red-50"
+                      : "border-border bg-background"
                 }`}
               >
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex-1">
                     <div className="text-sm font-medium">Day {dayNumber}</div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className={`text-xs ${
+                      isRead
+                        ? "text-green-700 dark:text-green-300"
+                        : isMissed
+                          ? "text-red-700 dark:text-red-300"
+                          : "text-muted-foreground"
+                    }`}>
                       {format(date, "MMM d, yyyy")}
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleDayToggle(dateKey)}
-                    disabled={!canEdit}
-                    className={`flex h-5 w-5 items-center justify-center rounded border-2 border-input transition-all sm:h-6 sm:w-6 ${
-                      canEdit
-                        ? "active:scale-90 cursor-pointer hover:border-primary"
-                        : "cursor-not-allowed opacity-50"
-                    }`}
-                    aria-label={isRead ? "Mark as unread" : "Mark as read"}
-                  >
-                    {isRead && (
-                      <svg
-                        className="h-3 w-3 text-green-700 dark:text-green-400 sm:h-4 sm:w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                  <div className="flex items-center gap-1">
+                    {/* Read Checkbox - only show if not missed */}
+                    {!isMissed && (
+                      <button
+                        onClick={() => handleDayToggle(dateKey)}
+                        disabled={!canEdit}
+                        className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-all sm:h-6 sm:w-6 ${
+                          isRead
+                            ? "border-green-600 bg-green-600"
+                            : "border-input"
+                        } ${
+                          canEdit
+                            ? "active:scale-90 cursor-pointer hover:border-green-600"
+                            : "cursor-not-allowed opacity-50"
+                        }`}
+                        aria-label={isRead ? "Mark as unread" : "Mark as read"}
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={3}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
+                        {isRead ? (
+                          <svg
+                            className="h-3 w-3 text-white sm:h-4 sm:w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="h-3 w-3 text-muted-foreground opacity-30 sm:h-4 sm:w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        )}
+                      </button>
                     )}
-                  </button>
+                    {/* Missed Checkbox - only show if not read */}
+                    {!isRead && (
+                      <button
+                        onClick={() => handleMissedToggle(dateKey)}
+                        disabled={!canEdit}
+                        className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-all sm:h-6 sm:w-6 ${
+                          isMissed
+                            ? "border-red-600 bg-red-600"
+                            : "border-input"
+                        } ${
+                          canEdit
+                            ? "active:scale-90 cursor-pointer hover:border-red-600"
+                            : "cursor-not-allowed opacity-50"
+                        }`}
+                        aria-label={isMissed ? "Mark as not missed" : "Mark as missed"}
+                      >
+                        {isMissed ? (
+                          <svg
+                            className="h-3 w-3 text-white sm:h-4 sm:w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="h-3 w-3 text-muted-foreground opacity-30 sm:h-4 sm:w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={3}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="mb-2 text-xs ">
-                  Plan: {session?.plannedPages ?? pagesPerDay} pages
-                </div>
+                {!isMissed && (
+                  <div className="mb-2 text-xs">
+                    Plan: {session?.plannedPages ?? pagesPerDay} pages
+                  </div>
+                )}
                 {isRead && (
                   <div>
                     <label className="block text-xs font-medium text-foreground">
@@ -472,6 +748,11 @@ export default function DaysView({
                           : "cursor-not-allowed opacity-50"
                       }`}
                     />
+                  </div>
+                )}
+                {isMissed && (
+                  <div className="text-xs font-medium text-red-800 dark:text-red-200">
+                    Missed
                   </div>
                 )}
               </div>
