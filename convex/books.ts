@@ -160,7 +160,9 @@ export const updateBook = mutation({
     name: v.optional(v.string()),
     author: v.optional(v.string()),
     totalPages: v.optional(v.number()),
-    readingMode: v.optional(v.union(v.literal("calendar"), v.literal("fixed-days"))),
+    readingMode: v.optional(
+      v.union(v.literal("calendar"), v.literal("fixed-days"))
+    ),
     startMonth: v.optional(v.string()),
     endMonth: v.optional(v.string()),
     startYear: v.optional(v.number()),
