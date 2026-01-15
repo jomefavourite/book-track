@@ -85,18 +85,26 @@ export default function CatchUpSuggestion({
       return null;
     }
 
-    // Count explicitly marked missed days
-    const explicitlyMissedDays = sessions.filter((s) => s.isMissed).length;
+    // Build a Set of explicitly missed dates to exclude from calculations
+    const explicitlyMissedDates = new Set(
+      sessions.filter((s) => s.isMissed).map((s) => s.date)
+    );
 
     // Get days that are past and not read (excluding explicitly missed days)
     const completedDates = new Set(
       sessions.filter((s) => s.isRead && !s.isMissed).map((s) => s.date)
     );
 
-    const missedDays = getMissedDays(startDate, endDate, completedDates);
+    // Get missed days, excluding explicitly marked missed days
+    const missedDays = getMissedDays(
+      startDate,
+      endDate,
+      completedDates,
+      explicitlyMissedDates
+    );
 
-    // Only show catch-up if there are missed days (either explicitly marked or past unread days)
-    if (missedDays.length === 0 && explicitlyMissedDays === 0) {
+    // Only show catch-up if there are missed days
+    if (missedDays.length === 0) {
       return null;
     }
 
@@ -110,7 +118,13 @@ export default function CatchUpSuggestion({
     }, 0);
 
     const remainingPages = book.totalPages - totalPagesReadForCatchUp;
-    const remainingDays = getAllDaysInRange(today, endDate).length;
+
+    // Calculate remaining days excluding explicitly missed days
+    const allRemainingDays = getAllDaysInRange(today, endDate);
+    const remainingDays = allRemainingDays.filter((day) => {
+      const dayKey = formatDateForStorage(day);
+      return !explicitlyMissedDates.has(dayKey);
+    }).length;
 
     if (remainingDays <= 0) {
       return {
@@ -126,8 +140,8 @@ export default function CatchUpSuggestion({
       remainingDays
     );
 
-    // Count total missed days (explicitly marked + past unread days)
-    const totalMissedDays = explicitlyMissedDays + missedDays.length;
+    // Count only past unread days (explicitly missed days are excluded)
+    const totalMissedDays = missedDays.length;
 
     return {
       type: "catchup" as const,

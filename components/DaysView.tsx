@@ -10,6 +10,7 @@ import { useUser } from "@clerk/nextjs";
 import { formatDateForStorage, parseDateFromStorage } from "@/lib/dateUtils";
 import { calculateDailyPages } from "@/lib/readingCalculator";
 import CatchUpSuggestion from "./CatchUpSuggestion";
+import { Input } from "./ui/input";
 
 interface DaysViewProps {
   bookId: Id<"books">;
@@ -40,7 +41,9 @@ export default function DaysView({
     bookId,
   }).queryKey;
 
-  const updateSessionMutation = useConvexMutation(api.readingSessions.updateSession);
+  const updateSessionMutation = useConvexMutation(
+    api.readingSessions.updateSession
+  );
   const { mutateAsync: updateSession } = useMutation({
     mutationFn: updateSessionMutation,
     onMutate: async (variables) => {
@@ -88,10 +91,14 @@ export default function DaysView({
     },
   });
 
-  const createSessionMutationFn = useConvexMutation(api.readingSessions.createSession);
+  const createSessionMutationFn = useConvexMutation(
+    api.readingSessions.createSession
+  );
   const { mutateAsync: createSession } = useMutation({
     mutationFn: createSessionMutationFn,
-    onMutate: async (variables: Parameters<typeof createSessionMutationFn>[0]) => {
+    onMutate: async (
+      variables: Parameters<typeof createSessionMutationFn>[0]
+    ) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: sessionsQueryKey });
 
@@ -238,7 +245,9 @@ export default function DaysView({
           existingSession.plannedPages ||
           pagesPerDay;
         setTimeout(() => {
-          redistributePages(dateKey, actualPages, new Set([dateKey])).catch(console.error);
+          redistributePages(dateKey, actualPages, new Set([dateKey])).catch(
+            console.error
+          );
         }, 0);
       }
     } else {
@@ -253,7 +262,9 @@ export default function DaysView({
 
       // Redistribute after marking as read (non-blocking)
       setTimeout(() => {
-        redistributePages(dateKey, pagesPerDay, new Set([dateKey])).catch(console.error);
+        redistributePages(dateKey, pagesPerDay, new Set([dateKey])).catch(
+          console.error
+        );
       }, 0);
     }
   };
@@ -451,32 +462,32 @@ export default function DaysView({
       const session = sessionsMap.get(dateKey);
       const newPlannedPages = pagesPerDay + (index < remainder ? 1 : 0);
 
-            if (session) {
-              // Update existing session's planned pages (only if not missed)
-              if (!session.isMissed) {
-                updatePromises.push(
-                  updateSession({
-                    sessionId: session._id,
-                    userId: user.id,
-                    isRead: false,
-                    isMissed: false,
-                    plannedPages: newPlannedPages,
-                  })
-                );
-              }
-            } else {
-              // Create new session with new planned pages
-              updatePromises.push(
-                createSession({
-                  bookId,
-                  userId: user.id,
-                  date: dateKey,
-                  plannedPages: newPlannedPages,
-                  isRead: false,
-                  isMissed: false,
-                })
-              );
-            }
+      if (session) {
+        // Update existing session's planned pages (only if not missed)
+        if (!session.isMissed) {
+          updatePromises.push(
+            updateSession({
+              sessionId: session._id,
+              userId: user.id,
+              isRead: false,
+              isMissed: false,
+              plannedPages: newPlannedPages,
+            })
+          );
+        }
+      } else {
+        // Create new session with new planned pages
+        updatePromises.push(
+          createSession({
+            bookId,
+            userId: user.id,
+            date: dateKey,
+            plannedPages: newPlannedPages,
+            isRead: false,
+            isMissed: false,
+          })
+        );
+      }
     });
 
     await Promise.all(updatePromises);
@@ -538,10 +549,7 @@ export default function DaysView({
     return sessions.reduce((sum, session) => {
       // Only count pages from read days, exclude missed days
       if (session.isRead && !session.isMissed) {
-        return (
-          sum +
-          (session.actualPages || session.plannedPages || 0)
-        );
+        return sum + (session.actualPages || session.plannedPages || 0);
       }
       return sum;
     }, 0);
@@ -604,13 +612,15 @@ export default function DaysView({
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex-1">
                     <div className="text-sm font-medium">Day {dayNumber}</div>
-                    <div className={`text-xs ${
-                      isRead
-                        ? "text-green-700 dark:text-green-300"
-                        : isMissed
-                          ? "text-red-700 dark:text-red-300"
-                          : "text-muted-foreground"
-                    }`}>
+                    <div
+                      className={`text-xs ${
+                        isRead
+                          ? "text-green-700 dark:text-green-300"
+                          : isMissed
+                            ? "text-red-700 dark:text-red-300"
+                            : "text-muted-foreground"
+                      }`}
+                    >
                       {format(date, "MMM d, yyyy")}
                     </div>
                   </div>
@@ -676,7 +686,9 @@ export default function DaysView({
                             ? "active:scale-90 cursor-pointer hover:border-red-600"
                             : "cursor-not-allowed opacity-50"
                         }`}
-                        aria-label={isMissed ? "Mark as not missed" : "Mark as missed"}
+                        aria-label={
+                          isMissed ? "Mark as not missed" : "Mark as missed"
+                        }
                       >
                         {isMissed ? (
                           <svg
@@ -718,11 +730,12 @@ export default function DaysView({
                 )}
                 {isRead && (
                   <div>
-                    <label className="block text-xs font-medium text-foreground">
+                    <label className="block text-xs font-medium text-white">
                       Actual Pages
                     </label>
-                    <input
+                    <Input
                       type="number"
+                      id="actualPages"
                       value={
                         inputValues.get(dateKey) ??
                         (
@@ -742,7 +755,7 @@ export default function DaysView({
                       }}
                       disabled={!canEdit}
                       min="0"
-                      className={`mt-1 w-full rounded border border-input bg-background px-1.5 py-1 text-xs ${
+                      className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
                         canEdit
                           ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
                           : "cursor-not-allowed opacity-50"

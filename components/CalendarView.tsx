@@ -29,21 +29,12 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerClose,
-} from "@/components/ui/drawer";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import CatchUpSuggestion from "./CatchUpSuggestion";
 
 interface CalendarViewProps {
@@ -199,7 +190,8 @@ export default function CalendarView({
   });
 
   // Use empty array as default to ensure hooks are always called
-  const sessions = sessionsQuery || [];
+  // Memoize to prevent creating new array reference on every render
+  const sessions = useMemo(() => sessionsQuery || [], [sessionsQuery]);
 
   // Local state for input values to allow smooth typing
   const [inputValues, setInputValues] = useState<Map<string, string>>(
@@ -208,8 +200,6 @@ export default function CalendarView({
 
   // Mobile modal state
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
-  const [desktopDrawerOpen, setDesktopDrawerOpen] = useState(false);
-  const [desktopDrawerDay, setDesktopDrawerDay] = useState<Date | null>(null);
   const isMobileModalOpen = selectedDay !== null;
 
   // Handle day cell click (mobile only)
@@ -225,20 +215,6 @@ export default function CalendarView({
     }
   };
 
-  // Handle desktop drawer open
-  const handleDesktopDrawerOpen = (day: Date, e: React.MouseEvent) => {
-    // Only open drawer on desktop, and only if clicking the cell itself (not checkboxes or other interactive elements)
-    const target = e.target as HTMLElement;
-    if (
-      window.innerWidth >= 640 &&
-      target.closest("button") === null &&
-      target.tagName !== "INPUT"
-    ) {
-      setDesktopDrawerDay(day);
-      setDesktopDrawerOpen(true);
-    }
-  };
-
   // Sync input values with sessions when they change
   useEffect(() => {
     const newInputValues = new Map<string, string>();
@@ -251,7 +227,21 @@ export default function CalendarView({
         newInputValues.set(session.date, value);
       }
     });
-    setInputValues(newInputValues);
+
+    // Only update if the values actually changed to prevent infinite loops
+    setInputValues((prev) => {
+      // Check if maps are different
+      if (prev.size !== newInputValues.size) {
+        return newInputValues;
+      }
+      for (const [key, value] of newInputValues) {
+        if (prev.get(key) !== value) {
+          return newInputValues;
+        }
+      }
+      // No changes, return previous map to avoid re-render
+      return prev;
+    });
   }, [sessions]);
 
   const [currentMonth, setCurrentMonth] = useState(() => {
@@ -824,7 +814,6 @@ export default function CalendarView({
                 key={dateKey}
                 onClick={(e) => {
                   handleDayCellClick(day, e);
-                  handleDesktopDrawerOpen(day, e);
                 }}
                 className={`relative aspect-square rounded border transition-colors overflow-hidden ${
                   isToday && isRead
@@ -838,7 +827,7 @@ export default function CalendarView({
                           : isMissed
                             ? "border-red-600 bg-red-100 text-red-900 dark:border-red-600 dark:bg-red-900 dark:text-red-50"
                             : "border-border bg-background"
-                } cursor-pointer`}
+                } cursor-pointer sm:cursor-default`}
               >
                 {/* Mobile Layout - Simplified */}
                 <div className="flex h-full flex-col p-0.5 sm:p-2">
@@ -964,11 +953,49 @@ export default function CalendarView({
                     </div>
                   </div>
 
-                  {/* Bottom section: Minimal info on desktop (full details in drawer) */}
-                  <div className="hidden flex-1 flex-col justify-end sm:flex">
+                  {/* Desktop: Show all info directly in the cell */}
+                  <div className="hidden flex-1 flex-col justify-end gap-1 sm:flex">
                     {isRead && (
-                      <div className="text-[10px] text-green-800 dark:text-green-100 sm:text-xs">
-                        Plan: {plannedPages}
+                      <div className="space-y-1">
+                        <div className="text-[10px] text-green-800 dark:text-green-100 sm:text-xs">
+                          Plan: {plannedPages} pages
+                        </div>
+                        <div className="text-[10px] text-green-800 dark:text-green-100 sm:text-xs">
+                          Read:{" "}
+                          {inputValues.get(dateKey) ??
+                            (
+                              session?.actualPages || plannedPages
+                            ).toString()}{" "}
+                          pages
+                        </div>
+                        {canEdit && (
+                          <Input
+                            type="number"
+                            id="actualPages"
+                            value={
+                              inputValues.get(dateKey) ??
+                              (session?.actualPages || plannedPages).toString()
+                            }
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleInputChange(dateKey, e.target.value);
+                            }}
+                            onBlur={(e) => {
+                              e.stopPropagation();
+                              handleInputBlur(day);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.currentTarget.blur();
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            disabled={!canEdit}
+                            min="0"
+                            placeholder="Pages"
+                            className="h-6 w-full px-1 text-foreground dark:text-foreground text-[10px] sm:h-7 sm:text-xs"
+                          />
+                        )}
                       </div>
                     )}
                     {isMissed && (
@@ -990,13 +1017,14 @@ export default function CalendarView({
                       <div className="truncate text-[9px] font-medium text-green-800 dark:text-green-100">
                         <span className="block">
                           Plan:
-                          {inputValues.get(dateKey) ??
-                            (session?.actualPages || plannedPages).toString()}
+                          {plannedPages}
                         </span>
                         <span className="block">
                           Read:
                           {inputValues.get(dateKey) ??
-                            (session?.actualPages || plannedPages).toString()}
+                            (
+                              session?.actualPages || plannedPages
+                            ).toString()}{" "}
                         </span>
                       </div>
                     )}
@@ -1019,15 +1047,28 @@ export default function CalendarView({
       </Card>
 
       {/* Mobile Modal for Day Details */}
-      {selectedDay && (
-        <Sheet
-          open={isMobileModalOpen}
-          onOpenChange={(open: boolean) => !open && setSelectedDay(null)}
-        >
-          <SheetContent
-            side="bottom"
-            className="max-h-[80vh] overflow-y-auto sm:hidden"
-          >
+      <Dialog
+        open={isMobileModalOpen}
+        onOpenChange={(open: boolean) => {
+          if (!open && selectedDay) {
+            // Save any pending input changes before closing (non-blocking)
+            const dateKey = formatDateForStorage(selectedDay);
+            const inputValue = inputValues.get(dateKey);
+            
+            if (inputValue !== undefined && inputValue !== "") {
+              const pages = Number(inputValue);
+              if (!isNaN(pages) && pages >= 0) {
+                // Save asynchronously without blocking dialog close
+                handlePagesUpdate(selectedDay, pages).catch(console.error);
+              }
+            }
+            
+            setSelectedDay(null);
+          }
+        }}
+      >
+        <DialogContent className="bottom-0 left-0 right-0 top-auto max-h-[85vh] w-full max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-t-lg border-t sm:hidden data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom">
+          {selectedDay && (
             <DayDetailModal
               day={selectedDay}
               session={sessionsMap.get(formatDateForStorage(selectedDay))}
@@ -1067,146 +1108,9 @@ export default function CalendarView({
               }
               onInputBlur={() => handleInputBlur(selectedDay)}
             />
-          </SheetContent>
-        </Sheet>
-      )}
-
-      {/* Desktop Drawer for Day Details */}
-      {desktopDrawerDay && (
-        <Drawer
-          open={desktopDrawerOpen}
-          onOpenChange={(open: boolean) => {
-            setDesktopDrawerOpen(open);
-            if (!open) {
-              setDesktopDrawerDay(null);
-            }
-          }}
-        >
-          <DrawerContent className="hidden sm:block">
-            <DrawerHeader>
-              <DrawerTitle className="text-foreground">
-                {format(desktopDrawerDay, "EEEE, MMMM d, yyyy")}
-              </DrawerTitle>
-              <DrawerDescription className="text-muted-foreground">
-                {(() => {
-                  const drawerDateKey = formatDateForStorage(desktopDrawerDay);
-                  const drawerSession = sessionsMap.get(drawerDateKey);
-                  const drawerPlannedPages =
-                    drawerSession?.plannedPages ??
-                    pageDistribution.get(drawerDateKey) ??
-                    0;
-                  return `Planned: ${drawerPlannedPages} pages`;
-                })()}
-              </DrawerDescription>
-            </DrawerHeader>
-            <div className="space-y-4 px-4 pb-4">
-              {(() => {
-                const drawerDateKey = formatDateForStorage(desktopDrawerDay);
-                const drawerSession = sessionsMap.get(drawerDateKey);
-                const drawerPlannedPages =
-                  drawerSession?.plannedPages ??
-                  pageDistribution.get(drawerDateKey) ??
-                  0;
-                const drawerIsRead = drawerSession?.isRead || false;
-                const drawerIsMissed = drawerSession?.isMissed || false;
-
-                return (
-                  <>
-                    {drawerIsRead && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label
-                            htmlFor="actual-pages"
-                            className="text-sm font-medium text-foreground"
-                          >
-                            Actual pages read:
-                          </label>
-                          <span className="text-sm text-muted-foreground">
-                            Plan: {drawerPlannedPages}
-                          </span>
-                        </div>
-                        <Input
-                          id="actual-pages"
-                          type="number"
-                          value={
-                            inputValues.get(drawerDateKey) ??
-                            (
-                              drawerSession?.actualPages || drawerPlannedPages
-                            ).toString()
-                          }
-                          onChange={(e) =>
-                            handleInputChange(drawerDateKey, e.target.value)
-                          }
-                          onBlur={() => handleInputBlur(desktopDrawerDay)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.currentTarget.blur();
-                            }
-                          }}
-                          disabled={!canEdit}
-                          min="0"
-                          placeholder="Pages"
-                          className="w-full"
-                        />
-                      </div>
-                    )}
-                    {drawerIsMissed && (
-                      <div className="rounded-md bg-red-100 p-3 text-sm text-red-900 dark:bg-red-900 dark:text-red-50">
-                        This day has been marked as missed.
-                      </div>
-                    )}
-                    {!drawerIsRead &&
-                      !drawerIsMissed &&
-                      drawerPlannedPages > 0 && (
-                        <div className="text-sm text-muted-foreground">
-                          Planned: {drawerPlannedPages} pages
-                        </div>
-                      )}
-                    <div className="flex gap-2">
-                      {!drawerIsMissed && (
-                        <Button
-                          variant={drawerIsRead ? "default" : "outline"}
-                          onClick={() => {
-                            handleDayToggle(desktopDrawerDay);
-                          }}
-                          disabled={!canEdit}
-                          className="flex-1"
-                        >
-                          {drawerIsRead ? "Mark as Unread" : "Mark as Read"}
-                        </Button>
-                      )}
-                      {!drawerIsRead && (
-                        <Button
-                          variant={drawerIsMissed ? "destructive" : "outline"}
-                          onClick={() => {
-                            handleMissedToggle(desktopDrawerDay);
-                          }}
-                          disabled={!canEdit}
-                          className="flex-1"
-                        >
-                          {drawerIsMissed
-                            ? "Mark as Not Missed"
-                            : "Mark as Missed"}
-                        </Button>
-                      )}
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-            <DrawerFooter>
-              <DrawerClose asChild>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                >
-                  Close
-                </Button>
-              </DrawerClose>
-            </DrawerFooter>
-          </DrawerContent>
-        </Drawer>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1241,18 +1145,18 @@ function DayDetailModal({
 }: DayDetailModalProps) {
   return (
     <div className="space-y-6">
-      <SheetHeader>
-        <SheetTitle className="text-2xl text-foreground">
+      <DialogHeader>
+        <DialogTitle className="text-2xl text-foreground">
           {format(day, "EEEE, MMMM d, yyyy")}
-        </SheetTitle>
-        <SheetDescription className="text-muted-foreground">
+        </DialogTitle>
+        <DialogDescription className="text-muted-foreground">
           {isRead
             ? "Marked as read"
             : isMissed
               ? "Marked as missed"
               : "Not yet recorded"}
-        </SheetDescription>
-      </SheetHeader>
+        </DialogDescription>
+      </DialogHeader>
 
       <div className="space-y-4">
         {/* Status Section */}
