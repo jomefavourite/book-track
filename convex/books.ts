@@ -1,5 +1,11 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import {
+  parseDateFromStorage,
+  formatDateForStorage,
+  getAllDaysInRange,
+  distributePagesAcrossDays,
+} from "./dateUtils";
 
 export const createBook = mutation({
   args: {
@@ -250,6 +256,71 @@ export const updateBook = mutation({
     }
     if (args.creatorEmail !== undefined) {
       updates.creatorEmail = args.creatorEmail;
+    }
+
+    // Determine the final values after update
+    const finalStartDate = args.startDate ?? book.startDate;
+    const finalEndDate = args.endDate ?? book.endDate;
+    const finalTotalPages = args.totalPages ?? book.totalPages;
+
+    // Check if dates or totalPages have changed
+    const datesChanged =
+      args.startDate !== undefined || args.endDate !== undefined;
+    const totalPagesChanged = args.totalPages !== undefined;
+
+    // If dates or totalPages changed, update reading sessions
+    if (datesChanged || totalPagesChanged) {
+      // Get all existing sessions for this book
+      const existingSessions = await ctx.db
+        .query("readingSessions")
+        .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
+        .collect();
+
+      // Calculate new page distribution
+      const newStartDate = parseDateFromStorage(finalStartDate);
+      const newEndDate = parseDateFromStorage(finalEndDate);
+      const newDistribution = distributePagesAcrossDays(
+        finalTotalPages,
+        newStartDate,
+        newEndDate
+      );
+
+      // Create a map of existing sessions by date
+      const existingSessionsMap = new Map();
+      existingSessions.forEach((session) => {
+        existingSessionsMap.set(session.date, session);
+      });
+
+      // Get all days in the new date range
+      const newDays = getAllDaysInRange(newStartDate, newEndDate);
+
+      // Update or create sessions for each day in the new range
+      for (const day of newDays) {
+        const dateKey = formatDateForStorage(day);
+        const newPlannedPages = newDistribution.get(dateKey) ?? 0;
+        const existingSession = existingSessionsMap.get(dateKey);
+
+        if (existingSession) {
+          // Update existing session's plannedPages, preserve isRead, isMissed, actualPages
+          await ctx.db.patch(existingSession._id, {
+            plannedPages: newPlannedPages,
+          });
+        } else {
+          // Create new session for this date
+          await ctx.db.insert("readingSessions", {
+            bookId: args.bookId,
+            userId,
+            date: dateKey,
+            plannedPages: newPlannedPages,
+            isRead: false,
+            createdAt: Date.now(),
+          });
+        }
+      }
+
+      // Note: We preserve sessions outside the new date range
+      // They won't be shown in the UI but won't be deleted
+      // This preserves user data in case they change dates back
     }
 
     await ctx.db.patch(args.bookId, updates);

@@ -1054,7 +1054,7 @@ export default function CalendarView({
             // Save any pending input changes before closing (non-blocking)
             const dateKey = formatDateForStorage(selectedDay);
             const inputValue = inputValues.get(dateKey);
-            
+
             if (inputValue !== undefined && inputValue !== "") {
               const pages = Number(inputValue);
               if (!isNaN(pages) && pages >= 0) {
@@ -1062,7 +1062,7 @@ export default function CalendarView({
                 handlePagesUpdate(selectedDay, pages).catch(console.error);
               }
             }
-            
+
             setSelectedDay(null);
           }
         }}
