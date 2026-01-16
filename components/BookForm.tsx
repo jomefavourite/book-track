@@ -4,7 +4,13 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useConvexMutation, convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
-import { format, isSameMonth, addDays, eachDayOfInterval, differenceInDays } from "date-fns";
+import {
+  format,
+  isSameMonth,
+  addDays,
+  eachDayOfInterval,
+  differenceInDays,
+} from "date-fns";
 import {
   MONTHS,
   getDateRangeForMonths,
@@ -117,7 +123,9 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
     return null;
   };
 
-  const [startDate, setStartDate] = useState<Date | null>(getInitialStartDate());
+  const [startDate, setStartDate] = useState<Date | null>(
+    getInitialStartDate()
+  );
   const [endDate, setEndDate] = useState<Date | null>(getInitialEndDate());
 
   // Keep month/year for backward compatibility and derived values
@@ -195,7 +203,11 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
     }
 
     let days: number | undefined;
-    if (readingMode === "fixed-days" && daysToRead && !isNaN(Number(daysToRead))) {
+    if (
+      readingMode === "fixed-days" &&
+      daysToRead &&
+      !isNaN(Number(daysToRead))
+    ) {
       days = Number(daysToRead);
     } else if (readingMode === "calendar" && totalDays !== null) {
       days = totalDays;
@@ -328,19 +340,39 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
           }
         }
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        startDateValue = formatDateForStorage(today);
-        const end = new Date(today);
-        end.setDate(end.getDate() + days - 1);
-        endDateValue = formatDateForStorage(end);
-        daysToReadValue = days;
+        // In edit mode, preserve existing dates unless daysToRead has changed
+        if (
+          isEditMode &&
+          initialBook &&
+          initialBook.readingMode === "fixed-days" &&
+          initialBook.daysToRead === days
+        ) {
+          // Preserve existing dates
+          startDateValue = initialBook.startDate;
+          endDateValue = initialBook.endDate;
+          daysToReadValue = days;
 
-        // Derive month/year values
-        startMonthValue = MONTHS[today.getMonth()];
-        startYearValue = today.getFullYear();
-        endMonthValue = MONTHS[end.getMonth()];
-        endYearValue = end.getFullYear();
+          // Preserve existing month/year values
+          startMonthValue = initialBook.startMonth;
+          endMonthValue = initialBook.endMonth;
+          startYearValue = initialBook.startYear;
+          endYearValue = initialBook.endYear;
+        } else {
+          // New book or daysToRead changed - recalculate from today
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          startDateValue = formatDateForStorage(today);
+          const end = new Date(today);
+          end.setDate(end.getDate() + days - 1);
+          endDateValue = formatDateForStorage(end);
+          daysToReadValue = days;
+
+          // Derive month/year values
+          startMonthValue = MONTHS[today.getMonth()];
+          startYearValue = today.getFullYear();
+          endMonthValue = MONTHS[end.getMonth()];
+          endYearValue = end.getFullYear();
+        }
       }
 
       const authorValue = author.trim() || undefined;
@@ -553,7 +585,10 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
                     {totalDays !== null && (
                       <>
                         <p className="text-sm text-muted-foreground">
-                          Total days: <span className="font-medium text-foreground">{totalDays}</span>
+                          Total days:{" "}
+                          <span className="font-medium text-foreground">
+                            {totalDays}
+                          </span>
                         </p>
                         {totalPages &&
                           !isNaN(Number(totalPages)) &&
@@ -561,7 +596,10 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
                             <p className="text-sm text-muted-foreground">
                               Pages per day:{" "}
                               <span className="font-medium text-foreground">
-                                {calculateDailyPages(Number(totalPages), totalDays).toFixed(1)}
+                                {calculateDailyPages(
+                                  Number(totalPages),
+                                  totalDays
+                                ).toFixed(1)}
                               </span>
                             </p>
                           )}
@@ -601,10 +639,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
               totalPages &&
               !isNaN(Number(totalPages)) && (
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {calculateDailyPages(
-                    Number(totalPages),
-                    Number(daysToRead)
-                  )}{" "}
+                  {calculateDailyPages(Number(totalPages), Number(daysToRead))}{" "}
                   pages per day
                 </p>
               )}
