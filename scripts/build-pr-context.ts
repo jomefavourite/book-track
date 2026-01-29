@@ -57,7 +57,8 @@ function resolvePrNumber(event: any | null): number {
 
   // 3) workflow_dispatch input (if you add inputs.pr_number)
   const fromDispatchInput = Number(event?.inputs?.pr_number);
-  if (Number.isFinite(fromDispatchInput) && fromDispatchInput > 0) return fromDispatchInput;
+  if (Number.isFinite(fromDispatchInput) && fromDispatchInput > 0)
+    return fromDispatchInput;
 
   throw new Error(
     "Missing PR number. In GitHub Actions, ensure this runs on a pull_request event. " +
@@ -67,7 +68,10 @@ function resolvePrNumber(event: any | null): number {
 
 async function main() {
   const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new Error("Missing GITHUB_TOKEN. This script is intended to run in GitHub Actions.");
+  if (!token)
+    throw new Error(
+      "Missing GITHUB_TOKEN. This script is intended to run in GitHub Actions."
+    );
 
   const event = readGitHubEvent();
   const { owner, name } = resolveRepo();
@@ -75,7 +79,11 @@ async function main() {
 
   const octokit = new Octokit({ auth: token });
 
-  const prResp = await octokit.pulls.get({ owner, repo: name, pull_number: prNumber });
+  const prResp = await octokit.pulls.get({
+    owner,
+    repo: name,
+    pull_number: prNumber,
+  });
 
   const files = await octokit.paginate(octokit.pulls.listFiles, {
     owner,
@@ -97,7 +105,9 @@ async function main() {
       number: prResp.data.number,
       title: prResp.data.title,
       body: prResp.data.body ?? null,
-      labels: (prResp.data.labels ?? []).map((l: any) => l?.name).filter(Boolean),
+      labels: (prResp.data.labels ?? [])
+        .map((l: any) => l?.name)
+        .filter(Boolean),
       author: prResp.data.user?.login ?? "unknown",
       mergedAt: prResp.data.merged_at ?? null,
       baseRef: prResp.data.base?.ref ?? "unknown",
@@ -118,7 +128,11 @@ async function main() {
   };
 
   fs.mkdirSync(".tmp", { recursive: true });
-  fs.writeFileSync(path.join(".tmp", "pr-context.json"), JSON.stringify(ctx, null, 2), "utf8");
+  fs.writeFileSync(
+    path.join(".tmp", "pr-context.json"),
+    JSON.stringify(ctx, null, 2),
+    "utf8"
+  );
 
   console.log(`✅ Wrote .tmp/pr-context.json for PR #${ctx.pr.number}`);
 }
