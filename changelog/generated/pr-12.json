@@ -1,0 +1,23 @@
+{
+  "prNumber": 12,
+  "items": [
+    {
+      "type": "chore",
+      "scope": "changelog",
+      "summary": "Add changelog entry for PR #9",
+      "details": [
+        "Auto-generated changelog entry added for PR #9."
+      ],
+      "impact": "internal",
+      "risk": "low",
+      "breaking": false,
+      "tickets": [],
+      "files": [
+        "changelog/generated/pr-9.json",
+        "changelog/generated/pr-9.md"
+      ],
+      "confidence": 1
+    }
+  ],
+  "model": "gpt-4.1-mini"
+}
