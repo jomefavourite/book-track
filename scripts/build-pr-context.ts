@@ -1,3 +1,4 @@
+// scripts/build-pr-context.ts
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -14,6 +15,7 @@ type PRContext = {
     mergedAt: string | null;
     baseRef: string;
     headRef: string;
+    url: string | null;
   };
   files: {
     filename: string;
@@ -25,52 +27,92 @@ type PRContext = {
   commits: { sha: string; message: string }[];
 };
 
-const token = process.env.GITHUB_TOKEN;
-if (!token) throw new Error("Missing GITHUB_TOKEN");
+function readGitHubEvent(): any | null {
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (!eventPath) return null;
+  try {
+    return JSON.parse(fs.readFileSync(eventPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
 
-const owner = process.env.GITHUB_REPOSITORY?.split("/")[0];
-const name = process.env.GITHUB_REPOSITORY?.split("/")[1];
-const prNumber = Number(
-  process.env.GITHUB_REF_NAME?.split("/")[0] ?? process.env.PR_NUMBER
-); // fallback
+function resolveRepo(): { owner: string; name: string } {
+  const repo = process.env.GITHUB_REPOSITORY; // "owner/name"
+  if (!repo || !repo.includes("/")) {
+    throw new Error("Missing GITHUB_REPOSITORY (expected 'owner/repo').");
+  }
+  const [owner, name] = repo.split("/");
+  return { owner, name };
+}
 
-if (!owner || !name) throw new Error("Missing GITHUB_REPOSITORY");
-if (!Number.isFinite(prNumber)) throw new Error("Missing PR number");
+function resolvePrNumber(event: any | null): number {
+  // 1) Local/dev override
+  const fromEnv = Number(process.env.PR_NUMBER);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
 
-const repoOwner: string = owner;
-const repoName: string = name;
-const octokit = new Octokit({ auth: token });
+  // 2) GitHub Actions pull_request event payload
+  const fromEvent = event?.pull_request?.number;
+  if (Number.isFinite(fromEvent) && fromEvent > 0) return fromEvent;
+
+  // 3) workflow_dispatch input (if you add inputs.pr_number)
+  const fromDispatchInput = Number(event?.inputs?.pr_number);
+  if (Number.isFinite(fromDispatchInput) && fromDispatchInput > 0)
+    return fromDispatchInput;
+
+  throw new Error(
+    "Missing PR number. In GitHub Actions, ensure this runs on a pull_request event. " +
+      "For local runs, set PR_NUMBER (e.g. `export PR_NUMBER=123`)."
+  );
+}
 
 async function main() {
-  const pr = await octokit.pulls.get({
-    owner: repoOwner,
-    repo: repoName,
+  const token = process.env.GITHUB_TOKEN;
+  if (!token)
+    throw new Error(
+      "Missing GITHUB_TOKEN. This script is intended to run in GitHub Actions."
+    );
+
+  const event = readGitHubEvent();
+  const { owner, name } = resolveRepo();
+  const prNumber = resolvePrNumber(event);
+
+  const octokit = new Octokit({ auth: token });
+
+  const prResp = await octokit.pulls.get({
+    owner,
+    repo: name,
     pull_number: prNumber,
   });
+
   const files = await octokit.paginate(octokit.pulls.listFiles, {
-    owner: repoOwner,
-    repo: repoName,
+    owner,
+    repo: name,
     pull_number: prNumber,
     per_page: 100,
   });
+
   const commits = await octokit.paginate(octokit.pulls.listCommits, {
-    owner: repoOwner,
-    repo: repoName,
+    owner,
+    repo: name,
     pull_number: prNumber,
     per_page: 100,
   });
 
   const ctx: PRContext = {
-    repo: { owner: repoOwner, name: repoName },
+    repo: { owner, name },
     pr: {
-      number: pr.data.number,
-      title: pr.data.title,
-      body: pr.data.body ?? null,
-      labels: (pr.data.labels ?? []).map((l: any) => l.name).filter(Boolean),
-      author: pr.data.user?.login ?? "unknown",
-      mergedAt: pr.data.merged_at ?? null,
-      baseRef: pr.data.base.ref,
-      headRef: pr.data.head.ref,
+      number: prResp.data.number,
+      title: prResp.data.title,
+      body: prResp.data.body ?? null,
+      labels: (prResp.data.labels ?? [])
+        .map((l: any) => l?.name)
+        .filter(Boolean),
+      author: prResp.data.user?.login ?? "unknown",
+      mergedAt: prResp.data.merged_at ?? null,
+      baseRef: prResp.data.base?.ref ?? "unknown",
+      headRef: prResp.data.head?.ref ?? "unknown",
+      url: prResp.data.html_url ?? null,
     },
     files: files.map((f: any) => ({
       filename: f.filename,
@@ -91,6 +133,8 @@ async function main() {
     JSON.stringify(ctx, null, 2),
     "utf8"
   );
+
+  console.log(`✅ Wrote .tmp/pr-context.json for PR #${ctx.pr.number}`);
 }
 
 main().catch((e) => {
