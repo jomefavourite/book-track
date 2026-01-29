@@ -1,0 +1,22 @@
+{
+  "prNumber": 5,
+  "items": [
+    {
+      "type": "chore",
+      "scope": "changelog",
+      "summary": "Update changelog generation script",
+      "details": [
+        "Refined the logic for generating the changelog to improve accuracy and formatting."
+      ],
+      "impact": "internal",
+      "risk": "low",
+      "breaking": false,
+      "tickets": [],
+      "files": [
+        "scripts/generate-changelog.ts"
+      ],
+      "confidence": 0.8
+    }
+  ],
+  "model": "gpt-4.1-mini"
+}
