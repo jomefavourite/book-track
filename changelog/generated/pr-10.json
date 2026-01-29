@@ -1,0 +1,22 @@
+{
+  "prNumber": 10,
+  "items": [
+    {
+      "type": "fix",
+      "scope": "changelog",
+      "summary": "Fix type error in changelog generation script",
+      "details": [
+        "Corrected a type error in the scripts/generate-changelog.ts to ensure proper changelog generation."
+      ],
+      "impact": "internal",
+      "risk": "low",
+      "breaking": false,
+      "tickets": [],
+      "files": [
+        "scripts/generate-changelog.ts"
+      ],
+      "confidence": 0.9
+    }
+  ],
+  "model": "gpt-4.1-mini"
+}
