@@ -60,7 +60,9 @@ async function main() {
 
   const contextPath = path.join(".tmp", "pr-context.json");
   if (!fs.existsSync(contextPath)) {
-    throw new Error("Missing .tmp/pr-context.json. Run build-pr-context.ts first.");
+    throw new Error(
+      "Missing .tmp/pr-context.json. Run build-pr-context.ts first."
+    );
   }
 
   /* ----------------------------- read PR context ---------------------------- */
@@ -199,7 +201,7 @@ async function main() {
   }
 
   // Force correct PR number (never trust the model fully)
-  parsed.prNumber = prNumber;
+  parsed.prNumber = prNumber as number;
 
   /* ------------------------------- Write file ------------------------------- */
 
