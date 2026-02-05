@@ -38,40 +38,29 @@ function readGitHubEvent(): any | null {
 }
 
 function resolveRepo(): { owner: string; name: string } {
-  const repo = process.env.GITHUB_REPOSITORY; // "owner/name"
-  if (!repo || !repo.includes("/")) {
+  const repo = process.env.GITHUB_REPOSITORY;
+  if (!repo || !repo.includes("/"))
     throw new Error("Missing GITHUB_REPOSITORY (expected 'owner/repo').");
-  }
   const [owner, name] = repo.split("/");
   return { owner, name };
 }
 
 function resolvePrNumber(event: any | null): number {
-  // 1) Local/dev override
   const fromEnv = Number(process.env.PR_NUMBER);
   if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
 
-  // 2) GitHub Actions pull_request event payload
   const fromEvent = event?.pull_request?.number;
   if (Number.isFinite(fromEvent) && fromEvent > 0) return fromEvent;
 
-  // 3) workflow_dispatch input (if you add inputs.pr_number)
-  const fromDispatchInput = Number(event?.inputs?.pr_number);
-  if (Number.isFinite(fromDispatchInput) && fromDispatchInput > 0)
-    return fromDispatchInput;
-
   throw new Error(
-    "Missing PR number. In GitHub Actions, ensure this runs on a pull_request event. " +
-      "For local runs, set PR_NUMBER (e.g. `export PR_NUMBER=123`)."
+    "Missing PR number. Run in GitHub Actions on a pull_request event, or set PR_NUMBER locally (e.g. `export PR_NUMBER=123`)."
   );
 }
 
 async function main() {
   const token = process.env.GITHUB_TOKEN;
   if (!token)
-    throw new Error(
-      "Missing GITHUB_TOKEN. This script is intended to run in GitHub Actions."
-    );
+    throw new Error("Missing GITHUB_TOKEN (expected in GitHub Actions).");
 
   const event = readGitHubEvent();
   const { owner, name } = resolveRepo();
@@ -133,7 +122,6 @@ async function main() {
     JSON.stringify(ctx, null, 2),
     "utf8"
   );
-
   console.log(`✅ Wrote .tmp/pr-context.json for PR #${ctx.pr.number}`);
 }
 

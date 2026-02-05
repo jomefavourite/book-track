@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "changelog/generated/*.json"
+      - "changelog/CHANGELOG.json"
 
 permissions:
   contents: read
