@@ -199,14 +199,20 @@ export default function DaysView({
                 key={dateKey}
                 className={`rounded border p-3 ${
                   isRead
-                    ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-950 dark:text-green-50"
+                    ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-900 dark:text-green-50"
                     : "border-border bg-background"
                 }`}
               >
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex-1">
                     <div className="text-sm font-medium">Day {dayNumber}</div>
-                    <div className="text-xs text-muted-foreground">
+                    <div
+                      className={`text-xs ${
+                        isRead
+                          ? "text-green-800 dark:text-green-100"
+                          : "text-muted-foreground"
+                      }`}
+                    >
                       {format(date, "MMM d, yyyy")}
                     </div>
                   </div>
@@ -237,12 +243,18 @@ export default function DaysView({
                     )}
                   </button>
                 </div>
-                <div className="mb-2 text-xs text-muted-foreground">
+                <div
+                  className={`text-xs ${
+                    isRead
+                      ? "text-green-800 dark:text-green-100"
+                      : "text-muted-foreground"
+                  }`}
+                >
                   Plan: {pagesPerDay} pages
                 </div>
                 {isRead && (
                   <div>
-                    <label className="block text-xs font-medium text-foreground">
+                    <label className="block text-xs font-medium text-green-800 dark:text-green-100">
                       Actual Pages
                     </label>
                     <input
@@ -253,7 +265,7 @@ export default function DaysView({
                       }
                       disabled={!canEdit}
                       min="0"
-                      className={`mt-1 w-full rounded border border-input bg-background px-1.5 py-1 text-xs ${
+                      className={`mt-1 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground ${
                         canEdit
                           ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
                           : "cursor-not-allowed opacity-50"
