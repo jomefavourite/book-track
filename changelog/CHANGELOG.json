@@ -1,6 +1,69 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "1970-01-01T00:00:00.000Z",
-  "days": []
+  "generatedAt": "2026-02-05T10:18:48.642Z",
+  "days": [
+    {
+      "date": "2026-02-05",
+      "entries": [
+        {
+          "prNumber": 17,
+          "title": "update dependencies and changelog generation scripts",
+          "url": "https://github.com/jomefavourite/book-track/pull/17",
+          "author": "jomefavourite",
+          "mergedAt": "2026-02-05T10:18:04Z",
+          "labels": [],
+          "tags": [
+            "CHORE"
+          ],
+          "model": "gpt-4.1-mini",
+          "items": [
+            {
+              "type": "chore",
+              "scope": "dependencies",
+              "summary": "update dependencies used in the project",
+              "details": [
+                "Updated various dependencies as reflected in package.json and package-lock.json to their newer versions."
+              ],
+              "impact": "internal",
+              "risk": "low",
+              "breaking": false,
+              "tickets": [],
+              "files": [
+                "package.json",
+                "package-lock.json"
+              ],
+              "confidence": 0.9
+            },
+            {
+              "type": "chore",
+              "scope": "changelog generation",
+              "summary": "improve changelog generation scripts and workflows",
+              "details": [
+                "Added new scripts to support changelog generation, ingestion, and rendering.",
+                "Modified GitHub workflows to automate changelog generation and ingestion.",
+                "Added initial changelog files (CHANGELOG.md and CHANGELOG.json)."
+              ],
+              "impact": "user-facing",
+              "risk": "low",
+              "breaking": false,
+              "tickets": [],
+              "files": [
+                ".github/workflows/changelog-generate.yml",
+                ".github/workflows/changelog-ingest.yml",
+                "changelog/CHANGELOG.json",
+                "changelog/CHANGELOG.md",
+                "scripts/build-pr-context.ts",
+                "scripts/changelog-lib.ts",
+                "scripts/generate-changelog.ts",
+                "scripts/ingest-to-mongo.ts",
+                "scripts/render-changelog-md.ts",
+                "scripts/update-changelog.ts"
+              ],
+              "confidence": 0.9
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }
-
