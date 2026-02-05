@@ -33,18 +33,19 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: npx tsx scripts/generate-changelog.ts
-        # writes changelog/generated/pr-<num>.json
+        # writes ./.tmp/ai-changelog.json
 
-      - name: Render Markdown for humans
-        run: npx tsx scripts/render-changelog-md.ts
-        # writes changelog/generated/pr-<num>.md
+      - name: Consolidate into canonical changelog files
+        run: npx tsx scripts/update-changelog.ts
+        # updates changelog/CHANGELOG.json and changelog/CHANGELOG.md
 
       - name: Create PR for review
         uses: peter-evans/create-pull-request@v6
         with:
-          branch: chore/changelog-pr-${{ github.event.pull_request.number }}
-          title: "chore(changelog): add entry for PR #${{ github.event.pull_request.number }}"
-          commit-message: "chore(changelog): PR #${{ github.event.pull_request.number }}"
-          body: "Auto-generated changelog entry. Please review/edit before merge."
+          branch: chore/changelog
+          title: "chore(changelog): update consolidated changelog"
+          commit-message: "chore(changelog): update consolidated changelog (PR #${{ github.event.pull_request.number }})"
+          body: "Auto-generated consolidated changelog update for merged PR #${{ github.event.pull_request.number }}. Please review/edit before merge."
           add-paths: |
-            changelog/generated/
+            changelog/CHANGELOG.json
+            changelog/CHANGELOG.md
