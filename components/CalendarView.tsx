@@ -201,6 +201,7 @@ export default function CalendarView({
   // Mobile modal state
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const isMobileModalOpen = selectedDay !== null;
+  const [isMobileActionPending, setIsMobileActionPending] = useState(false);
 
   // Handle day cell click (mobile only)
   const handleDayCellClick = (day: Date, e: React.MouseEvent) => {
@@ -245,15 +246,32 @@ export default function CalendarView({
   }, [sessions]);
 
   const [currentMonth, setCurrentMonth] = useState(() => {
-    // If month/year values are available, use them to initialize the calendar view
-    // This shows the calendar starting from the selected month, not the actual start date
-    if (book.startMonth && book.startYear) {
-      const monthRange = getMonthDateRange(book.startMonth, book.startYear);
-      return startOfMonth(monthRange.start);
+    const todayMonth = startOfMonth(new Date());
+
+    // Determine month bounds for initialization.
+    let startBound: Date;
+    let endBound: Date;
+
+    if (book.startMonth && book.endMonth && book.startYear && book.endYear) {
+      const startRange = getMonthDateRange(book.startMonth, book.startYear);
+      const endRange = getMonthDateRange(book.endMonth, book.endYear);
+      startBound = startOfMonth(startRange.start);
+      endBound = startOfMonth(endRange.start);
+    } else {
+      const start = parseDateFromStorage(book.startDate);
+      const end = parseDateFromStorage(book.endDate);
+      startBound = startOfMonth(start);
+      endBound = startOfMonth(end);
     }
-    // Fall back to actual start date if month/year not available
-    const start = parseDateFromStorage(book.startDate);
-    return startOfMonth(start);
+
+    // Open on current month when it's inside the reading period.
+    if (todayMonth >= startBound && todayMonth <= endBound) {
+      return todayMonth;
+    }
+
+    // Otherwise clamp to nearest relevant month.
+    if (todayMonth < startBound) return startBound;
+    return endBound;
   });
 
   const readingPeriod = useMemo(() => {
@@ -679,6 +697,30 @@ export default function CalendarView({
     await handlePagesUpdate(date, pages);
   };
 
+  const handleMobileReadToggle = async (date: Date) => {
+    if (isMobileActionPending) return;
+    setIsMobileActionPending(true);
+    try {
+      await handleDayToggle(date);
+      // Make sure redistributed planned pages are visible after mobile actions.
+      await queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+    } finally {
+      setIsMobileActionPending(false);
+    }
+  };
+
+  const handleMobileMissedToggle = async (date: Date) => {
+    if (isMobileActionPending) return;
+    setIsMobileActionPending(true);
+    try {
+      await handleMissedToggle(date);
+      // Make sure redistributed planned pages are visible after mobile actions.
+      await queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+    } finally {
+      setIsMobileActionPending(false);
+    }
+  };
+
   const navigateMonth = (direction: "prev" | "next") => {
     setCurrentMonth((current) => {
       const newMonth =
@@ -1014,7 +1056,7 @@ export default function CalendarView({
                   {/* Mobile: Show minimal info at bottom */}
                   <div className="mt-auto flex items-center justify-center sm:hidden">
                     {isRead && (
-                      <div className="truncate text-[9px] font-medium text-green-800 dark:text-green-100">
+                      <div className="truncate text-[9px] font-medium text-green-800 dark:text-green-100 leading-2.5">
                         <span className="block">
                           Plan:
                           {plannedPages}
@@ -1086,12 +1128,9 @@ export default function CalendarView({
                 false
               }
               canEdit={canEdit}
-              onReadToggle={() => {
-                handleDayToggle(selectedDay);
-              }}
-              onMissedToggle={() => {
-                handleMissedToggle(selectedDay);
-              }}
+              isActionPending={isMobileActionPending}
+              onReadToggle={() => handleMobileReadToggle(selectedDay)}
+              onMissedToggle={() => handleMobileMissedToggle(selectedDay)}
               inputValue={
                 inputValues.get(formatDateForStorage(selectedDay)) ??
                 (
@@ -1123,8 +1162,9 @@ interface DayDetailModalProps {
   isRead: boolean;
   isMissed: boolean;
   canEdit: boolean;
-  onReadToggle: () => void;
-  onMissedToggle: () => void;
+  isActionPending: boolean;
+  onReadToggle: () => Promise<void>;
+  onMissedToggle: () => Promise<void>;
   inputValue: string;
   onInputChange: (value: string) => void;
   onInputBlur: () => void;
@@ -1137,6 +1177,7 @@ function DayDetailModal({
   isRead,
   isMissed,
   canEdit,
+  isActionPending,
   onReadToggle,
   onMissedToggle,
   inputValue,
@@ -1166,8 +1207,10 @@ function DayDetailModal({
             {/* Read Checkbox */}
             {!isMissed && (
               <button
-                onClick={onReadToggle}
-                disabled={!canEdit}
+                onClick={() => {
+                  void onReadToggle();
+                }}
+                disabled={!canEdit || isActionPending}
                 className={`flex h-12 w-12 flex-col items-center justify-center gap-1 rounded-lg border-2 transition-all ${
                   isRead
                     ? "border-green-600 bg-green-600 text-white dark:border-green-500 dark:bg-green-500"
@@ -1219,8 +1262,10 @@ function DayDetailModal({
             {/* Missed Checkbox */}
             {!isRead && (
               <button
-                onClick={onMissedToggle}
-                disabled={!canEdit}
+                onClick={() => {
+                  void onMissedToggle();
+                }}
+                disabled={!canEdit || isActionPending}
                 className={`flex h-12 w-12 flex-col items-center justify-center gap-1 rounded-lg border-2 transition-all ${
                   isMissed
                     ? "border-red-600 bg-red-600 text-white dark:border-red-500 dark:bg-red-500"
