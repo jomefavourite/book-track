@@ -559,3 +559,143 @@ export const getPublicBook = query({
     return result;
   },
 });
+
+export const getPublicBooksByUserId = query({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const allBooks = await ctx.db
+      .query("books")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    const books = allBooks.filter(
+      (book) => book.isPublic && !(book.isArchived ?? false)
+    );
+
+    const booksWithProgress = await Promise.all(
+      books.map(async (book) => {
+        const sessions = await ctx.db
+          .query("readingSessions")
+          .withIndex("by_book", (q) => q.eq("bookId", book._id))
+          .collect();
+
+        const totalPagesRead = sessions.reduce((sum, session) => {
+          if (session.isRead && !session.isMissed) {
+            return sum + (session.actualPages || session.plannedPages);
+          }
+          return sum;
+        }, 0);
+
+        const progress = (totalPagesRead / book.totalPages) * 100;
+
+        const result: typeof book & { progress: number } = {
+          ...book,
+          progress,
+        };
+
+        if (!book.showCreatorName) {
+          result.creatorName = undefined;
+        }
+        if (!book.showCreatorEmail) {
+          result.creatorEmail = undefined;
+        }
+
+        return result;
+      })
+    );
+
+    return booksWithProgress;
+  },
+});
+
+export const getBooksForProfile = query({
+  args: {
+    profileUserId: v.string(),
+    viewerUserId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const actualViewerId = identity?.subject ?? null;
+    const isOwner =
+      actualViewerId != null && actualViewerId === args.profileUserId;
+
+    const allBooks = await ctx.db
+      .query("books")
+      .withIndex("by_user", (q) => q.eq("userId", args.profileUserId))
+      .order("desc")
+      .collect();
+
+    const books = allBooks.filter((book) => !(book.isArchived ?? false));
+
+    if (!isOwner) {
+      const publicOnly = books.filter((book) => book.isPublic);
+      const booksWithProgress = await Promise.all(
+        publicOnly.map(async (book) => {
+          const sessions = await ctx.db
+            .query("readingSessions")
+            .withIndex("by_book", (q) => q.eq("bookId", book._id))
+            .collect();
+
+          const totalPagesRead = sessions.reduce((sum, session) => {
+            if (session.isRead && !session.isMissed) {
+              return sum + (session.actualPages || session.plannedPages);
+            }
+            return sum;
+          }, 0);
+
+          const progress = (totalPagesRead / book.totalPages) * 100;
+
+          const result: typeof book & { progress: number } = {
+            ...book,
+            progress,
+          };
+
+          if (!book.showCreatorName) {
+            result.creatorName = undefined;
+          }
+          if (!book.showCreatorEmail) {
+            result.creatorEmail = undefined;
+          }
+
+          return result;
+        })
+      );
+
+      return booksWithProgress;
+    }
+
+    const booksWithProgress = await Promise.all(
+      books.map(async (book) => {
+        const sessions = await ctx.db
+          .query("readingSessions")
+          .withIndex("by_book", (q) => q.eq("bookId", book._id))
+          .collect();
+
+        const totalPagesRead = sessions.reduce((sum, session) => {
+          if (session.isRead && !session.isMissed) {
+            return sum + (session.actualPages || session.plannedPages);
+          }
+          return sum;
+        }, 0);
+
+        const progress = (totalPagesRead / book.totalPages) * 100;
+
+        const result: typeof book & { progress: number } = {
+          ...book,
+          progress,
+        };
+
+        if (!book.showCreatorName) {
+          result.creatorName = undefined;
+        }
+        if (!book.showCreatorEmail) {
+          result.creatorEmail = undefined;
+        }
+
+        return result;
+      })
+    );
+
+    return booksWithProgress;
+  },
+});

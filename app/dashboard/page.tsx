@@ -37,6 +37,17 @@ export default function Dashboard() {
     enabled: isLoaded && !!user?.id && activeTab === "archived",
   });
 
+  const { data: convexUser } = useQuery({
+    ...convexQuery(api.users.getUserByClerkId, {
+      clerkId: user?.id ?? "",
+    }),
+    enabled: !!user?.id,
+  });
+
+  const profileHref = user?.id
+    ? `/user/${convexUser?.slug ?? user.id}`
+    : "#";
+
   const isPending = activeTab === "active" ? booksPending : archivedPending;
   const booksWithProgress =
     activeTab === "active" ? books || [] : archivedBooks || [];
@@ -144,14 +155,21 @@ export default function Dashboard() {
                 public page to explore all public reading journeys and get
                 inspiration for your own reading goals.
               </p>
-              <Button
-                asChild
-                variant="default"
-                size="sm"
-                className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-              >
-                <Link href="/public">View Public Books →</Link>
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  asChild
+                  variant="default"
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                >
+                  <Link href="/public">View Public Books →</Link>
+                </Button>
+                {profileHref !== "#" && (
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={profileHref}>My public profile</Link>
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>

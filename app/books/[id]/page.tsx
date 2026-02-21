@@ -329,9 +329,14 @@ export default function BookDetailPage() {
             {isPublicBook && (book.creatorName || book.creatorEmail) && (
               <p className="italic">
                 Created by:{" "}
-                {book.creatorName ||
-                  book.creatorEmail?.split("@")[0] ||
-                  "Anonymous"}
+                <Link
+                  href={`/user/${book.userId}`}
+                  className="text-primary underline hover:no-underline"
+                >
+                  {book.creatorName ||
+                    book.creatorEmail?.split("@")[0] ||
+                    "Anonymous"}
+                </Link>
               </p>
             )}
           </div>

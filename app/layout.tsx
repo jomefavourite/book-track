@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ConvexClientProvider } from "@/lib/convex";
+import SyncUser from "@/components/SyncUser";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -66,7 +67,10 @@ export default function RootLayout({
             disableTransitionOnChange
             storageKey="book-track-theme"
           >
-            <ConvexClientProvider>{children}</ConvexClientProvider>
+            <ConvexClientProvider>
+            <SyncUser />
+            {children}
+          </ConvexClientProvider>
           </ThemeProvider>
         </ClerkProvider>
         <Analytics />

@@ -11,6 +11,7 @@
 import type * as books from "../books.js";
 import type * as dateUtils from "../dateUtils.js";
 import type * as readingSessions from "../readingSessions.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -22,6 +23,7 @@ declare const fullApi: ApiFromModules<{
   books: typeof books;
   dateUtils: typeof dateUtils;
   readingSessions: typeof readingSessions;
+  users: typeof users;
 }>;
 
 /**

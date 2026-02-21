@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useUser, SignInButton, SignOutButton } from "@clerk/nextjs";
 import { useTheme } from "next-themes";
+import { useQuery } from "@tanstack/react-query";
+import { convexQuery } from "@convex-dev/react-query";
+import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
 import AuthButton from "@/components/AuthButton";
@@ -32,6 +35,17 @@ export default function Navigation({
   const { setTheme, theme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const { data: convexUser } = useQuery({
+    ...convexQuery(api.users.getUserByClerkId, {
+      clerkId: user?.id ?? "",
+    }),
+    enabled: !!user?.id,
+  });
+
+  const profileHref = user?.id
+    ? `/user/${convexUser?.slug ?? user.id}`
+    : "#";
 
   useEffect(() => {
     setMounted(true);
@@ -204,6 +218,11 @@ export default function Navigation({
             </DropdownMenu>
             {showAuth && (
               <>
+                {isSignedIn && profileHref !== "#" && (
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link href={profileHref}>My profile</Link>
+                  </Button>
+                )}
                 <AuthButton />
               </>
             )}
@@ -372,7 +391,30 @@ export default function Navigation({
                   <>
                     <DropdownMenuSeparator />
                     {isSignedIn ? (
-                      <SignOutButton>
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link
+                            href={profileHref}
+                            className="flex cursor-pointer items-center py-3"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="mr-2 h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                              />
+                            </svg>
+                            <span>My profile</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <SignOutButton>
                         <DropdownMenuItem className="cursor-pointer py-3">
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -391,6 +433,7 @@ export default function Navigation({
                           <span>Sign Out</span>
                         </DropdownMenuItem>
                       </SignOutButton>
+                      </>
                     ) : (
                       <SignInButton mode="modal">
                         <DropdownMenuItem
