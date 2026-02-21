@@ -7,6 +7,7 @@ import { useTheme } from "next-themes";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
+import { User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
 import AuthButton from "@/components/AuthButton";
@@ -219,8 +220,11 @@ export default function Navigation({
             {showAuth && (
               <>
                 {isSignedIn && profileHref !== "#" && (
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href={profileHref}>My profile</Link>
+                  <Button variant="ghost" size="sm" asChild className="gap-2">
+                    <Link href={profileHref}>
+                      <User className="h-4 w-4" />
+                      My profile
+                    </Link>
                   </Button>
                 )}
                 <AuthButton />
@@ -395,22 +399,9 @@ export default function Navigation({
                         <DropdownMenuItem asChild>
                           <Link
                             href={profileHref}
-                            className="flex cursor-pointer items-center py-3"
+                            className="flex cursor-pointer items-center gap-2 py-3"
                           >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="mr-2 h-4 w-4"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                              />
-                            </svg>
+                            <User className="h-4 w-4 shrink-0" />
                             <span>My profile</span>
                           </Link>
                         </DropdownMenuItem>
