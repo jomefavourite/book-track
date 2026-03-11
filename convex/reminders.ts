@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import type { Doc } from "./_generated/dataModel";
 import {
   internalAction,
   internalMutation,
@@ -144,8 +145,8 @@ export const checkAndSendReminders = internalAction({
         const hasUnread = await ctx.runQuery(
           internal.reminders.getSessionsForUserAndDate,
           { clerkId: user.clerkId, date: todayStr }
-        ).then((sessions) =>
-          sessions.some((s) => !s.isRead && !(s.isMissed ?? false))
+        ).then((sessions: Doc<"readingSessions">[]) =>
+          sessions.some((s: Doc<"readingSessions">) => !s.isRead && !(s.isMissed ?? false))
         );
         if (!hasUnread) continue;
 
