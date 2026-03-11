@@ -85,7 +85,13 @@ export default function SettingsPage() {
     const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     if (!key) return null;
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
-    const reg = await navigator.serviceWorker.ready;
+    const SW_READY_MS = 8000;
+    const reg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Service worker not ready")), SW_READY_MS)
+      ),
+    ]);
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(key) as BufferSource,
@@ -128,9 +134,8 @@ export default function SettingsPage() {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
 
-      // Request push subscription after showing success so the button doesn't stay loading
+      // Request push subscription only when Push/Both and not yet saved (so we can retry if it failed before)
       if ((channel === "push" || channel === "both") && enabled && !pushPermissionRequested) {
-        setPushPermissionRequested(true);
         const permission = await Notification.requestPermission();
         if (permission === "granted") {
           const sub = await subscribePush();
@@ -142,6 +147,11 @@ export default function SettingsPage() {
               p256dh: json.keys!.p256dh,
               auth: json.keys!.auth,
             });
+            setPushPermissionRequested(true);
+          } else {
+            setSaveError(
+              "Push subscription failed. Set NEXT_PUBLIC_VAPID_PUBLIC_KEY in .env.local (same as Convex VAPID_PUBLIC_KEY) and run a production build (npm run build && npm start)."
+            );
           }
         }
       }
