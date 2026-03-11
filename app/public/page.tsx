@@ -4,6 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import { SignInButton } from "@clerk/nextjs";
+import {
+  BookOpen,
+  CheckCircle2,
+  BookMarked,
+  FileText,
+  Library,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import PublicBookCard from "@/components/PublicBookCard";
@@ -12,6 +19,11 @@ import Navigation from "@/components/Navigation";
 export default function PublicBooksPage() {
   const { data: books, isPending } = useQuery({
     ...convexQuery(api.books.getPublicBooks, {}),
+    enabled: true,
+  });
+
+  const { data: stats, isPending: statsPending } = useQuery({
+    ...convexQuery(api.books.getPublicBooksStats, {}),
     enabled: true,
   });
 
@@ -29,6 +41,69 @@ export default function PublicBooksPage() {
             Discover how others are tracking their reading progress
           </p>
         </div>
+
+        {stats && stats.totalBooks > 0 && (
+          <div className="mb-8">
+            <h2 className="mb-4 text-lg font-semibold text-foreground">
+              Community stats
+            </h2>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+              <Card className="flex flex-col items-center gap-2 p-4 text-center">
+                <div className="rounded-full bg-primary/10 p-2">
+                  <BookOpen className="h-5 w-5 text-primary" />
+                </div>
+                <span className="text-2xl font-bold tabular-nums text-foreground">
+                  {statsPending ? "—" : stats.totalBooks}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {stats.totalBooks === 1 ? "Public book" : "Public books"}
+                </span>
+              </Card>
+              <Card className="flex flex-col items-center gap-2 p-4 text-center">
+                <div className="rounded-full bg-green-500/10 p-2">
+                  <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+                <span className="text-2xl font-bold tabular-nums text-foreground">
+                  {statsPending ? "—" : stats.completed}
+                </span>
+                <span className="text-xs text-muted-foreground">Completed</span>
+              </Card>
+              <Card className="flex flex-col items-center gap-2 p-4 text-center">
+                <div className="rounded-full bg-amber-500/10 p-2">
+                  <BookMarked className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <span className="text-2xl font-bold tabular-nums text-foreground">
+                  {statsPending ? "—" : stats.inProgress}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  In progress
+                </span>
+              </Card>
+              <Card className="flex flex-col items-center gap-2 p-4 text-center">
+                <div className="rounded-full bg-muted p-2">
+                  <Library className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <span className="text-2xl font-bold tabular-nums text-foreground">
+                  {statsPending ? "—" : stats.notStarted}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Not started
+                </span>
+              </Card>
+              <Card className="flex flex-col items-center gap-2 p-4 text-center">
+                <div className="rounded-full bg-blue-500/10 p-2">
+                  <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <span className="text-2xl font-bold tabular-nums text-foreground">
+                  {statsPending ? "—" : stats.totalPagesRead.toLocaleString()}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Pages read
+                </span>
+              </Card>
+            </div>
+          </div>
+        )}
 
         {isPending ? (
           <div className="flex min-h-[400px] items-center justify-center">

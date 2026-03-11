@@ -471,8 +471,8 @@ export const getPublicBooks = query({
       .order("desc")
       .collect();
 
-    // Filter out archived books from public view
-    const books = allBooks.filter((book) => !(book.isArchived ?? false));
+    // Include all public books (archived or not) so archived+public books still appear on public page
+    const books = allBooks;
 
     // Calculate progress and filter creator info based on visibility flags
     const booksWithProgress = await Promise.all(
@@ -510,6 +510,52 @@ export const getPublicBooks = query({
     );
 
     return booksWithProgress;
+  },
+});
+
+export const getPublicBooksStats = query({
+  handler: async (ctx) => {
+    const allBooks = await ctx.db
+      .query("books")
+      .withIndex("by_public", (q) => q.eq("isPublic", true))
+      .collect();
+
+    // Include all public books (archived or not) so community stats reflect archived+public books
+    const books = allBooks;
+
+    let completed = 0;
+    let inProgress = 0;
+    let notStarted = 0;
+    let totalPagesRead = 0;
+
+    for (const book of books) {
+      const sessions = await ctx.db
+        .query("readingSessions")
+        .withIndex("by_book", (q) => q.eq("bookId", book._id))
+        .collect();
+
+      const pagesRead = sessions.reduce((sum, session) => {
+        if (session.isRead && !session.isMissed) {
+          return sum + (session.actualPages ?? session.plannedPages);
+        }
+        return sum;
+      }, 0);
+
+      totalPagesRead += pagesRead;
+      const progress = book.totalPages > 0 ? (pagesRead / book.totalPages) * 100 : 0;
+
+      if (progress >= 100) completed += 1;
+      else if (progress > 0) inProgress += 1;
+      else notStarted += 1;
+    }
+
+    return {
+      totalBooks: books.length,
+      completed,
+      inProgress,
+      notStarted,
+      totalPagesRead,
+    };
   },
 });
 
@@ -568,9 +614,8 @@ export const getPublicBooksByUserId = query({
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .collect();
 
-    const books = allBooks.filter(
-      (book) => book.isPublic && !(book.isArchived ?? false)
-    );
+    // Include all public books (archived or not)
+    const books = allBooks.filter((book) => book.isPublic);
 
     const booksWithProgress = await Promise.all(
       books.map(async (book) => {
@@ -625,10 +670,13 @@ export const getBooksForProfile = query({
       .order("desc")
       .collect();
 
-    const books = allBooks.filter((book) => !(book.isArchived ?? false));
+    // Owner sees all books (including archived). Others see all public books (including archived+public).
+    const books = isOwner
+      ? allBooks
+      : allBooks.filter((book) => book.isPublic);
 
     if (!isOwner) {
-      const publicOnly = books.filter((book) => book.isPublic);
+      const publicOnly = books;
       const booksWithProgress = await Promise.all(
         publicOnly.map(async (book) => {
           const sessions = await ctx.db

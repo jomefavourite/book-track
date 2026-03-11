@@ -39,10 +39,20 @@ This will:
 - Set up the database schema
 
 3. Configure environment variables:
+
 Create a `.env.local` file with:
 ```
 NEXT_PUBLIC_CONVEX_URL=your_convex_url_here
 ```
+
+**Optional – daily reminder notifications (push and/or email):**
+
+- In Convex dashboard → Settings → Environment Variables, set:
+  - `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` (Web Push; generate e.g. with `npx web-push generate-vapid-keys`)
+  - `RESEND_API_KEY` (for email reminders via [Resend](https://resend.com))
+- In `.env.local` (for push subscription in the client):
+  - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` – same value as `VAPID_PUBLIC_KEY`
+  - `NEXT_PUBLIC_APP_URL` (optional) – app URL used in email links (e.g. `https://your-app.vercel.app`)
 
 4. Set up Google OAuth (for authentication):
 - Go to your Convex dashboard

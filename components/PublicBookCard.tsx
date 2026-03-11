@@ -25,6 +25,7 @@ interface PublicBookCardProps {
     creatorName?: string;
     creatorEmail?: string;
     isPublic?: boolean;
+    isArchived?: boolean;
   };
   progress?: number;
   /** When true, show "Public" or "Private" badge based on book.isPublic (e.g. on owner's profile). Default false shows "Public" only. */
@@ -40,10 +41,16 @@ export default function PublicBookCard({
   const endDate = parseDateFromStorage(book.endDate);
 
   const isPublic = book.isPublic ?? true;
+  const isArchived = book.isArchived ?? false;
 
   return (
     <Card className="relative p-4 transition-shadow hover:shadow-lg">
-      <div className="absolute right-2 top-2">
+      <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
+        {showVisibilityBadge && isArchived && (
+          <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+            Archived
+          </span>
+        )}
         {showVisibilityBadge ? (
           <span
             className={`rounded-full px-2 py-1 text-xs font-medium ${

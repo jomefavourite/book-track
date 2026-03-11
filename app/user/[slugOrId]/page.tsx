@@ -201,7 +201,7 @@ export default function UserProfilePage() {
                 <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
                   {displayName}
                 </h1>
-                {profileUser.email && (
+                {isOwnProfile && profileUser.email && (
                   <p className="mt-1 text-sm text-muted-foreground">
                     {profileUser.email}
                   </p>

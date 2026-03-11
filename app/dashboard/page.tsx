@@ -44,9 +44,7 @@ export default function Dashboard() {
     enabled: !!user?.id,
   });
 
-  const profileHref = user?.id
-    ? `/user/${convexUser?.slug ?? user.id}`
-    : "#";
+  const profileHref = user?.id ? `/user/${convexUser?.slug ?? user.id}` : "#";
 
   const isPending = activeTab === "active" ? booksPending : archivedPending;
   const booksWithProgress =
@@ -113,6 +111,9 @@ export default function Dashboard() {
               Track your reading progress
             </p>
           </div>
+          {/* <Button variant="outline" size="sm" asChild>
+            <Link href="/dashboard/settings">Reminder settings</Link>
+          </Button> */}
         </div>
 
         <div className="mb-4 flex gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
@@ -165,7 +166,11 @@ export default function Dashboard() {
                   <Link href="/public">View Public Books →</Link>
                 </Button>
                 {profileHref !== "#" && (
-                  <Button asChild variant="outline" size="sm">
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                  >
                     <Link href={profileHref}>My public profile</Link>
                   </Button>
                 )}
