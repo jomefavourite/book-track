@@ -152,9 +152,12 @@ export default function BookDetailPage() {
     const completedDates = new Set(
       sessions.filter((s) => s.isRead).map((s) => s.date)
     );
-    const unaccountedDays = daysFromStartToToday.filter(
-      (day) => !completedDates.has(formatDateForStorage(day))
-    );
+    const unaccountedDays = daysFromStartToToday.filter((day) => {
+      const dayKey = formatDateForStorage(day);
+      if (completedDates.has(dayKey)) return false;
+      if (sessionsByDate.get(dayKey)?.isMissed) return false;
+      return true;
+    });
     const showExpectedDropdown = unaccountedDays.some((day) =>
       isBefore(day, today)
     );
@@ -435,7 +438,7 @@ export default function BookDetailPage() {
                         size="sm"
                         className="h-auto py-1.5 text-sm text-muted-foreground hover:text-foreground"
                       >
-                        Expected for each day
+                        Expected for each day unaccounted
                         <ChevronDown className="ml-1 h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
