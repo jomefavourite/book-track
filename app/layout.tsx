@@ -6,6 +6,13 @@ import { ConvexClientProvider } from "@/lib/convex";
 import SyncUser from "@/components/SyncUser";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Analytics } from "@vercel/analytics/next";
+import {
+  DEFAULT_DESCRIPTION,
+  DEFAULT_OG_IMAGE,
+  SITE_NAME,
+  absoluteUrl,
+  getMetadataBase,
+} from "@/lib/metadata";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,9 +25,35 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Book-Track",
-  description: "Track your reading progress with calendar and fixed-days modes",
+  metadataBase: getMetadataBase(),
+  applicationName: SITE_NAME,
+  title: {
+    default: SITE_NAME,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: DEFAULT_DESCRIPTION,
   manifest: "/manifest.json",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: SITE_NAME,
+    description: DEFAULT_DESCRIPTION,
+    url: "/",
+    siteName: SITE_NAME,
+    type: "website",
+    images: [
+      {
+        url: absoluteUrl(DEFAULT_OG_IMAGE),
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_NAME,
+    description: DEFAULT_DESCRIPTION,
+    images: [absoluteUrl(DEFAULT_OG_IMAGE)],
+  },
   icons: {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml" },
