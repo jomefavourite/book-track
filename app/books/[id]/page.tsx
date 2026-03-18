@@ -26,7 +26,13 @@ import DaysView from "@/components/DaysView";
 import Navigation from "@/components/Navigation";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Share2, Check } from "lucide-react";
+import { Share2, Check, ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function BookDetailPage() {
   const params = useParams();
@@ -121,19 +127,49 @@ export default function BookDetailPage() {
       endDate
     );
 
+    const sessionsByDate = new Map(sessions.map((s) => [s.date, s]));
+    const plannedPagesForDay = (dayKey: string) =>
+      sessionsByDate.get(dayKey)?.plannedPages ??
+      pageDistribution.get(dayKey) ??
+      0;
+
     const allDays = getAllDaysInRange(startDate, endDate);
     let expectedPageByToday = 0;
+    const daysFromStartToToday: Date[] = [];
 
     for (const day of allDays) {
       const dayKey = formatDateForStorage(day);
-      const dayPages = pageDistribution.get(dayKey) || 0;
+      const dayPages = plannedPagesForDay(dayKey);
 
       if (isBefore(day, today) || isTodayDate(day)) {
         expectedPageByToday += dayPages;
+        daysFromStartToToday.push(day);
       } else {
         break;
       }
     }
+
+    const completedDates = new Set(
+      sessions.filter((s) => s.isRead).map((s) => s.date)
+    );
+    const unaccountedDays = daysFromStartToToday.filter(
+      (day) => !completedDates.has(formatDateForStorage(day))
+    );
+    const showExpectedDropdown = unaccountedDays.some((day) =>
+      isBefore(day, today)
+    );
+
+    let cumulativePlanned = 0;
+    const expectedPerUnaccountedDay = unaccountedDays.map((day, index) => {
+      const dayKey = formatDateForStorage(day);
+      const dayPages = plannedPagesForDay(dayKey);
+      cumulativePlanned += dayPages;
+      return {
+        key: `${dayKey}-${index}`,
+        label: format(day, "MMM d"),
+        expectedPage: totalPagesRead + cumulativePlanned,
+      };
+    });
 
     const progressPercentage = (totalPagesRead / book.totalPages) * 100;
     const isAhead = totalPagesRead > expectedPageByToday;
@@ -148,6 +184,8 @@ export default function BookDetailPage() {
       isBehind,
       pagesDifference,
       totalPages: book.totalPages,
+      showExpectedDropdown,
+      expectedPerUnaccountedDay,
     };
   }, [book, sessions]);
 
@@ -389,6 +427,35 @@ export default function BookDetailPage() {
                     Page {progressSummary.expectedPageByToday}
                   </span>
                 </div>
+                {progressSummary.showExpectedDropdown && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto py-1.5 text-sm text-muted-foreground hover:text-foreground"
+                      >
+                        Expected for each day
+                        <ChevronDown className="ml-1 h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="start"
+                      className="max-h-48 min-w-48 overflow-y-auto"
+                    >
+                      {progressSummary.expectedPerUnaccountedDay.map(
+                        (item) => (
+                          <DropdownMenuItem
+                            key={item.key}
+                            className="cursor-default"
+                          >
+                            {item.label}: Page {item.expectedPage}
+                          </DropdownMenuItem>
+                        )
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 {progressSummary.isAhead &&
                   progressSummary.pagesDifference > 0 && (
                     <div className="mt-2 rounded-md bg-green-100 p-2 text-sm text-green-800 dark:bg-green-900 dark:text-green-200">
