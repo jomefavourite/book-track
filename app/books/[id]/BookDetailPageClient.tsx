@@ -6,19 +6,9 @@ import { convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useUser, SignInButton } from "@clerk/nextjs";
-import {
-  format,
-  differenceInDays,
-  isBefore,
-  isAfter,
-  isToday as isTodayDate,
-} from "date-fns";
-import {
-  parseDateFromStorage,
-  formatDateForStorage,
-  getAllDaysInRange,
-} from "@/lib/dateUtils";
-import { distributePagesAcrossDays } from "@/lib/readingCalculator";
+import { format, differenceInDays } from "date-fns";
+import { parseDateFromStorage } from "@/lib/dateUtils";
+import { computeReadingProgressSummary } from "@/lib/readingProgressSummary";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import CalendarView from "@/components/CalendarView";
@@ -103,94 +93,10 @@ export default function BookDetailPage() {
     }
   };
 
-  // Calculate progress summary
-  const progressSummary = useMemo(() => {
-    if (!book) return null;
-
-    const startDate = parseDateFromStorage(book.startDate);
-    const endDate = parseDateFromStorage(book.endDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Calculate total pages read
-    const totalPagesRead = sessions.reduce((sum, session) => {
-      if (session.isRead) {
-        return sum + (session.actualPages || session.plannedPages || 0);
-      }
-      return sum;
-    }, 0);
-
-    // Calculate what page should be read today
-    const pageDistribution = distributePagesAcrossDays(
-      book.totalPages,
-      startDate,
-      endDate
-    );
-
-    const sessionsByDate = new Map(sessions.map((s) => [s.date, s]));
-    const plannedPagesForDay = (dayKey: string) =>
-      sessionsByDate.get(dayKey)?.plannedPages ??
-      pageDistribution.get(dayKey) ??
-      0;
-
-    const allDays = getAllDaysInRange(startDate, endDate);
-    let expectedPageByToday = 0;
-    const daysFromStartToToday: Date[] = [];
-
-    for (const day of allDays) {
-      const dayKey = formatDateForStorage(day);
-      const dayPages = plannedPagesForDay(dayKey);
-
-      if (isBefore(day, today) || isTodayDate(day)) {
-        expectedPageByToday += dayPages;
-        daysFromStartToToday.push(day);
-      } else {
-        break;
-      }
-    }
-
-    const completedDates = new Set(
-      sessions.filter((s) => s.isRead).map((s) => s.date)
-    );
-    const unaccountedDays = daysFromStartToToday.filter((day) => {
-      const dayKey = formatDateForStorage(day);
-      if (completedDates.has(dayKey)) return false;
-      if (sessionsByDate.get(dayKey)?.isMissed) return false;
-      return true;
-    });
-    const showExpectedDropdown = unaccountedDays.some((day) =>
-      isBefore(day, today)
-    );
-
-    let cumulativePlanned = 0;
-    const expectedPerUnaccountedDay = unaccountedDays.map((day, index) => {
-      const dayKey = formatDateForStorage(day);
-      const dayPages = plannedPagesForDay(dayKey);
-      cumulativePlanned += dayPages;
-      return {
-        key: `${dayKey}-${index}`,
-        label: format(day, "MMM d"),
-        expectedPage: totalPagesRead + cumulativePlanned,
-      };
-    });
-
-    const progressPercentage = (totalPagesRead / book.totalPages) * 100;
-    const isAhead = totalPagesRead > expectedPageByToday;
-    const isBehind = totalPagesRead < expectedPageByToday;
-    const pagesDifference = Math.abs(totalPagesRead - expectedPageByToday);
-
-    return {
-      totalPagesRead,
-      expectedPageByToday,
-      progressPercentage,
-      isAhead,
-      isBehind,
-      pagesDifference,
-      totalPages: book.totalPages,
-      showExpectedDropdown,
-      expectedPerUnaccountedDay,
-    };
-  }, [book, sessions]);
+  const progressSummary = useMemo(
+    () => (book ? computeReadingProgressSummary(book, sessions) : null),
+    [book, sessions]
+  );
 
   // Show private book message first (even if still pending, if we have the error)
   if (isPrivateBookError) {
@@ -459,7 +365,8 @@ export default function BookDetailPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
-                {progressSummary.isAhead &&
+                {progressSummary.showStatusBanner &&
+                  progressSummary.isAhead &&
                   progressSummary.pagesDifference > 0 && (
                     <div className="mt-2 rounded-md bg-green-100 p-2 text-sm text-green-800 dark:bg-green-900 dark:text-green-200">
                       🎉 You're {progressSummary.pagesDifference} page
@@ -467,7 +374,8 @@ export default function BookDetailPage() {
                       of schedule!
                     </div>
                   )}
-                {progressSummary.isBehind &&
+                {progressSummary.showStatusBanner &&
+                  progressSummary.isBehind &&
                   progressSummary.pagesDifference > 0 && (
                     <div className="mt-2 rounded-md bg-amber-100 p-2 text-sm text-amber-800 dark:bg-amber-900 dark:text-amber-200">
                       ⚠️ You're {progressSummary.pagesDifference} page
@@ -475,7 +383,9 @@ export default function BookDetailPage() {
                       schedule. Keep going!
                     </div>
                   )}
-                {!progressSummary.isAhead && !progressSummary.isBehind && (
+                {progressSummary.showStatusBanner &&
+                  !progressSummary.isAhead &&
+                  !progressSummary.isBehind && (
                   <div className="mt-2 rounded-md bg-blue-100 p-2 text-sm text-blue-800 dark:bg-blue-900 dark:text-blue-200">
                     ✓ You're right on track!
                   </div>
