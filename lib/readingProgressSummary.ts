@@ -49,13 +49,17 @@ export interface ReadingProgressSummary {
 /**
  * Computes reading progress summary including:
  * - Schedule-based cumulative expected through today (`scheduledExpectedPageByToday` internally)
- * - When ahead of schedule: displayed "Expected by Today" = pages read + today's planned pages
+ * - When ahead of cumulative schedule: displayed "Expected by Today" = pages read + today's planned pages
+ * - isAhead / isBehind are always relative to that displayed expected (mutually exclusive with on-track)
  * - Unaccounted-day dropdown rows (excludes read and missed days)
+ * - Displayed expectations are capped at book.totalPages (stale vs redistributed per-day plans can otherwise sum above the book)
  */
 export function computeReadingProgressSummary(
   book: ReadingProgressBookInput,
   sessions: ReadingProgressSessionInput[]
 ): ReadingProgressSummary {
+  const capAtBookTotal = (n: number) => Math.min(n, book.totalPages);
+
   const startDate = parseDateFromStorage(book.startDate);
   const endDate = parseDateFromStorage(book.endDate);
   const today = new Date();
@@ -116,7 +120,7 @@ export function computeReadingProgressSummary(
   );
 
   let cumulativePlanned = 0;
-  const expectedPerUnaccountedDay = unaccountedDays.map((day, index) => {
+  const expectedPerUnaccountedDayRaw = unaccountedDays.map((day, index) => {
     const dayKey = formatDateForStorage(day);
     const dayPages = plannedPagesForDay(dayKey);
     cumulativePlanned += dayPages;
@@ -128,13 +132,21 @@ export function computeReadingProgressSummary(
   });
 
   const progressPercentage = (totalPagesRead / book.totalPages) * 100;
-  const isAhead = totalPagesRead > scheduledExpectedPageByToday;
-  const expectedPageByToday = isAhead
+  const aheadOfSchedule = totalPagesRead > scheduledExpectedPageByToday;
+  let expectedPageByToday = aheadOfSchedule
     ? totalPagesRead + todayPlannedPages
     : scheduledExpectedPageByToday;
+  expectedPageByToday = capAtBookTotal(expectedPageByToday);
+
+  const isAhead = totalPagesRead > expectedPageByToday;
   const isBehind = totalPagesRead < expectedPageByToday;
   const pagesDifference = Math.abs(totalPagesRead - expectedPageByToday);
   const showStatusBanner = !isBefore(today, startDate);
+
+  const expectedPerUnaccountedDay = expectedPerUnaccountedDayRaw.map((row) => ({
+    ...row,
+    expectedPage: capAtBookTotal(row.expectedPage),
+  }));
 
   return {
     totalPagesRead,

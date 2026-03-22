@@ -9,6 +9,7 @@ import { useUser, SignInButton } from "@clerk/nextjs";
 import { format, differenceInDays } from "date-fns";
 import { parseDateFromStorage } from "@/lib/dateUtils";
 import { computeReadingProgressSummary } from "@/lib/readingProgressSummary";
+import ReadingProgressStatusBanner from "@/components/ReadingProgressStatusBanner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import CalendarView from "@/components/CalendarView";
@@ -365,31 +366,12 @@ export default function BookDetailPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
-                {progressSummary.showStatusBanner &&
-                  progressSummary.isAhead &&
-                  progressSummary.pagesDifference > 0 && (
-                    <div className="mt-2 rounded-md bg-green-100 p-2 text-sm text-green-800 dark:bg-green-900 dark:text-green-200">
-                      🎉 You're {progressSummary.pagesDifference} page
-                      {progressSummary.pagesDifference !== 1 ? "s" : ""} ahead
-                      of schedule!
-                    </div>
-                  )}
-                {progressSummary.showStatusBanner &&
-                  progressSummary.isBehind &&
-                  progressSummary.pagesDifference > 0 && (
-                    <div className="mt-2 rounded-md bg-amber-100 p-2 text-sm text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                      ⚠️ You're {progressSummary.pagesDifference} page
-                      {progressSummary.pagesDifference !== 1 ? "s" : ""} behind
-                      schedule. Keep going!
-                    </div>
-                  )}
-                {progressSummary.showStatusBanner &&
-                  !progressSummary.isAhead &&
-                  !progressSummary.isBehind && (
-                  <div className="mt-2 rounded-md bg-blue-100 p-2 text-sm text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                    ✓ You're right on track!
-                  </div>
-                )}
+                <ReadingProgressStatusBanner
+                  showStatusBanner={progressSummary.showStatusBanner}
+                  isAhead={progressSummary.isAhead}
+                  isBehind={progressSummary.isBehind}
+                  pagesDifference={progressSummary.pagesDifference}
+                />
               </div>
             </Card>
           )}
