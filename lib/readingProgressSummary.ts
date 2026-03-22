@@ -49,8 +49,11 @@ export interface ReadingProgressSummary {
 /**
  * Computes reading progress summary including:
  * - Schedule-based cumulative expected through today (`scheduledExpectedPageByToday` internally)
- * - When ahead of cumulative schedule: displayed "Expected by Today" = pages read + today's planned pages
- * - isAhead / isBehind are always relative to that displayed expected (mutually exclusive with on-track)
+ * - When ahead of cumulative schedule: displayed "Expected by Today" = pages read + remaining planned for today
+ *   (not full today plan, since totalPagesRead already includes today's actual pages)
+ * - isBehind: totalPagesRead < displayed expectedPageByToday
+ * - isAhead (green banner): ahead of cumulative schedule (read > scheduledExpectedPageByToday)
+ * - pagesDifference: behind vs displayed expected, or pages ahead vs cumulative schedule (behind takes priority)
  * - Unaccounted-day dropdown rows (excludes read and missed days)
  * - Displayed expectations are capped at book.totalPages (stale vs redistributed per-day plans can otherwise sum above the book)
  */
@@ -101,9 +104,15 @@ export function computeReadingProgressSummary(
   }
 
   let todayPlannedPages = 0;
+  let todayActualPages = 0;
   if (!isBefore(today, startDate) && !isAfter(today, endDate)) {
     const todayKey = formatDateForStorage(today);
     todayPlannedPages = plannedPagesForDay(todayKey);
+    const todaySession = sessionsByDate.get(todayKey);
+    if (todaySession?.isRead) {
+      todayActualPages =
+        todaySession.actualPages ?? todaySession.plannedPages ?? 0;
+    }
   }
 
   const completedDates = new Set(
@@ -133,14 +142,23 @@ export function computeReadingProgressSummary(
 
   const progressPercentage = (totalPagesRead / book.totalPages) * 100;
   const aheadOfSchedule = totalPagesRead > scheduledExpectedPageByToday;
+  const remainingTodayPlanned = Math.max(0, todayPlannedPages - todayActualPages);
   let expectedPageByToday = aheadOfSchedule
-    ? totalPagesRead + todayPlannedPages
+    ? totalPagesRead + remainingTodayPlanned
     : scheduledExpectedPageByToday;
   expectedPageByToday = capAtBookTotal(expectedPageByToday);
 
-  const isAhead = totalPagesRead > expectedPageByToday;
+  // Displayed expected uses read + remaining today when ahead of schedule, so read > expected is impossible.
+  // "Ahead" for the green banner is vs cumulative schedule only; amber still wins if behind end-of-day target.
   const isBehind = totalPagesRead < expectedPageByToday;
-  const pagesDifference = Math.abs(totalPagesRead - expectedPageByToday);
+  const isAhead = totalPagesRead > scheduledExpectedPageByToday;
+
+  let pagesDifference = 0;
+  if (isBehind) {
+    pagesDifference = expectedPageByToday - totalPagesRead;
+  } else if (isAhead) {
+    pagesDifference = totalPagesRead - scheduledExpectedPageByToday;
+  }
   const showStatusBanner = !isBefore(today, startDate);
 
   const expectedPerUnaccountedDay = expectedPerUnaccountedDayRaw.map((row) => ({
