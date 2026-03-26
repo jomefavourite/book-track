@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import type { ReadingProgressSummary } from "@/lib/readingProgressSummary";
+import type { ReadingProgressSummary } from '@/lib/readingProgressSummary';
 
 type BannerProps = Pick<
   ReadingProgressSummary,
-  "showStatusBanner" | "isAhead" | "isBehind" | "pagesDifference"
+  'showStatusBanner' | 'isAhead' | 'isBehind' | 'pagesDifference'
 >;
 
 /**
@@ -25,19 +25,19 @@ export default function ReadingProgressStatusBanner({
     return (
       <div className="mt-2 rounded-md bg-amber-100 p-2 text-sm text-amber-800 dark:bg-amber-900 dark:text-amber-200">
         ⚠️ You&apos;re {pagesDifference} page
-        {pagesDifference !== 1 ? "s" : ""} behind schedule. Keep going!
+        {pagesDifference !== 1 ? 's' : ''} behind schedule. Keep going!
       </div>
     );
   }
 
-  if (isAhead && pagesDifference > 0) {
-    return (
-      <div className="mt-2 rounded-md bg-green-100 p-2 text-sm text-green-800 dark:bg-green-900 dark:text-green-200">
-        🎉 You&apos;re {pagesDifference} page
-        {pagesDifference !== 1 ? "s" : ""} ahead of schedule!
-      </div>
-    );
-  }
+  // if (isAhead && pagesDifference > 0) {
+  //   return (
+  //     <div className="mt-2 rounded-md bg-green-100 p-2 text-sm text-green-800 dark:bg-green-900 dark:text-green-200">
+  //       🎉 You&apos;re {pagesDifference} page
+  //       {pagesDifference !== 1 ? "s" : ""} ahead of schedule!
+  //     </div>
+  //   );
+  // }
 
   if (!isAhead && !isBehind) {
     return (
