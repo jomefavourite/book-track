@@ -195,21 +195,10 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
               )}
               <p>{book.totalPages} pages</p>
               <p className="wrap-break-word sm:break-normal">
-                {book.readingMode === "calendar"
-                  ? (() => {
-                      const days = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
-                      // If month/year values are available, show them; otherwise show actual dates
-                      if (
-                        book.startMonth &&
-                        book.endMonth &&
-                        book.startYear &&
-                        book.endYear
-                      ) {
-                        return `${book.startMonth} ${book.startYear} - ${book.endMonth} ${book.endYear} (${days} day${days !== 1 ? "s" : ""})`;
-                      }
-                      return `${format(startDate, "MMM d, yyyy")} - ${format(endDate, "MMM d, yyyy")} (${days} day${days !== 1 ? "s" : ""})`;
-                    })()
-                  : `${book.daysToRead} days`}
+                {(() => {
+                  const days = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
+                  return `${format(startDate, "MMMM d, yyyy")} - ${format(endDate, "MMMM d, yyyy")} (${days} day${days !== 1 ? "s" : ""})`;
+                })()}
               </p>
             </div>
           </div>

@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 interface PublicBookCardProps {
   book: {
     _id: Id<"books">;
+    userId?: string;
     name: string;
     author?: string;
     totalPages: number;
@@ -23,27 +24,52 @@ interface PublicBookCardProps {
     daysToRead?: number;
     creatorName?: string;
     creatorEmail?: string;
+    isPublic?: boolean;
+    isArchived?: boolean;
   };
   progress?: number;
+  /** When true, show "Public" or "Private" badge based on book.isPublic (e.g. on owner's profile). Default false shows "Public" only. */
+  showVisibilityBadge?: boolean;
 }
 
 export default function PublicBookCard({
   book,
   progress = 0,
+  showVisibilityBadge = false,
 }: PublicBookCardProps) {
   const startDate = parseDateFromStorage(book.startDate);
   const endDate = parseDateFromStorage(book.endDate);
 
+  const isPublic = book.isPublic ?? true;
+  const isArchived = book.isArchived ?? false;
+
   return (
     <Card className="relative p-4 transition-shadow hover:shadow-lg">
-      <div className="absolute right-2 top-2">
-        <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
-          Public
-        </span>
+      <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
+        {showVisibilityBadge && isArchived && (
+          <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+            Archived
+          </span>
+        )}
+        {showVisibilityBadge ? (
+          <span
+            className={`rounded-full px-2 py-1 text-xs font-medium ${
+              isPublic
+                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {isPublic ? "Public" : "Private"}
+          </span>
+        ) : (
+          <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
+            Public
+          </span>
+        )}
       </div>
       <Link
         href={`/books/${book._id}`}
-        className="flex h-full flex-col justify-between"
+        className="flex flex-col justify-between"
       >
         <div>
           <h3 className="mb-2 pr-16 text-xl font-semibold text-card-foreground">
@@ -51,31 +77,15 @@ export default function PublicBookCard({
           </h3>
           <div className="mb-3 space-y-1 text-sm text-muted-foreground">
             {book.author && (
-              <p className="font-medium text-foreground">
-                by {book.author}
-              </p>
+              <p className="font-medium text-foreground">by {book.author}</p>
             )}
             <p>{book.totalPages} pages</p>
             <p>
-              {book.readingMode === "calendar"
-                ? (() => {
-                    const days = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
-                    // If month/year values are available, show them; otherwise show actual dates
-                    if (book.startMonth && book.endMonth && book.startYear && book.endYear) {
-                      return `${book.startMonth} ${book.startYear} - ${book.endMonth} ${book.endYear} (${days} day${days !== 1 ? "s" : ""})`;
-                    }
-                    return `${format(startDate, "MMM d, yyyy")} - ${format(endDate, "MMM d, yyyy")} (${days} day${days !== 1 ? "s" : ""})`;
-                  })()
-                : `${book.daysToRead} days`}
+              {(() => {
+                const days = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
+                return `${format(startDate, "MMMM d, yyyy")} - ${format(endDate, "MMMM d, yyyy")} (${days} day${days !== 1 ? "s" : ""})`;
+              })()}
             </p>
-            {(book.creatorName || book.creatorEmail) && (
-              <p className="text-xs italic">
-                by{" "}
-                {book.creatorName ||
-                  book.creatorEmail?.split("@")[0] ||
-                  "Anonymous"}
-              </p>
-            )}
           </div>
         </div>
 
@@ -84,10 +94,32 @@ export default function PublicBookCard({
             <span>Progress</span>
             <span>{Math.round(progress)}%</span>
           </div>
-          <Progress value={Math.min(progress, 100)} className="h-2" />
+          <Progress
+            value={Math.min(progress, 100)}
+            className="h-2"
+          />
         </div>
       </Link>
+
+      {(book.creatorName || book.creatorEmail) && (
+        <p className="mt-2 text-xs italic text-muted-foreground">
+          by{" "}
+          {book.userId ? (
+            <Link
+              href={`/user/${book.userId}`}
+              className="text-primary underline hover:no-underline"
+            >
+              {book.creatorName ||
+                book.creatorEmail?.split("@")[0] ||
+                "Anonymous"}
+            </Link>
+          ) : (
+            book.creatorName ||
+            book.creatorEmail?.split("@")[0] ||
+            "Anonymous"
+          )}
+        </p>
+      )}
     </Card>
   );
 }
-

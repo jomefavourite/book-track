@@ -2,6 +2,32 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  users: defineTable({
+    clerkId: v.string(),
+    name: v.optional(v.string()),
+    email: v.optional(v.string()),
+    imageUrl: v.optional(v.string()),
+    slug: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    // Reminder settings
+    remindersEnabled: v.optional(v.boolean()),
+    reminder1Time: v.optional(v.string()),
+    reminder2Time: v.optional(v.string()),
+    reminderChannel: v.optional(
+      v.union(
+        v.literal("push"),
+        v.literal("email"),
+        v.literal("both")
+      )
+    ),
+    timezone: v.optional(v.string()),
+    reminder1LastSentDate: v.optional(v.string()),
+    reminder2LastSentDate: v.optional(v.string()),
+  })
+    .index("by_clerk_id", ["clerkId"])
+    .index("by_slug", ["slug"]),
+
   books: defineTable({
     userId: v.string(),
     name: v.string(),
@@ -22,7 +48,7 @@ export default defineSchema({
     showCreatorEmail: v.optional(v.boolean()),
     creatorName: v.optional(v.string()),
     creatorEmail: v.optional(v.string()),
-    isArchived: v.boolean(),
+    isArchived: v.optional(v.boolean()),
   })
     .index("by_user", ["userId"])
     .index("by_user_and_order", ["userId", "bookOrder"])
@@ -35,9 +61,18 @@ export default defineSchema({
     plannedPages: v.number(),
     actualPages: v.optional(v.number()),
     isRead: v.boolean(),
+    isMissed: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index("by_book", ["bookId"])
     .index("by_book_and_date", ["bookId", "date"])
     .index("by_user", ["userId"]),
+
+  pushSubscriptions: defineTable({
+    userId: v.id("users"),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+    createdAt: v.number(),
+  }).index("by_user", ["userId"]),
 });

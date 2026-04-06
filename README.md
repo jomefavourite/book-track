@@ -39,10 +39,36 @@ This will:
 - Set up the database schema
 
 3. Configure environment variables:
+
 Create a `.env.local` file with:
 ```
 NEXT_PUBLIC_CONVEX_URL=your_convex_url_here
 ```
+
+**Optional – daily reminder notifications (push and/or email):**
+
+- In **Convex dashboard** → **Settings** → **Environment Variables**, set (these run in the Convex backend):
+  - `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` (Web Push; generate with `npx web-push generate-vapid-keys`)
+  - `RESEND_API_KEY` (for email reminders via [Resend](https://resend.com))
+- In `.env.local` (for the Next.js app / push subscription in the browser):
+  - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` – same value as `VAPID_PUBLIC_KEY` (so the client can subscribe to push)
+  - `NEXT_PUBLIC_APP_URL` (optional) – app URL used in email links (e.g. `https://your-app.vercel.app`)
+
+**Testing reminders locally**
+
+1. **Env checklist**
+   - Convex: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `RESEND_API_KEY` (dashboard → Settings → Environment Variables).
+   - App: `NEXT_PUBLIC_VAPID_PUBLIC_KEY` in `.env.local` (same as `VAPID_PUBLIC_KEY`).
+   - Restart `npx convex dev` after changing Convex env vars.
+
+2. **Push**
+   - The service worker is disabled in `npm run dev`, so **push only works when running a production build**: `npm run build && npm start` (or deploy). Then enable reminders in **Dashboard → Settings**, choose **Push** (or **Both**), set a time and timezone, then **Save settings** (grant notification permission when prompted).
+
+3. **Email**
+   - Ensure your user has an email (from Clerk / profile). Choose **Email** or **Both** in reminder settings and save. Resend’s free tier uses `notifications@resend.dev`; verify your domain in Resend for production.
+
+4. **Cron**
+   - Real reminders run every 15 minutes (see `convex/crons.ts`) and only when your local time (in your chosen timezone) falls in a 15‑minute window around your reminder time, and you have unread reading sessions for today.
 
 4. Set up Google OAuth (for authentication):
 - Go to your Convex dashboard

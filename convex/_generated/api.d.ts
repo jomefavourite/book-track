@@ -9,8 +9,12 @@
  */
 
 import type * as books from "../books.js";
+import type * as crons from "../crons.js";
 import type * as dateUtils from "../dateUtils.js";
 import type * as readingSessions from "../readingSessions.js";
+import type * as reminders from "../reminders.js";
+import type * as remindersSend from "../remindersSend.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -20,8 +24,12 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   books: typeof books;
+  crons: typeof crons;
   dateUtils: typeof dateUtils;
   readingSessions: typeof readingSessions;
+  reminders: typeof reminders;
+  remindersSend: typeof remindersSend;
+  users: typeof users;
 }>;
 
 /**
