@@ -14,7 +14,6 @@ export const createSession = mutation({
     plannedPages: v.number(),
     actualPages: v.optional(v.number()),
     isRead: v.boolean(),
-    isMissed: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = args.userId;
@@ -31,18 +30,13 @@ export const createSession = mutation({
       throw new Error("Unauthorized");
     }
 
-    // Ensure isRead and isMissed are mutually exclusive
-    const isRead = args.isMissed ? false : args.isRead;
-    const isMissed = args.isRead ? false : (args.isMissed ?? false);
-
     const sessionId = await ctx.db.insert("readingSessions", {
       bookId: args.bookId,
       userId,
       date: args.date,
       plannedPages: args.plannedPages,
       actualPages: args.actualPages,
-      isRead,
-      isMissed,
+      isRead: args.isRead,
       createdAt: Date.now(),
     });
 
@@ -98,9 +92,7 @@ export const updateSession = mutation({
     sessionId: v.id("readingSessions"),
     userId: v.string(),
     actualPages: v.optional(v.number()),
-    plannedPages: v.optional(v.number()),
-    isRead: v.optional(v.boolean()),
-    isMissed: v.optional(v.boolean()),
+    isRead: v.boolean(),
   },
   handler: async (ctx, args) => {
     const userId = args.userId;
@@ -118,39 +110,10 @@ export const updateSession = mutation({
       throw new Error("Unauthorized");
     }
 
-    const updateData: {
-      actualPages?: number;
-      plannedPages?: number;
-      isRead?: boolean;
-      isMissed?: boolean;
-    } = {};
-
-    if (args.actualPages !== undefined) {
-      updateData.actualPages = args.actualPages;
-    }
-
-    if (args.plannedPages !== undefined) {
-      updateData.plannedPages = args.plannedPages;
-    }
-
-    // Handle isRead and isMissed - ensure they're mutually exclusive
-    if (args.isRead !== undefined) {
-      updateData.isRead = args.isRead;
-      // If marking as read, ensure isMissed is false
-      if (args.isRead) {
-        updateData.isMissed = false;
-      }
-    }
-
-    if (args.isMissed !== undefined) {
-      updateData.isMissed = args.isMissed;
-      // If marking as missed, ensure isRead is false
-      if (args.isMissed) {
-        updateData.isRead = false;
-      }
-    }
-
-    await ctx.db.patch(args.sessionId, updateData);
+    await ctx.db.patch(args.sessionId, {
+      actualPages: args.actualPages,
+      isRead: args.isRead,
+    });
   },
 });
 

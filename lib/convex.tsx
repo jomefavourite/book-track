@@ -1,8 +1,6 @@
 "use client";
 
-import { ConvexReactClient } from "convex/react";
-import { ConvexProviderWithClerk } from "convex/react-clerk";
-import { useAuth } from "@clerk/nextjs";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { ConvexQueryClient } from "@convex-dev/react-query";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useMemo, useEffect, useRef } from "react";
@@ -47,21 +45,16 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
 
   // Connect ConvexQueryClient to QueryClient (only once)
   const hasConnected = useRef(false);
-  
   useEffect(() => {
-    if (!hasConnected.current && convexQueryClient && queryClient) {
-      try {
-        convexQueryClient.connect(queryClient);
-        hasConnected.current = true;
-      } catch (error) {
-        console.warn('Error connecting ConvexQueryClient:', error);
-      }
+    if (!hasConnected.current) {
+      convexQueryClient.connect(queryClient);
+      hasConnected.current = true;
     }
   }, [queryClient, convexQueryClient]);
 
   return (
-    <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+    <ConvexProvider client={convex}>
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    </ConvexProviderWithClerk>
+    </ConvexProvider>
   );
 }

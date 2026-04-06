@@ -1,11 +1,5 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import {
-  parseDateFromStorage,
-  formatDateForStorage,
-  getAllDaysInRange,
-  distributePagesAcrossDays,
-} from "./dateUtils";
 
 export const createBook = mutation({
   args: {
@@ -86,7 +80,7 @@ export const getBooks = query({
       .order("desc")
       .collect();
 
-    const books = allBooks.filter((book) => !(book.isArchived ?? false));
+    const books = allBooks.filter((book) => !(book as any).isArchived);
 
     // Calculate progress for each book
     const booksWithProgress = await Promise.all(
@@ -97,8 +91,7 @@ export const getBooks = query({
           .collect();
 
         const totalPagesRead = sessions.reduce((sum, session) => {
-          // Only count pages from read days, exclude missed days
-          if (session.isRead && !session.isMissed) {
+          if (session.isRead) {
             return sum + (session.actualPages || session.plannedPages);
           }
           return sum;
@@ -146,10 +139,11 @@ export const getBook = query({
       return result;
     }
 
-    // If not owner and not public, return null instead of throwing
-    // This allows the frontend to handle the case gracefully
-    // (e.g., show "private book" message instead of error)
-    return null;
+    // If not owner and not public, unauthorized
+    if (args.userId) {
+      throw new Error("Unauthorized");
+    }
+    throw new Error("Not authenticated");
   },
 });
 
@@ -160,16 +154,6 @@ export const updateBook = mutation({
     name: v.optional(v.string()),
     author: v.optional(v.string()),
     totalPages: v.optional(v.number()),
-    readingMode: v.optional(
-      v.union(v.literal("calendar"), v.literal("fixed-days"))
-    ),
-    startMonth: v.optional(v.string()),
-    endMonth: v.optional(v.string()),
-    startYear: v.optional(v.number()),
-    endYear: v.optional(v.number()),
-    daysToRead: v.optional(v.number()),
-    startDate: v.optional(v.string()),
-    endDate: v.optional(v.string()),
     isPublic: v.optional(v.boolean()),
     showCreatorName: v.optional(v.boolean()),
     showCreatorEmail: v.optional(v.boolean()),
@@ -196,14 +180,6 @@ export const updateBook = mutation({
       name?: string;
       author?: string;
       totalPages?: number;
-      readingMode?: "calendar" | "fixed-days";
-      startMonth?: string;
-      endMonth?: string;
-      startYear?: number;
-      endYear?: number;
-      daysToRead?: number;
-      startDate?: string;
-      endDate?: string;
       isPublic?: boolean;
       showCreatorName?: boolean;
       showCreatorEmail?: boolean;
@@ -220,30 +196,6 @@ export const updateBook = mutation({
     if (args.totalPages !== undefined) {
       updates.totalPages = args.totalPages;
     }
-    if (args.readingMode !== undefined) {
-      updates.readingMode = args.readingMode;
-    }
-    if (args.startMonth !== undefined) {
-      updates.startMonth = args.startMonth;
-    }
-    if (args.endMonth !== undefined) {
-      updates.endMonth = args.endMonth;
-    }
-    if (args.startYear !== undefined) {
-      updates.startYear = args.startYear;
-    }
-    if (args.endYear !== undefined) {
-      updates.endYear = args.endYear;
-    }
-    if (args.daysToRead !== undefined) {
-      updates.daysToRead = args.daysToRead;
-    }
-    if (args.startDate !== undefined) {
-      updates.startDate = args.startDate;
-    }
-    if (args.endDate !== undefined) {
-      updates.endDate = args.endDate;
-    }
     if (args.isPublic !== undefined) {
       updates.isPublic = args.isPublic;
     }
@@ -258,71 +210,6 @@ export const updateBook = mutation({
     }
     if (args.creatorEmail !== undefined) {
       updates.creatorEmail = args.creatorEmail;
-    }
-
-    // Determine the final values after update
-    const finalStartDate = args.startDate ?? book.startDate;
-    const finalEndDate = args.endDate ?? book.endDate;
-    const finalTotalPages = args.totalPages ?? book.totalPages;
-
-    // Check if dates or totalPages have changed
-    const datesChanged =
-      args.startDate !== undefined || args.endDate !== undefined;
-    const totalPagesChanged = args.totalPages !== undefined;
-
-    // If dates or totalPages changed, update reading sessions
-    if (datesChanged || totalPagesChanged) {
-      // Get all existing sessions for this book
-      const existingSessions = await ctx.db
-        .query("readingSessions")
-        .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
-        .collect();
-
-      // Calculate new page distribution
-      const newStartDate = parseDateFromStorage(finalStartDate);
-      const newEndDate = parseDateFromStorage(finalEndDate);
-      const newDistribution = distributePagesAcrossDays(
-        finalTotalPages,
-        newStartDate,
-        newEndDate
-      );
-
-      // Create a map of existing sessions by date
-      const existingSessionsMap = new Map();
-      existingSessions.forEach((session) => {
-        existingSessionsMap.set(session.date, session);
-      });
-
-      // Get all days in the new date range
-      const newDays = getAllDaysInRange(newStartDate, newEndDate);
-
-      // Update or create sessions for each day in the new range
-      for (const day of newDays) {
-        const dateKey = formatDateForStorage(day);
-        const newPlannedPages = newDistribution.get(dateKey) ?? 0;
-        const existingSession = existingSessionsMap.get(dateKey);
-
-        if (existingSession) {
-          // Update existing session's plannedPages, preserve isRead, isMissed, actualPages
-          await ctx.db.patch(existingSession._id, {
-            plannedPages: newPlannedPages,
-          });
-        } else {
-          // Create new session for this date
-          await ctx.db.insert("readingSessions", {
-            bookId: args.bookId,
-            userId,
-            date: dateKey,
-            plannedPages: newPlannedPages,
-            isRead: false,
-            createdAt: Date.now(),
-          });
-        }
-      }
-
-      // Note: We preserve sessions outside the new date range
-      // They won't be shown in the UI but won't be deleted
-      // This preserves user data in case they change dates back
     }
 
     await ctx.db.patch(args.bookId, updates);
@@ -346,7 +233,7 @@ export const getArchivedBooks = query({
       .order("desc")
       .collect();
 
-    const books = allBooks.filter((book) => book.isArchived ?? false);
+    const books = allBooks.filter((book) => (book as any).isArchived);
 
     // Calculate progress for each book
     const booksWithProgress = await Promise.all(
@@ -357,8 +244,7 @@ export const getArchivedBooks = query({
           .collect();
 
         const totalPagesRead = sessions.reduce((sum, session) => {
-          // Only count pages from read days, exclude missed days
-          if (session.isRead && !session.isMissed) {
+          if (session.isRead) {
             return sum + (session.actualPages || session.plannedPages);
           }
           return sum;
@@ -471,8 +357,8 @@ export const getPublicBooks = query({
       .order("desc")
       .collect();
 
-    // Include all public books (archived or not) so archived+public books still appear on public page
-    const books = allBooks;
+    // Filter out archived books from public view
+    const books = allBooks.filter((book) => !(book as any).isArchived);
 
     // Calculate progress and filter creator info based on visibility flags
     const booksWithProgress = await Promise.all(
@@ -483,8 +369,7 @@ export const getPublicBooks = query({
           .collect();
 
         const totalPagesRead = sessions.reduce((sum, session) => {
-          // Only count pages from read days, exclude missed days
-          if (session.isRead && !session.isMissed) {
+          if (session.isRead) {
             return sum + (session.actualPages || session.plannedPages);
           }
           return sum;
@@ -510,52 +395,6 @@ export const getPublicBooks = query({
     );
 
     return booksWithProgress;
-  },
-});
-
-export const getPublicBooksStats = query({
-  handler: async (ctx) => {
-    const allBooks = await ctx.db
-      .query("books")
-      .withIndex("by_public", (q) => q.eq("isPublic", true))
-      .collect();
-
-    // Include all public books (archived or not) so community stats reflect archived+public books
-    const books = allBooks;
-
-    let completed = 0;
-    let inProgress = 0;
-    let notStarted = 0;
-    let totalPagesRead = 0;
-
-    for (const book of books) {
-      const sessions = await ctx.db
-        .query("readingSessions")
-        .withIndex("by_book", (q) => q.eq("bookId", book._id))
-        .collect();
-
-      const pagesRead = sessions.reduce((sum, session) => {
-        if (session.isRead && !session.isMissed) {
-          return sum + (session.actualPages ?? session.plannedPages);
-        }
-        return sum;
-      }, 0);
-
-      totalPagesRead += pagesRead;
-      const progress = book.totalPages > 0 ? (pagesRead / book.totalPages) * 100 : 0;
-
-      if (progress >= 100) completed += 1;
-      else if (progress > 0) inProgress += 1;
-      else notStarted += 1;
-    }
-
-    return {
-      totalBooks: books.length,
-      completed,
-      inProgress,
-      notStarted,
-      totalPagesRead,
-    };
   },
 });
 
@@ -603,147 +442,5 @@ export const getPublicBook = query({
     }
 
     return result;
-  },
-});
-
-export const getPublicBooksByUserId = query({
-  args: { userId: v.string() },
-  handler: async (ctx, args) => {
-    const allBooks = await ctx.db
-      .query("books")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .collect();
-
-    // Include all public books (archived or not)
-    const books = allBooks.filter((book) => book.isPublic);
-
-    const booksWithProgress = await Promise.all(
-      books.map(async (book) => {
-        const sessions = await ctx.db
-          .query("readingSessions")
-          .withIndex("by_book", (q) => q.eq("bookId", book._id))
-          .collect();
-
-        const totalPagesRead = sessions.reduce((sum, session) => {
-          if (session.isRead && !session.isMissed) {
-            return sum + (session.actualPages || session.plannedPages);
-          }
-          return sum;
-        }, 0);
-
-        const progress = (totalPagesRead / book.totalPages) * 100;
-
-        const result: typeof book & { progress: number } = {
-          ...book,
-          progress,
-        };
-
-        if (!book.showCreatorName) {
-          result.creatorName = undefined;
-        }
-        if (!book.showCreatorEmail) {
-          result.creatorEmail = undefined;
-        }
-
-        return result;
-      })
-    );
-
-    return booksWithProgress;
-  },
-});
-
-export const getBooksForProfile = query({
-  args: {
-    profileUserId: v.string(),
-    viewerUserId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    const actualViewerId = identity?.subject ?? null;
-    const isOwner =
-      actualViewerId != null && actualViewerId === args.profileUserId;
-
-    const allBooks = await ctx.db
-      .query("books")
-      .withIndex("by_user", (q) => q.eq("userId", args.profileUserId))
-      .order("desc")
-      .collect();
-
-    // Owner sees all books (including archived). Others see all public books (including archived+public).
-    const books = isOwner
-      ? allBooks
-      : allBooks.filter((book) => book.isPublic);
-
-    if (!isOwner) {
-      const publicOnly = books;
-      const booksWithProgress = await Promise.all(
-        publicOnly.map(async (book) => {
-          const sessions = await ctx.db
-            .query("readingSessions")
-            .withIndex("by_book", (q) => q.eq("bookId", book._id))
-            .collect();
-
-          const totalPagesRead = sessions.reduce((sum, session) => {
-            if (session.isRead && !session.isMissed) {
-              return sum + (session.actualPages || session.plannedPages);
-            }
-            return sum;
-          }, 0);
-
-          const progress = (totalPagesRead / book.totalPages) * 100;
-
-          const result: typeof book & { progress: number } = {
-            ...book,
-            progress,
-          };
-
-          if (!book.showCreatorName) {
-            result.creatorName = undefined;
-          }
-          if (!book.showCreatorEmail) {
-            result.creatorEmail = undefined;
-          }
-
-          return result;
-        })
-      );
-
-      return booksWithProgress;
-    }
-
-    const booksWithProgress = await Promise.all(
-      books.map(async (book) => {
-        const sessions = await ctx.db
-          .query("readingSessions")
-          .withIndex("by_book", (q) => q.eq("bookId", book._id))
-          .collect();
-
-        const totalPagesRead = sessions.reduce((sum, session) => {
-          if (session.isRead && !session.isMissed) {
-            return sum + (session.actualPages || session.plannedPages);
-          }
-          return sum;
-        }, 0);
-
-        const progress = (totalPagesRead / book.totalPages) * 100;
-
-        const result: typeof book & { progress: number } = {
-          ...book,
-          progress,
-        };
-
-        if (!book.showCreatorName) {
-          result.creatorName = undefined;
-        }
-        if (!book.showCreatorEmail) {
-          result.creatorEmail = undefined;
-        }
-
-        return result;
-      })
-    );
-
-    return booksWithProgress;
   },
 });

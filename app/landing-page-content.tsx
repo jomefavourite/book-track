@@ -7,7 +7,7 @@ import { SignInButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import Navigation from "@/components/Navigation";
+import ThemeSwitcher from "@/components/ThemeSwitcher";
 import PublicBookCard from "@/components/PublicBookCard";
 
 export default function LandingPage() {
@@ -18,7 +18,24 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <Navigation isLandingPage={true} />
+      <header className="border-b border-border">
+        <div className="mx-auto max-w-6xl px-6 py-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-foreground">Book-Track</h1>
+            <div className="flex items-center gap-4">
+              <SignInButton mode="modal">
+                <Button
+                  variant="default"
+                  size="sm"
+                >
+                  Sign In
+                </Button>
+              </SignInButton>
+              <ThemeSwitcher />
+            </div>
+          </div>
+        </div>
+      </header>
 
       {/* Hero Section */}
       <section className="mx-auto max-w-6xl px-6 py-16 text-center">

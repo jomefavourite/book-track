@@ -1,14 +1,23 @@
-import type { Metadata } from "next";
-import HomePageClient from "./HomePageClient";
-import { createPageMetadata } from "@/lib/metadata";
+"use client";
 
-export const metadata: Metadata = createPageMetadata({
-  title: "Track Your Reading Journey",
-  description:
-    "Plan, track, and share your reading progress with calendar and fixed-days reading modes.",
-  path: "/",
-});
+import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import LandingPageContent from "./landing-page-content";
 
 export default function Home() {
-  return <HomePageClient />;
+  const { user, isLoaded } = useUser();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isLoaded && user) {
+      router.replace("/dashboard");
+    }
+  }, [isLoaded, user, router]);
+
+  if (isLoaded && user) {
+    return null; // Will redirect
+  }
+
+  return <LandingPageContent />;
 }

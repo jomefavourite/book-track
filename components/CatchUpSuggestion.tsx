@@ -1,24 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import {
-  format,
-  parseISO,
-  isBefore,
-  isAfter,
-  isToday as isTodayDate,
-  startOfToday,
-} from "date-fns";
-import {
-  parseDateFromStorage,
-  formatDateForStorage,
-  getAllDaysInRange,
-} from "@/lib/dateUtils";
-import {
-  calculateCatchUpPages,
-  getMissedDays,
-  distributePagesAcrossDays,
-} from "@/lib/readingCalculator";
+import { format, parseISO, isBefore, isAfter, startOfToday } from "date-fns";
+import { parseDateFromStorage, getAllDaysInRange } from "@/lib/dateUtils";
+import { calculateCatchUpPages, getMissedDays } from "@/lib/readingCalculator";
 import { Id } from "@/convex/_generated/dataModel";
 
 interface CatchUpSuggestionProps {
@@ -31,7 +16,6 @@ interface CatchUpSuggestionProps {
   sessions: Array<{
     date: string;
     isRead: boolean;
-    isMissed?: boolean;
     actualPages?: number;
     plannedPages: number;
   }>;
@@ -51,80 +35,25 @@ export default function CatchUpSuggestion({
       return null;
     }
 
-    // Calculate total pages read (matching progress summary logic - all isRead sessions)
-    const totalPagesRead = sessions.reduce((sum, session) => {
-      if (session.isRead) {
-        return sum + (session.actualPages || session.plannedPages || 0);
-      }
-      return sum;
-    }, 0);
-
-    // Calculate expected page by today
-    const pageDistribution = distributePagesAcrossDays(
-      book.totalPages,
-      startDate,
-      endDate
-    );
-
-    const allDays = getAllDaysInRange(startDate, endDate);
-    let expectedPageByToday = 0;
-
-    for (const day of allDays) {
-      const dayKey = formatDateForStorage(day);
-      const dayPages = pageDistribution.get(dayKey) || 0;
-
-      if (isBefore(day, today) || isTodayDate(day)) {
-        expectedPageByToday += dayPages;
-      } else {
-        break;
-      }
-    }
-
-    // If user is ahead or on track, don't show catch-up suggestion
-    if (totalPagesRead >= expectedPageByToday) {
-      return null;
-    }
-
-    // Build a Set of explicitly missed dates to exclude from calculations
-    const explicitlyMissedDates = new Set(
-      sessions.filter((s) => s.isMissed).map((s) => s.date)
-    );
-
-    // Get days that are past and not read (excluding explicitly missed days)
     const completedDates = new Set(
-      sessions.filter((s) => s.isRead && !s.isMissed).map((s) => s.date)
+      sessions.filter((s) => s.isRead).map((s) => s.date)
     );
 
-    // Get missed days, excluding explicitly marked missed days
-    const missedDays = getMissedDays(
-      startDate,
-      endDate,
-      completedDates,
-      explicitlyMissedDates
-    );
+    const missedDays = getMissedDays(startDate, endDate, completedDates);
 
-    // Only show catch-up if there are missed days
     if (missedDays.length === 0) {
       return null;
     }
 
-    // Calculate total pages read for catch-up calculation (excluding missed days)
-    const totalPagesReadForCatchUp = sessions.reduce((sum, session) => {
-      // Only count pages from read days, exclude missed days
-      if (session.isRead && !session.isMissed) {
+    const totalPagesRead = sessions.reduce((sum, session) => {
+      if (session.isRead) {
         return sum + (session.actualPages || session.plannedPages);
       }
       return sum;
     }, 0);
 
-    const remainingPages = book.totalPages - totalPagesReadForCatchUp;
-
-    // Calculate remaining days excluding explicitly missed days
-    const allRemainingDays = getAllDaysInRange(today, endDate);
-    const remainingDays = allRemainingDays.filter((day) => {
-      const dayKey = formatDateForStorage(day);
-      return !explicitlyMissedDates.has(dayKey);
-    }).length;
+    const remainingPages = book.totalPages - totalPagesRead;
+    const remainingDays = getAllDaysInRange(today, endDate).length;
 
     if (remainingDays <= 0) {
       return {
@@ -136,20 +65,17 @@ export default function CatchUpSuggestion({
 
     const suggestedPages = calculateCatchUpPages(
       book.totalPages,
-      totalPagesReadForCatchUp,
+      totalPagesRead,
       remainingDays
     );
 
-    // Count only past unread days (explicitly missed days are excluded)
-    const totalMissedDays = missedDays.length;
-
     return {
       type: "catchup" as const,
-      missedDays: totalMissedDays,
+      missedDays: missedDays.length,
       remainingPages,
       remainingDays,
       suggestedPages,
-      message: `You've missed ${totalMissedDays} day(s). To catch up, read ${suggestedPages} pages today.`,
+      message: `You've missed ${missedDays.length} day(s). To catch up, read ${suggestedPages} pages today.`,
     };
   }, [book, sessions]);
 
@@ -166,19 +92,17 @@ export default function CatchUpSuggestion({
       }`}
     >
       <h3 className="mb-2 font-semibold">
-        {suggestion.type === "overdue"
-          ? "⚠️ Reading Period Ended"
-          : "📚 Catch-Up Suggestion"}
+        {suggestion.type === "overdue" ? "⚠️ Reading Period Ended" : "📚 Catch-Up Suggestion"}
       </h3>
       <p className="text-sm">{suggestion.message}</p>
       {suggestion.type === "catchup" && (
         <div className="mt-2 text-sm">
           <p>
-            Remaining: {suggestion.remainingPages} pages over{" "}
-            {suggestion.remainingDays} days
+            Remaining: {suggestion.remainingPages} pages over {suggestion.remainingDays} days
           </p>
         </div>
       )}
     </div>
   );
 }
+

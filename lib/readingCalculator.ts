@@ -22,7 +22,10 @@ export function generateReadingOptions(totalPages: number): ReadingOption[] {
   return options;
 }
 
-export function calculateDailyPages(totalPages: number, days: number): number {
+export function calculateDailyPages(
+  totalPages: number,
+  days: number
+): number {
   return Math.ceil(totalPages / days);
 }
 
@@ -72,12 +75,7 @@ export function calculateCatchUpPages(
 export function distributePagesSequentially(
   books: Array<{ totalPages: number; days: number }>,
   availableDays: number
-): Array<{
-  bookIndex: number;
-  startDay: number;
-  endDay: number;
-  pagesPerDay: number;
-}> {
+): Array<{ bookIndex: number; startDay: number; endDay: number; pagesPerDay: number }> {
   const schedule: Array<{
     bookIndex: number;
     startDay: number;
@@ -90,7 +88,7 @@ export function distributePagesSequentially(
   for (let i = 0; i < books.length; i++) {
     const book = books[i];
     const daysForBook = Math.min(book.days, availableDays - currentDay);
-
+    
     if (daysForBook <= 0) {
       break;
     }
@@ -121,8 +119,7 @@ export function calculateRemainingPages(
 export function getMissedDays(
   startDate: Date,
   endDate: Date,
-  completedDates: Set<string>,
-  excludedDates?: Set<string>
+  completedDates: Set<string>
 ): Date[] {
   const allDays = getAllDaysInRange(startDate, endDate);
   const today = new Date();
@@ -132,7 +129,7 @@ export function getMissedDays(
     const dayKey = formatDateForStorage(day);
     const isPast = day < today;
     const isMissed = !completedDates.has(dayKey);
-    const isExcluded = excludedDates?.has(dayKey) ?? false;
-    return isPast && isMissed && !isExcluded;
+    return isPast && isMissed;
   });
 }
+
