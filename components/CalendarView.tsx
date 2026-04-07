@@ -48,6 +48,7 @@ interface CalendarViewProps {
     | "startDate"
     | "endDate"
     | "totalPages"
+    | "totalChapters"
     | "progressStyle"
     | "markedCompleteAt"
   > & {
@@ -64,6 +65,14 @@ export default function CalendarView({
   const { user, isLoaded } = useUser();
   const queryClient = useQueryClient();
   const chapterMode = (book.progressStyle ?? "pages") === "chapters";
+  const chapterDropdownMax =
+    chapterMode &&
+    typeof book.totalChapters === "number" &&
+    Number.isInteger(book.totalChapters) &&
+    book.totalChapters > 0
+      ? book.totalChapters
+      : null;
+  const useChapterDropdown = chapterDropdownMax !== null;
   const { data: sessionsQuery, isPending } = useQuery({
     ...convexQuery(api.readingSessions.getSessionsForBook, {
       bookId,
@@ -241,9 +250,7 @@ export default function CalendarView({
         if (chapterMode) {
           newChapterValues.set(
             session.date,
-            session.chapterNumber != null
-              ? String(session.chapterNumber)
-              : "1"
+            session.chapterNumber != null ? String(session.chapterNumber) : "1"
           );
         }
       }
@@ -378,12 +385,69 @@ export default function CalendarView({
     return date >= readingPeriod.start && date <= readingPeriod.end;
   };
 
+  const readingPeriodDays = useMemo(
+    () => getAllDaysInRange(readingPeriod.start, readingPeriod.end),
+    [readingPeriod]
+  );
+
+  const chapterSuggestions = useMemo(() => {
+    const suggestions = new Map<string, number>();
+    let lastKnownChapter = 1;
+
+    readingPeriodDays.forEach((day) => {
+      const dateKey = formatDateForStorage(day);
+      const sessionChapter = sessionsMap.get(dateKey)?.chapterNumber;
+      if (
+        sessionChapter !== undefined &&
+        sessionChapter !== null &&
+        sessionChapter >= 1
+      ) {
+        lastKnownChapter = sessionChapter;
+      }
+
+      if (chapterDropdownMax !== null) {
+        lastKnownChapter = Math.min(lastKnownChapter, chapterDropdownMax);
+      }
+
+      suggestions.set(dateKey, Math.max(1, lastKnownChapter));
+    });
+
+    return suggestions;
+  }, [readingPeriodDays, sessionsMap, chapterDropdownMax]);
+
+  const normalizeChapterValue = (value: number) => {
+    const normalized = Math.max(1, Math.floor(value));
+    return chapterDropdownMax !== null
+      ? Math.min(normalized, chapterDropdownMax)
+      : normalized;
+  };
+
   const defaultChapterForDate = (dateKey: string) => {
     const raw = chapterInputValues.get(dateKey);
-    if (raw === undefined || raw === "") return 1;
+    if (raw === undefined || raw === "") {
+      const sessionChapter = sessionsMap.get(dateKey)?.chapterNumber;
+      if (sessionChapter !== undefined && sessionChapter !== null) {
+        return normalizeChapterValue(sessionChapter);
+      }
+      return chapterSuggestions.get(dateKey) ?? 1;
+    }
     const n = Number(raw);
-    if (isNaN(n) || n < 1) return 1;
-    return Math.floor(n);
+    if (isNaN(n) || n < 1) return chapterSuggestions.get(dateKey) ?? 1;
+    return normalizeChapterValue(n);
+  };
+
+  const handleChapterUpdate = async (date: Date, chapterNumber: number) => {
+    if (!chapterMode || !canEdit || !user?.id) return;
+    const dateKey = formatDateForStorage(date);
+    const session = sessionsMap.get(dateKey);
+    if (!session?.isRead) return;
+
+    await updateSession({
+      sessionId: session._id,
+      userId: user.id,
+      isRead: session.isRead,
+      chapterNumber: normalizeChapterValue(chapterNumber),
+    });
   };
 
   const handleDayToggle = async (date: Date) => {
@@ -797,10 +861,7 @@ export default function CalendarView({
       return;
     }
 
-    const pages = Number(inputValues.get(dateKey));
-    if (isNaN(pages) || pages < 0) return;
-
-    await handlePagesUpdate(date, pages);
+    await handleChapterUpdate(date, ch);
   };
 
   const handleMobileReadToggle = async (date: Date) => {
@@ -1115,11 +1176,7 @@ export default function CalendarView({
                           Read:{" "}
                           {chapterMode && (
                             <>
-                              Ch{" "}
-                              {chapterInputValues.get(dateKey) ??
-                                (session?.chapterNumber != null
-                                  ? String(session.chapterNumber)
-                                  : "1")}
+                              Ch {defaultChapterForDate(dateKey)}
                               {" · "}
                             </>
                           )}
@@ -1129,36 +1186,66 @@ export default function CalendarView({
                             ).toString()}{" "}
                           pages
                         </div>
-                        {canEdit && chapterMode && (
-                          <Input
-                            type="number"
-                            inputMode="numeric"
-                            value={
-                              chapterInputValues.get(dateKey) ??
-                              (session?.chapterNumber != null
-                                ? String(session.chapterNumber)
-                                : "1")
-                            }
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              handleChapterInputChange(dateKey, e.target.value);
-                            }}
-                            onBlur={(e) => {
-                              e.stopPropagation();
-                              void handleChapterInputBlur(day);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.currentTarget.blur();
-                              }
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            disabled={!canEdit}
-                            min="1"
-                            placeholder="Ch."
-                            className="h-6 w-full px-1 text-foreground dark:text-foreground text-[10px] sm:h-7 sm:text-xs"
-                          />
-                        )}
+                        {canEdit &&
+                          chapterMode &&
+                          (useChapterDropdown ? (
+                            <select
+                              value={String(defaultChapterForDate(dateKey))}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                handleChapterInputChange(
+                                  dateKey,
+                                  e.target.value
+                                );
+                                void handleChapterUpdate(
+                                  day,
+                                  Number(e.target.value)
+                                );
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              disabled={!canEdit}
+                              className="h-6 w-full rounded border border-input bg-background px-1 text-[10px] text-foreground dark:text-foreground sm:h-7 sm:text-xs"
+                            >
+                              {Array.from(
+                                { length: chapterDropdownMax },
+                                (_, index) => index + 1
+                              ).map((chapter) => (
+                                <option
+                                  key={chapter}
+                                  value={chapter}
+                                >
+                                  Chapter {chapter}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <Input
+                              type="number"
+                              inputMode="numeric"
+                              value={String(defaultChapterForDate(dateKey))}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                handleChapterInputChange(
+                                  dateKey,
+                                  e.target.value
+                                );
+                              }}
+                              onBlur={(e) => {
+                                e.stopPropagation();
+                                void handleChapterInputBlur(day);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              disabled={!canEdit}
+                              min="1"
+                              placeholder="Ch."
+                              className="h-6 w-full px-1 text-foreground dark:text-foreground text-[10px] sm:h-7 sm:text-xs"
+                            />
+                          ))}
                         {canEdit && (
                           <Input
                             type="number"
@@ -1183,9 +1270,7 @@ export default function CalendarView({
                             onClick={(e) => e.stopPropagation()}
                             disabled={!canEdit}
                             min="0"
-                            placeholder={
-                              chapterMode ? "Pages (chapter)" : "Pages"
-                            }
+                            placeholder="Pages covered"
                             className="h-6 w-full px-1 text-foreground dark:text-foreground text-[10px] sm:h-7 sm:text-xs"
                           />
                         )}
@@ -1213,14 +1298,8 @@ export default function CalendarView({
                           {plannedPages}
                         </span>
                         <span className="block">
-                          Read:
                           {chapterMode
-                            ? ` Ch ${
-                                chapterInputValues.get(dateKey) ??
-                                (session?.chapterNumber != null
-                                  ? String(session.chapterNumber)
-                                  : "1")
-                              } · `
+                            ? ` Ch ${defaultChapterForDate(dateKey)} · `
                             : " "}
                           {inputValues.get(dateKey) ??
                             (
@@ -1294,24 +1373,24 @@ export default function CalendarView({
               onReadToggle={() => handleMobileReadToggle(selectedDay)}
               onMissedToggle={() => handleMobileMissedToggle(selectedDay)}
               chapterMode={chapterMode}
-              chapterValue={
-                chapterInputValues.get(formatDateForStorage(selectedDay)) ??
-                (
-                  sessionsMap.get(formatDateForStorage(selectedDay))
-                    ?.chapterNumber != null
-                    ? String(
-                        sessionsMap.get(formatDateForStorage(selectedDay))
-                          ?.chapterNumber
-                      )
-                    : "1"
-                )
-              }
+              useChapterDropdown={useChapterDropdown}
+              chapterMax={chapterDropdownMax ?? undefined}
+              chapterValue={String(
+                defaultChapterForDate(formatDateForStorage(selectedDay))
+              )}
               onChapterChange={(value) =>
                 handleChapterInputChange(
                   formatDateForStorage(selectedDay),
                   value
                 )
               }
+              onChapterSelect={(value) => {
+                handleChapterInputChange(
+                  formatDateForStorage(selectedDay),
+                  value
+                );
+                void handleChapterUpdate(selectedDay, Number(value));
+              }}
               onChapterBlur={() => void handleChapterInputBlur(selectedDay)}
               inputValue={
                 inputValues.get(formatDateForStorage(selectedDay)) ??
@@ -1348,8 +1427,11 @@ interface DayDetailModalProps {
   onReadToggle: () => Promise<void>;
   onMissedToggle: () => Promise<void>;
   chapterMode: boolean;
+  useChapterDropdown: boolean;
+  chapterMax?: number;
   chapterValue: string;
   onChapterChange: (value: string) => void;
+  onChapterSelect: (value: string) => void;
   onChapterBlur: () => void;
   inputValue: string;
   onInputChange: (value: string) => void;
@@ -1367,8 +1449,11 @@ function DayDetailModal({
   onReadToggle,
   onMissedToggle,
   chapterMode,
+  useChapterDropdown,
+  chapterMax,
   chapterValue,
   onChapterChange,
+  onChapterSelect,
   onChapterBlur,
   inputValue,
   onInputChange,
@@ -1524,27 +1609,50 @@ function DayDetailModal({
                   <label className="mb-1 block text-sm font-medium text-foreground">
                     Chapter
                   </label>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    value={chapterValue}
-                    onChange={(e) => onChapterChange(e.target.value)}
-                    onBlur={onChapterBlur}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.currentTarget.blur();
-                      }
-                    }}
-                    disabled={!canEdit}
-                    min="1"
-                    className="w-full px-4 py-3 text-lg font-semibold"
-                    placeholder="Chapter number"
-                  />
+                  {useChapterDropdown && chapterMax ? (
+                    <select
+                      value={chapterValue}
+                      onChange={(e) => {
+                        onChapterSelect(e.target.value);
+                      }}
+                      disabled={!canEdit}
+                      className="w-full rounded-md border border-input bg-background px-4 py-3 text-lg font-semibold text-foreground"
+                    >
+                      {Array.from(
+                        { length: chapterMax },
+                        (_, index) => index + 1
+                      ).map((chapter) => (
+                        <option
+                          key={chapter}
+                          value={chapter}
+                        >
+                          Chapter {chapter}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      value={chapterValue}
+                      onChange={(e) => onChapterChange(e.target.value)}
+                      onBlur={onChapterBlur}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      disabled={!canEdit}
+                      min="1"
+                      className="w-full px-4 py-3 text-lg font-semibold"
+                      placeholder="Chapter number"
+                    />
+                  )}
                 </div>
               )}
               <div>
                 <label className="mb-1 block text-sm font-medium text-foreground">
-                  {chapterMode ? "Pages (this chapter)" : "Actual Pages Read"}
+                  Pages Covered
                 </label>
                 <Input
                   type="number"

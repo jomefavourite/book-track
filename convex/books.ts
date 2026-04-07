@@ -11,12 +11,16 @@ import {
   getEffectivePagesReadForStats,
 } from "./bookProgress";
 
+const isValidPositiveInteger = (value: number | undefined): value is number =>
+  value !== undefined && Number.isInteger(value) && value > 0;
+
 export const createBook = mutation({
   args: {
     userId: v.string(),
     name: v.string(),
     author: v.optional(v.string()),
     totalPages: v.number(),
+    totalChapters: v.optional(v.number()),
     readingMode: v.union(v.literal("calendar"), v.literal("fixed-days")),
     startMonth: v.optional(v.string()),
     endMonth: v.optional(v.string()),
@@ -39,6 +43,13 @@ export const createBook = mutation({
     const userId = args.userId;
     if (!userId) {
       throw new Error("Not authenticated");
+    }
+
+    if (
+      args.progressStyle === "chapters" &&
+      !isValidPositiveInteger(args.totalChapters)
+    ) {
+      throw new Error("Total chapters is required for chapter-based books");
     }
 
     const bookData: any = {
@@ -67,6 +78,10 @@ export const createBook = mutation({
     // Only include author if it's provided (not undefined)
     if (args.author !== undefined) {
       bookData.author = args.author;
+    }
+
+    if (bookData.progressStyle === "chapters") {
+      bookData.totalChapters = args.totalChapters;
     }
 
     console.log("Book data being inserted:", JSON.stringify(bookData, null, 2));
@@ -160,6 +175,7 @@ export const updateBook = mutation({
     name: v.optional(v.string()),
     author: v.optional(v.string()),
     totalPages: v.optional(v.number()),
+    totalChapters: v.optional(v.number()),
     readingMode: v.optional(
       v.union(v.literal("calendar"), v.literal("fixed-days"))
     ),
@@ -199,6 +215,7 @@ export const updateBook = mutation({
       name?: string;
       author?: string;
       totalPages?: number;
+      totalChapters?: number;
       readingMode?: "calendar" | "fixed-days";
       startMonth?: string;
       endMonth?: string;
@@ -223,6 +240,9 @@ export const updateBook = mutation({
     }
     if (args.totalPages !== undefined) {
       updates.totalPages = args.totalPages;
+    }
+    if (args.totalChapters !== undefined) {
+      updates.totalChapters = args.totalChapters;
     }
     if (args.readingMode !== undefined) {
       updates.readingMode = args.readingMode;
@@ -265,6 +285,18 @@ export const updateBook = mutation({
     }
     if (args.progressStyle !== undefined) {
       updates.progressStyle = args.progressStyle;
+    }
+
+    const finalProgressStyle = args.progressStyle ?? book.progressStyle ?? "pages";
+    const finalTotalChapters = args.totalChapters ?? book.totalChapters;
+
+    if (finalProgressStyle === "chapters") {
+      if (!isValidPositiveInteger(finalTotalChapters)) {
+        throw new Error("Total chapters is required for chapter-based books");
+      }
+      updates.totalChapters = finalTotalChapters;
+    } else {
+      delete updates.totalChapters;
     }
 
     // Determine the final values after update
@@ -330,6 +362,33 @@ export const updateBook = mutation({
       // Note: We preserve sessions outside the new date range
       // They won't be shown in the UI but won't be deleted
       // This preserves user data in case they change dates back
+    }
+
+    if (
+      finalProgressStyle === "chapters" &&
+      isValidPositiveInteger(finalTotalChapters)
+    ) {
+      const existingSessions = await ctx.db
+        .query("readingSessions")
+        .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
+        .collect();
+
+      const shouldClamp =
+        book.totalChapters === undefined || finalTotalChapters < book.totalChapters;
+
+      if (shouldClamp) {
+        for (const session of existingSessions) {
+          if (
+            session.chapterNumber !== undefined &&
+            session.chapterNumber !== null &&
+            session.chapterNumber > finalTotalChapters
+          ) {
+            await ctx.db.patch(session._id, {
+              chapterNumber: finalTotalChapters,
+            });
+          }
+        }
+      }
     }
 
     await ctx.db.patch(args.bookId, updates);

@@ -38,6 +38,7 @@ interface BookFormProps {
     name: string;
     author?: string;
     totalPages: number;
+    totalChapters?: number;
     readingMode: "calendar" | "fixed-days";
     startDate: string;
     endDate: string;
@@ -101,6 +102,9 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
   const [author, setAuthor] = useState(initialBook?.author || "");
   const [totalPages, setTotalPages] = useState(
     initialBook?.totalPages.toString() || ""
+  );
+  const [totalChapters, setTotalChapters] = useState(
+    initialBook?.totalChapters?.toString() || ""
   );
   const [readingMode, setReadingMode] = useState<"calendar" | "fixed-days">(
     initialBook?.readingMode || "calendar"
@@ -380,6 +384,21 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
       }
 
       const authorValue = author.trim() || undefined;
+      const parsedTotalChapters = Number(totalChapters);
+      const totalChaptersValue =
+        progressStyle === "chapters" ? parsedTotalChapters : undefined;
+
+      if (
+        progressStyle === "chapters" &&
+        (!totalChapters ||
+          isNaN(parsedTotalChapters) ||
+          !Number.isInteger(parsedTotalChapters) ||
+          parsedTotalChapters < 1)
+      ) {
+        alert("Please enter a valid total chapters count");
+        setIsSubmitting(false);
+        return;
+      }
 
       if (isEditMode && initialBook) {
         // Update existing book with all fields
@@ -409,6 +428,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
               ? user.primaryEmailAddress?.emailAddress || undefined
               : undefined,
           progressStyle,
+          totalChapters: totalChaptersValue,
         });
 
         router.push(`/books/${initialBook._id}`);
@@ -439,6 +459,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
               ? user.primaryEmailAddress?.emailAddress || undefined
               : undefined,
           progressStyle,
+          totalChapters: totalChaptersValue,
         });
 
         router.push(`/books/${bookId}`);
@@ -522,8 +543,9 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
             How you log reading
           </label>
           <p className="mt-1 text-xs text-muted-foreground">
-            Chapter-based still uses total pages for your schedule; each day you
-            log the chapter number and pages for that chapter.
+            Chapter-based still uses total pages for your schedule. Total
+            chapters only controls the chapter dropdown you use while logging
+            each read day.
           </p>
           <div className="mt-2 flex flex-wrap gap-4">
             <label className="flex items-center">
@@ -550,6 +572,27 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
             </label>
           </div>
         </div>
+
+        {progressStyle === "chapters" && (
+          <div>
+            <label className="block text-sm font-medium text-foreground">
+              Total Chapters
+            </label>
+            <input
+              type="number"
+              value={totalChapters}
+              onChange={(e) => setTotalChapters(e.target.value)}
+              required={progressStyle === "chapters"}
+              min="1"
+              step="1"
+              className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+            <p className="mt-2 text-sm text-muted-foreground">
+              This is only used to power chapter selection while logging
+              reading. Your schedule still comes from total pages and dates.
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-foreground">
