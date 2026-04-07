@@ -344,6 +344,16 @@ export default function BookDetailPage() {
           <div className="mt-2 space-y-1 text-sm text-muted-foreground sm:text-base">
             <p>Total Pages: {book.totalPages}</p>
             <p>
+              Tracking:{" "}
+              {book.progressStyle === "chapters"
+                ? "Chapter-based"
+                : "Page-based"}
+            </p>
+            {book.progressStyle === "chapters" &&
+              typeof book.totalChapters === "number" && (
+                <p>Total Chapters: {book.totalChapters}</p>
+              )}
+            <p>
               Mode:{" "}
               {book.readingMode === "calendar" ? "Calendar" : "Fixed Days"}
             </p>
@@ -379,6 +389,14 @@ export default function BookDetailPage() {
               </p>
             )}
           </div>
+          {canEdit &&
+            book.progressStyle === "chapters" &&
+            book.totalChapters === undefined && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                This is a legacy chapter-based book. Edit it to add total
+                chapters and enable chapter dropdowns while logging.
+              </p>
+            )}
           {!user && isPublicBook && (
             <Card className="mt-4 p-4">
               <p className="mb-2 text-sm text-card-foreground">

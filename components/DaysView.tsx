@@ -19,6 +19,7 @@ interface DaysViewProps {
     | "startDate"
     | "endDate"
     | "totalPages"
+    | "totalChapters"
     | "daysToRead"
     | "progressStyle"
     | "markedCompleteAt"
@@ -36,6 +37,14 @@ export default function DaysView({
   const { user, isLoaded } = useUser();
   const queryClient = useQueryClient();
   const chapterMode = (book.progressStyle ?? "pages") === "chapters";
+  const chapterDropdownMax =
+    chapterMode &&
+    typeof book.totalChapters === "number" &&
+    Number.isInteger(book.totalChapters) &&
+    book.totalChapters > 0
+      ? book.totalChapters
+      : null;
+  const useChapterDropdown = chapterDropdownMax !== null;
   const { data: sessionsQuery, isPending } = useQuery({
     ...convexQuery(api.readingSessions.getSessionsForBook, {
       bookId,
@@ -235,12 +244,64 @@ export default function DaysView({
     });
   }, [startDate, totalDays]);
 
+  const chapterSuggestions = useMemo(() => {
+    const suggestions = new Map<string, number>();
+    let lastKnownChapter = 1;
+
+    days.forEach(({ dateKey }) => {
+      const sessionChapter = sessionsMap.get(dateKey)?.chapterNumber;
+      if (
+        sessionChapter !== undefined &&
+        sessionChapter !== null &&
+        sessionChapter >= 1
+      ) {
+        lastKnownChapter = sessionChapter;
+      }
+
+      if (chapterDropdownMax !== null) {
+        lastKnownChapter = Math.min(lastKnownChapter, chapterDropdownMax);
+      }
+
+      suggestions.set(dateKey, Math.max(1, lastKnownChapter));
+    });
+
+    return suggestions;
+  }, [days, sessionsMap, chapterDropdownMax]);
+
+  const normalizeChapterValue = (value: number) => {
+    const normalized = Math.max(1, Math.floor(value));
+    return chapterDropdownMax !== null
+      ? Math.min(normalized, chapterDropdownMax)
+      : normalized;
+  };
+
   const defaultChapterForDate = (dateKey: string) => {
     const raw = chapterInputValues.get(dateKey);
-    if (raw === undefined || raw === "") return 1;
+    if (raw === undefined || raw === "") {
+      const sessionChapter = sessionsMap.get(dateKey)?.chapterNumber;
+      if (sessionChapter !== undefined && sessionChapter !== null) {
+        return normalizeChapterValue(sessionChapter);
+      }
+      return chapterSuggestions.get(dateKey) ?? 1;
+    }
     const n = Number(raw);
-    if (isNaN(n) || n < 1) return 1;
-    return Math.floor(n);
+    if (isNaN(n) || n < 1) {
+      return chapterSuggestions.get(dateKey) ?? 1;
+    }
+    return normalizeChapterValue(n);
+  };
+
+  const handleChapterUpdate = async (dateKey: string, chapterNumber: number) => {
+    if (!chapterMode || !canEdit || !user?.id) return;
+    const session = sessionsMap.get(dateKey);
+    if (!session?.isRead) return;
+
+    await updateSession({
+      sessionId: session._id,
+      userId: user.id,
+      isRead: session.isRead,
+      chapterNumber: normalizeChapterValue(chapterNumber),
+    });
   };
 
   const handleDayToggle = async (dateKey: string) => {
@@ -636,10 +697,7 @@ export default function DaysView({
       return;
     }
 
-    const pages = Number(inputValues.get(dateKey));
-    if (isNaN(pages) || pages < 0) return;
-
-    await handlePagesUpdate(dateKey, pages);
+    await handleChapterUpdate(dateKey, ch);
   };
 
   const totalPagesRead = useMemo(() => {
@@ -835,37 +893,60 @@ export default function DaysView({
                         <label className="block text-xs font-medium text-white">
                           Chapter
                         </label>
-                        <Input
-                          type="number"
-                          inputMode="numeric"
-                          value={
-                            chapterInputValues.get(dateKey) ??
-                            (session?.chapterNumber != null
-                              ? String(session.chapterNumber)
-                              : "1")
-                          }
-                          onChange={(e) =>
-                            handleChapterInputChange(dateKey, e.target.value)
-                          }
-                          onBlur={() => handleChapterInputBlur(dateKey)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.currentTarget.blur();
+                        {useChapterDropdown ? (
+                          <select
+                            value={String(defaultChapterForDate(dateKey))}
+                            onChange={(e) => {
+                              handleChapterInputChange(dateKey, e.target.value);
+                              void handleChapterUpdate(
+                                dateKey,
+                                Number(e.target.value)
+                              );
+                            }}
+                            disabled={!canEdit}
+                            className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
+                              canEdit
+                                ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
+                                : "cursor-not-allowed opacity-50"
+                            }`}
+                          >
+                            {Array.from(
+                              { length: chapterDropdownMax },
+                              (_, index) => index + 1
+                            ).map((chapter) => (
+                              <option key={chapter} value={chapter}>
+                                Chapter {chapter}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            value={String(defaultChapterForDate(dateKey))}
+                            onChange={(e) =>
+                              handleChapterInputChange(dateKey, e.target.value)
                             }
-                          }}
-                          disabled={!canEdit}
-                          min="1"
-                          className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
-                            canEdit
-                              ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
-                              : "cursor-not-allowed opacity-50"
-                          }`}
-                        />
+                            onBlur={() => handleChapterInputBlur(dateKey)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.currentTarget.blur();
+                              }
+                            }}
+                            disabled={!canEdit}
+                            min="1"
+                            className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
+                              canEdit
+                                ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
+                                : "cursor-not-allowed opacity-50"
+                            }`}
+                          />
+                        )}
                       </div>
                     )}
                     <div>
                       <label className="block text-xs font-medium text-white">
-                        {chapterMode ? "Pages (this chapter)" : "Actual Pages"}
+                        Pages Covered
                       </label>
                       <Input
                         type="number"

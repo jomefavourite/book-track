@@ -33,6 +33,8 @@ export default defineSchema({
     name: v.string(),
     author: v.optional(v.string()),
     totalPages: v.number(),
+    /** Max chapter selectable in chapter-based tracking mode */
+    totalChapters: v.optional(v.number()),
     /** Default "pages" when omitted (legacy rows). "chapters" = also log chapter number per day */
     progressStyle: v.optional(
       v.union(v.literal("pages"), v.literal("chapters"))
