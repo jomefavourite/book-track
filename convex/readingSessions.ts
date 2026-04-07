@@ -13,6 +13,7 @@ export const createSession = mutation({
     date: v.string(),
     plannedPages: v.number(),
     actualPages: v.optional(v.number()),
+    chapterNumber: v.optional(v.number()),
     isRead: v.boolean(),
     isMissed: v.optional(v.boolean()),
   },
@@ -41,6 +42,7 @@ export const createSession = mutation({
       date: args.date,
       plannedPages: args.plannedPages,
       actualPages: args.actualPages,
+      chapterNumber: args.chapterNumber,
       isRead,
       isMissed,
       createdAt: Date.now(),
@@ -99,6 +101,7 @@ export const updateSession = mutation({
     userId: v.string(),
     actualPages: v.optional(v.number()),
     plannedPages: v.optional(v.number()),
+    chapterNumber: v.optional(v.union(v.number(), v.null())),
     isRead: v.optional(v.boolean()),
     isMissed: v.optional(v.boolean()),
   },
@@ -121,6 +124,7 @@ export const updateSession = mutation({
     const updateData: {
       actualPages?: number;
       plannedPages?: number;
+      chapterNumber?: number | null;
       isRead?: boolean;
       isMissed?: boolean;
     } = {};
@@ -133,12 +137,18 @@ export const updateSession = mutation({
       updateData.plannedPages = args.plannedPages;
     }
 
+    if (args.chapterNumber !== undefined) {
+      updateData.chapterNumber = args.chapterNumber;
+    }
+
     // Handle isRead and isMissed - ensure they're mutually exclusive
     if (args.isRead !== undefined) {
       updateData.isRead = args.isRead;
       // If marking as read, ensure isMissed is false
       if (args.isRead) {
         updateData.isMissed = false;
+      } else {
+        updateData.chapterNumber = null;
       }
     }
 
@@ -147,6 +157,7 @@ export const updateSession = mutation({
       // If marking as missed, ensure isRead is false
       if (args.isMissed) {
         updateData.isRead = false;
+        updateData.chapterNumber = null;
       }
     }
 

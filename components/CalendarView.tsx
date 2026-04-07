@@ -48,6 +48,8 @@ interface CalendarViewProps {
     | "startDate"
     | "endDate"
     | "totalPages"
+    | "progressStyle"
+    | "markedCompleteAt"
   > & {
     [key: string]: any; // Allow additional properties
   };
@@ -61,6 +63,7 @@ export default function CalendarView({
 }: CalendarViewProps) {
   const { user, isLoaded } = useUser();
   const queryClient = useQueryClient();
+  const chapterMode = (book.progressStyle ?? "pages") === "chapters";
   const { data: sessionsQuery, isPending } = useQuery({
     ...convexQuery(api.readingSessions.getSessionsForBook, {
       bookId,
@@ -95,6 +98,10 @@ export default function CalendarView({
               isMissed: variables.isMissed ?? session.isMissed,
               actualPages: variables.actualPages ?? session.actualPages,
               plannedPages: variables.plannedPages ?? session.plannedPages,
+              chapterNumber:
+                variables.chapterNumber !== undefined
+                  ? variables.chapterNumber
+                  : session.chapterNumber,
             };
           }
           return session;
@@ -145,6 +152,7 @@ export default function CalendarView({
         date: variables.date,
         plannedPages: variables.plannedPages,
         actualPages: variables.actualPages,
+        chapterNumber: variables.chapterNumber,
         isRead: variables.isRead,
         isMissed: variables.isMissed ?? false,
         createdAt: Date.now(),
@@ -197,6 +205,9 @@ export default function CalendarView({
   const [inputValues, setInputValues] = useState<Map<string, string>>(
     new Map()
   );
+  const [chapterInputValues, setChapterInputValues] = useState<
+    Map<string, string>
+  >(new Map());
 
   // Mobile modal state
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
@@ -219,6 +230,7 @@ export default function CalendarView({
   // Sync input values with sessions when they change
   useEffect(() => {
     const newInputValues = new Map<string, string>();
+    const newChapterValues = new Map<string, string>();
     sessions.forEach((session) => {
       if (session.isRead) {
         const value =
@@ -226,6 +238,14 @@ export default function CalendarView({
           session.plannedPages?.toString() ||
           "";
         newInputValues.set(session.date, value);
+        if (chapterMode) {
+          newChapterValues.set(
+            session.date,
+            session.chapterNumber != null
+              ? String(session.chapterNumber)
+              : "1"
+          );
+        }
       }
     });
 
@@ -243,7 +263,18 @@ export default function CalendarView({
       // No changes, return previous map to avoid re-render
       return prev;
     });
-  }, [sessions]);
+    setChapterInputValues((prev) => {
+      if (prev.size !== newChapterValues.size) {
+        return newChapterValues;
+      }
+      for (const [key, value] of newChapterValues) {
+        if (prev.get(key) !== value) {
+          return newChapterValues;
+        }
+      }
+      return prev;
+    });
+  }, [sessions, chapterMode]);
 
   const [currentMonth, setCurrentMonth] = useState(() => {
     const todayMonth = startOfMonth(new Date());
@@ -347,6 +378,14 @@ export default function CalendarView({
     return date >= readingPeriod.start && date <= readingPeriod.end;
   };
 
+  const defaultChapterForDate = (dateKey: string) => {
+    const raw = chapterInputValues.get(dateKey);
+    if (raw === undefined || raw === "") return 1;
+    const n = Number(raw);
+    if (isNaN(n) || n < 1) return 1;
+    return Math.floor(n);
+  };
+
   const handleDayToggle = async (date: Date) => {
     if (!canEdit || !user?.id) return;
     const dateKey = formatDateForStorage(date);
@@ -420,19 +459,22 @@ export default function CalendarView({
         }
       } else {
         // Not read - mark as read
+        const markActual =
+          existingSession.actualPages ??
+          existingSession.plannedPages ??
+          plannedPages;
         await updateSession({
           sessionId: existingSession._id,
           userId: user.id,
           isRead: true,
           isMissed: false,
-          actualPages: existingSession.actualPages,
+          actualPages: markActual,
+          ...(chapterMode
+            ? { chapterNumber: defaultChapterForDate(dateKey) }
+            : {}),
         });
         // Redistribute after marking as read
-        const actualPages =
-          existingSession.actualPages ||
-          existingSession.plannedPages ||
-          plannedPages;
-        await redistributePages(dateKey, actualPages, new Set([dateKey]));
+        await redistributePages(dateKey, markActual, new Set([dateKey]));
       }
     } else {
       // No session exists - create one as read
@@ -441,8 +483,12 @@ export default function CalendarView({
         userId: user.id,
         date: dateKey,
         plannedPages,
+        actualPages: plannedPages,
         isRead: true,
         isMissed: false,
+        ...(chapterMode
+          ? { chapterNumber: defaultChapterForDate(dateKey) }
+          : {}),
       });
 
       // Redistribute after marking as read
@@ -652,18 +698,29 @@ export default function CalendarView({
     });
   };
 
+  const handleChapterInputChange = (dateKey: string, value: string) => {
+    setChapterInputValues((prev) => {
+      const next = new Map(prev);
+      next.set(dateKey, value);
+      return next;
+    });
+  };
+
   const handlePagesUpdate = async (date: Date, pages: number) => {
     if (!canEdit || !user?.id) return;
     const dateKey = formatDateForStorage(date);
     const existingSession = sessionsMap.get(dateKey);
 
     if (existingSession && existingSession.isRead) {
-      // Update the actual pages
+      const chapterNumber = chapterMode
+        ? defaultChapterForDate(dateKey)
+        : undefined;
       await updateSession({
         sessionId: existingSession._id,
         userId: user.id,
         isRead: existingSession.isRead,
         actualPages: pages,
+        ...(chapterMode ? { chapterNumber } : {}),
       });
 
       // Redistribute pages across unread days
@@ -690,9 +747,58 @@ export default function CalendarView({
           );
           return newMap;
         });
+        if (chapterMode) {
+          setChapterInputValues((prev) => {
+            const newMap = new Map(prev);
+            newMap.set(
+              dateKey,
+              session.chapterNumber != null
+                ? String(session.chapterNumber)
+                : "1"
+            );
+            return newMap;
+          });
+        }
       }
       return;
     }
+
+    await handlePagesUpdate(date, pages);
+  };
+
+  const handleChapterInputBlur = async (date: Date) => {
+    if (!chapterMode || !canEdit || !user?.id) return;
+    const dateKey = formatDateForStorage(date);
+    const session = sessionsMap.get(dateKey);
+    if (!session?.isRead) return;
+
+    const chRaw = chapterInputValues.get(dateKey);
+    if (chRaw === undefined || chRaw === "") {
+      setChapterInputValues((prev) => {
+        const next = new Map(prev);
+        next.set(
+          dateKey,
+          session.chapterNumber != null ? String(session.chapterNumber) : "1"
+        );
+        return next;
+      });
+      return;
+    }
+    const ch = Number(chRaw);
+    if (isNaN(ch) || ch < 1) {
+      setChapterInputValues((prev) => {
+        const next = new Map(prev);
+        next.set(
+          dateKey,
+          session.chapterNumber != null ? String(session.chapterNumber) : "1"
+        );
+        return next;
+      });
+      return;
+    }
+
+    const pages = Number(inputValues.get(dateKey));
+    if (isNaN(pages) || pages < 0) return;
 
     await handlePagesUpdate(date, pages);
   };
@@ -733,6 +839,9 @@ export default function CalendarView({
   const canNavigateNext = currentMonth < navigationBounds.end;
 
   const totalPagesRead = useMemo(() => {
+    if (book.markedCompleteAt != null) {
+      return book.totalPages;
+    }
     return sessions.reduce((sum, session) => {
       // Only count pages from read days, exclude missed days
       if (session.isRead && !session.isMissed) {
@@ -740,7 +849,7 @@ export default function CalendarView({
       }
       return sum;
     }, 0);
-  }, [sessions]);
+  }, [sessions, book.totalPages, book.markedCompleteAt]);
 
   const progress = (totalPagesRead / book.totalPages) * 100;
 
@@ -1004,12 +1113,52 @@ export default function CalendarView({
                         </div>
                         <div className="text-[10px] text-green-800 dark:text-green-100 sm:text-xs">
                           Read:{" "}
+                          {chapterMode && (
+                            <>
+                              Ch{" "}
+                              {chapterInputValues.get(dateKey) ??
+                                (session?.chapterNumber != null
+                                  ? String(session.chapterNumber)
+                                  : "1")}
+                              {" · "}
+                            </>
+                          )}
                           {inputValues.get(dateKey) ??
                             (
                               session?.actualPages || plannedPages
                             ).toString()}{" "}
                           pages
                         </div>
+                        {canEdit && chapterMode && (
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            value={
+                              chapterInputValues.get(dateKey) ??
+                              (session?.chapterNumber != null
+                                ? String(session.chapterNumber)
+                                : "1")
+                            }
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleChapterInputChange(dateKey, e.target.value);
+                            }}
+                            onBlur={(e) => {
+                              e.stopPropagation();
+                              void handleChapterInputBlur(day);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.currentTarget.blur();
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            disabled={!canEdit}
+                            min="1"
+                            placeholder="Ch."
+                            className="h-6 w-full px-1 text-foreground dark:text-foreground text-[10px] sm:h-7 sm:text-xs"
+                          />
+                        )}
                         {canEdit && (
                           <Input
                             type="number"
@@ -1034,7 +1183,9 @@ export default function CalendarView({
                             onClick={(e) => e.stopPropagation()}
                             disabled={!canEdit}
                             min="0"
-                            placeholder="Pages"
+                            placeholder={
+                              chapterMode ? "Pages (chapter)" : "Pages"
+                            }
                             className="h-6 w-full px-1 text-foreground dark:text-foreground text-[10px] sm:h-7 sm:text-xs"
                           />
                         )}
@@ -1063,6 +1214,14 @@ export default function CalendarView({
                         </span>
                         <span className="block">
                           Read:
+                          {chapterMode
+                            ? ` Ch ${
+                                chapterInputValues.get(dateKey) ??
+                                (session?.chapterNumber != null
+                                  ? String(session.chapterNumber)
+                                  : "1")
+                              } · `
+                            : " "}
                           {inputValues.get(dateKey) ??
                             (
                               session?.actualPages || plannedPages
@@ -1095,13 +1254,16 @@ export default function CalendarView({
           if (!open && selectedDay) {
             // Save any pending input changes before closing (non-blocking)
             const dateKey = formatDateForStorage(selectedDay);
-            const inputValue = inputValues.get(dateKey);
+            if (chapterMode) {
+              void handleChapterInputBlur(selectedDay);
+            } else {
+              const inputValue = inputValues.get(dateKey);
 
-            if (inputValue !== undefined && inputValue !== "") {
-              const pages = Number(inputValue);
-              if (!isNaN(pages) && pages >= 0) {
-                // Save asynchronously without blocking dialog close
-                handlePagesUpdate(selectedDay, pages).catch(console.error);
+              if (inputValue !== undefined && inputValue !== "") {
+                const pages = Number(inputValue);
+                if (!isNaN(pages) && pages >= 0) {
+                  handlePagesUpdate(selectedDay, pages).catch(console.error);
+                }
               }
             }
 
@@ -1131,6 +1293,26 @@ export default function CalendarView({
               isActionPending={isMobileActionPending}
               onReadToggle={() => handleMobileReadToggle(selectedDay)}
               onMissedToggle={() => handleMobileMissedToggle(selectedDay)}
+              chapterMode={chapterMode}
+              chapterValue={
+                chapterInputValues.get(formatDateForStorage(selectedDay)) ??
+                (
+                  sessionsMap.get(formatDateForStorage(selectedDay))
+                    ?.chapterNumber != null
+                    ? String(
+                        sessionsMap.get(formatDateForStorage(selectedDay))
+                          ?.chapterNumber
+                      )
+                    : "1"
+                )
+              }
+              onChapterChange={(value) =>
+                handleChapterInputChange(
+                  formatDateForStorage(selectedDay),
+                  value
+                )
+              }
+              onChapterBlur={() => void handleChapterInputBlur(selectedDay)}
               inputValue={
                 inputValues.get(formatDateForStorage(selectedDay)) ??
                 (
@@ -1165,6 +1347,10 @@ interface DayDetailModalProps {
   isActionPending: boolean;
   onReadToggle: () => Promise<void>;
   onMissedToggle: () => Promise<void>;
+  chapterMode: boolean;
+  chapterValue: string;
+  onChapterChange: (value: string) => void;
+  onChapterBlur: () => void;
   inputValue: string;
   onInputChange: (value: string) => void;
   onInputBlur: () => void;
@@ -1180,6 +1366,10 @@ function DayDetailModal({
   isActionPending,
   onReadToggle,
   onMissedToggle,
+  chapterMode,
+  chapterValue,
+  onChapterChange,
+  onChapterBlur,
   inputValue,
   onInputChange,
   onInputBlur,
@@ -1328,25 +1518,50 @@ function DayDetailModal({
           </div>
 
           {isRead && (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-foreground">
-                Actual Pages Read
-              </label>
-              <Input
-                type="number"
-                value={inputValue}
-                onChange={(e) => onInputChange(e.target.value)}
-                onBlur={onInputBlur}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.currentTarget.blur();
-                  }
-                }}
-                disabled={!canEdit}
-                min="0"
-                className="w-full px-4 py-3 text-lg font-semibold"
-                placeholder="Enter pages"
-              />
+            <div className="space-y-3">
+              {chapterMode && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-foreground">
+                    Chapter
+                  </label>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    value={chapterValue}
+                    onChange={(e) => onChapterChange(e.target.value)}
+                    onBlur={onChapterBlur}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    disabled={!canEdit}
+                    min="1"
+                    className="w-full px-4 py-3 text-lg font-semibold"
+                    placeholder="Chapter number"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-foreground">
+                  {chapterMode ? "Pages (this chapter)" : "Actual Pages Read"}
+                </label>
+                <Input
+                  type="number"
+                  value={inputValue}
+                  onChange={(e) => onInputChange(e.target.value)}
+                  onBlur={onInputBlur}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  disabled={!canEdit}
+                  min="0"
+                  className="w-full px-4 py-3 text-lg font-semibold"
+                  placeholder="Enter pages"
+                />
+              </div>
             </div>
           )}
 

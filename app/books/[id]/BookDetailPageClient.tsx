@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { convexQuery } from "@convex-dev/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useUser, SignInButton } from "@clerk/nextjs";
@@ -15,22 +15,32 @@ import { Card } from "@/components/ui/card";
 import CalendarView from "@/components/CalendarView";
 import DaysView from "@/components/DaysView";
 import Navigation from "@/components/Navigation";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Share2, Check, ChevronDown } from "lucide-react";
+import { Share2, Check, ChevronDown, CheckCircle2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function BookDetailPage() {
   const params = useParams();
-  const router = useRouter();
-  const { user, isLoaded } = useUser();
+  const queryClient = useQueryClient();
+  const { user } = useUser();
   const bookId = params.id as Id<"books">;
   const [copied, setCopied] = useState(false);
+  const [markCompleteOpen, setMarkCompleteOpen] = useState(false);
+  const [clearMarkCompleteOpen, setClearMarkCompleteOpen] = useState(false);
   const {
     data: book,
     isPending,
@@ -98,6 +108,60 @@ export default function BookDetailPage() {
     () => (book ? computeReadingProgressSummary(book, sessions) : null),
     [book, sessions]
   );
+
+  const sessionProgressPercent = useMemo(() => {
+    if (!book || book.totalPages <= 0) return 0;
+    const totalPagesRead = sessions.reduce((sum, session) => {
+      if (session.isRead && !session.isMissed) {
+        return sum + (session.actualPages ?? session.plannedPages ?? 0);
+      }
+      return sum;
+    }, 0);
+    return (totalPagesRead / book.totalPages) * 100;
+  }, [book, sessions]);
+
+  const invalidateBookProgressQueries = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: convexQuery(api.books.getBook, {
+        bookId,
+        userId: user?.id,
+      }).queryKey,
+    });
+    await queryClient.invalidateQueries({
+      queryKey: convexQuery(api.readingSessions.getSessionsForBook, {
+        bookId,
+        userId: user?.id,
+      }).queryKey,
+    });
+    if (user?.id) {
+      await queryClient.invalidateQueries({
+        queryKey: convexQuery(api.books.getBooks, { userId: user.id })
+          .queryKey,
+      });
+    }
+  };
+
+  const markBookCompletedMutation = useConvexMutation(api.books.markBookCompleted);
+  const { mutateAsync: markBookCompleted, isPending: markCompletePending } =
+    useMutation({
+      mutationFn: markBookCompletedMutation,
+      onSuccess: invalidateBookProgressQueries,
+    });
+
+  const clearMarkedCompleteMutation = useConvexMutation(
+    api.books.clearMarkedComplete
+  );
+  const { mutateAsync: clearMarkedComplete, isPending: clearMarkCompletePending } =
+    useMutation({
+      mutationFn: clearMarkedCompleteMutation,
+      onSuccess: invalidateBookProgressQueries,
+    });
+
+  const showMarkCompleteButton =
+    Boolean(canEdit && book && !book.markedCompleteAt && sessionProgressPercent < 100);
+
+  const showClearMarkedCompleteButton =
+    Boolean(canEdit && book && book.markedCompleteAt != null);
 
   // Show private book message first (even if still pending, if we have the error)
   if (isPrivateBookError) {
@@ -213,6 +277,28 @@ export default function BookDetailPage() {
                   )}
                 </Button>
               )}
+              {showMarkCompleteButton && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  onClick={() => setMarkCompleteOpen(true)}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Mark completed</span>
+                </Button>
+              )}
+              {showClearMarkedCompleteButton && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  onClick={() => setClearMarkCompleteOpen(true)}
+                >
+                  <span className="hidden sm:inline">Remove marked complete</span>
+                  <span className="sm:hidden">Undo complete</span>
+                </Button>
+              )}
               {canEdit && (
                 <Button
                   variant="outline"
@@ -246,6 +332,11 @@ export default function BookDetailPage() {
               {!canEdit && isPublicBook && (
                 <span className="rounded-full bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
                   Read Only
+                </span>
+              )}
+              {book.markedCompleteAt != null && (
+                <span className="rounded-full bg-primary/15 px-2 py-1 text-xs font-medium text-primary">
+                  Marked complete
                 </span>
               )}
             </div>
@@ -391,6 +482,83 @@ export default function BookDetailPage() {
           />
         )}
       </div>
+
+      <Dialog open={markCompleteOpen} onOpenChange={setMarkCompleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mark this book as completed?</DialogTitle>
+            <DialogDescription>
+              This records the book as fully read without updating each day you
+              tracked. Your existing session data is kept, but progress will show
+              as 100% everywhere. You can still edit the book or log days below
+              if you want.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setMarkCompleteOpen(false)}
+              disabled={markCompletePending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={markCompletePending || !user?.id}
+              onClick={async () => {
+                if (!user?.id) return;
+                try {
+                  await markBookCompleted({ bookId, userId: user.id });
+                  setMarkCompleteOpen(false);
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+            >
+              {markCompletePending ? "Saving…" : "Mark completed"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={clearMarkCompleteOpen} onOpenChange={setClearMarkCompleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove marked complete?</DialogTitle>
+            <DialogDescription>
+              Progress will go back to what your daily sessions show. You can mark
+              the book completed again anytime.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setClearMarkCompleteOpen(false)}
+              disabled={clearMarkCompletePending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={clearMarkCompletePending || !user?.id}
+              onClick={async () => {
+                if (!user?.id) return;
+                try {
+                  await clearMarkedComplete({ bookId, userId: user.id });
+                  setClearMarkCompleteOpen(false);
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+            >
+              {clearMarkCompletePending ? "Removing…" : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

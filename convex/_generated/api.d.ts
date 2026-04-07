@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as bookProgress from "../bookProgress.js";
 import type * as books from "../books.js";
 import type * as crons from "../crons.js";
 import type * as dateUtils from "../dateUtils.js";
@@ -23,6 +24,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  bookProgress: typeof bookProgress;
   books: typeof books;
   crons: typeof crons;
   dateUtils: typeof dateUtils;

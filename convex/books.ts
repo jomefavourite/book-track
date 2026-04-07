@@ -6,6 +6,10 @@ import {
   getAllDaysInRange,
   distributePagesAcrossDays,
 } from "./dateUtils";
+import {
+  getBookProgressPercent,
+  getEffectivePagesReadForStats,
+} from "./bookProgress";
 
 export const createBook = mutation({
   args: {
@@ -27,6 +31,9 @@ export const createBook = mutation({
     showCreatorEmail: v.optional(v.boolean()),
     creatorName: v.optional(v.string()),
     creatorEmail: v.optional(v.string()),
+    progressStyle: v.optional(
+      v.union(v.literal("pages"), v.literal("chapters"))
+    ),
   },
   handler: async (ctx, args) => {
     const userId = args.userId;
@@ -38,6 +45,7 @@ export const createBook = mutation({
       userId,
       name: args.name,
       totalPages: args.totalPages,
+      progressStyle: args.progressStyle ?? "pages",
       readingMode: args.readingMode,
       startMonth: args.startMonth,
       endMonth: args.endMonth,
@@ -96,15 +104,7 @@ export const getBooks = query({
           .withIndex("by_book", (q) => q.eq("bookId", book._id))
           .collect();
 
-        const totalPagesRead = sessions.reduce((sum, session) => {
-          // Only count pages from read days, exclude missed days
-          if (session.isRead && !session.isMissed) {
-            return sum + (session.actualPages || session.plannedPages);
-          }
-          return sum;
-        }, 0);
-
-        const progress = (totalPagesRead / book.totalPages) * 100;
+        const progress = getBookProgressPercent(book, sessions);
 
         return {
           ...book,
@@ -175,6 +175,9 @@ export const updateBook = mutation({
     showCreatorEmail: v.optional(v.boolean()),
     creatorName: v.optional(v.string()),
     creatorEmail: v.optional(v.string()),
+    progressStyle: v.optional(
+      v.union(v.literal("pages"), v.literal("chapters"))
+    ),
   },
   handler: async (ctx, args) => {
     const userId = args.userId;
@@ -209,6 +212,7 @@ export const updateBook = mutation({
       showCreatorEmail?: boolean;
       creatorName?: string;
       creatorEmail?: string;
+      progressStyle?: "pages" | "chapters";
     } = {};
 
     if (args.name !== undefined) {
@@ -258,6 +262,9 @@ export const updateBook = mutation({
     }
     if (args.creatorEmail !== undefined) {
       updates.creatorEmail = args.creatorEmail;
+    }
+    if (args.progressStyle !== undefined) {
+      updates.progressStyle = args.progressStyle;
     }
 
     // Determine the final values after update
@@ -329,6 +336,62 @@ export const updateBook = mutation({
   },
 });
 
+export const markBookCompleted = mutation({
+  args: {
+    bookId: v.id("books"),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = args.userId;
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const book = await ctx.db.get(args.bookId);
+    if (!book) {
+      throw new Error("Book not found");
+    }
+
+    if (book.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+
+    if (book.markedCompleteAt != null) {
+      return;
+    }
+
+    await ctx.db.patch(args.bookId, { markedCompleteAt: Date.now() });
+  },
+});
+
+export const clearMarkedComplete = mutation({
+  args: {
+    bookId: v.id("books"),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = args.userId;
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const book = await ctx.db.get(args.bookId);
+    if (!book) {
+      throw new Error("Book not found");
+    }
+
+    if (book.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+
+    if (book.markedCompleteAt == null) {
+      return;
+    }
+
+    await ctx.db.patch(args.bookId, { markedCompleteAt: undefined });
+  },
+});
+
 export const getArchivedBooks = query({
   args: {
     userId: v.string(),
@@ -356,15 +419,7 @@ export const getArchivedBooks = query({
           .withIndex("by_book", (q) => q.eq("bookId", book._id))
           .collect();
 
-        const totalPagesRead = sessions.reduce((sum, session) => {
-          // Only count pages from read days, exclude missed days
-          if (session.isRead && !session.isMissed) {
-            return sum + (session.actualPages || session.plannedPages);
-          }
-          return sum;
-        }, 0);
-
-        const progress = (totalPagesRead / book.totalPages) * 100;
+        const progress = getBookProgressPercent(book, sessions);
 
         return {
           ...book,
@@ -482,15 +537,7 @@ export const getPublicBooks = query({
           .withIndex("by_book", (q) => q.eq("bookId", book._id))
           .collect();
 
-        const totalPagesRead = sessions.reduce((sum, session) => {
-          // Only count pages from read days, exclude missed days
-          if (session.isRead && !session.isMissed) {
-            return sum + (session.actualPages || session.plannedPages);
-          }
-          return sum;
-        }, 0);
-
-        const progress = (totalPagesRead / book.totalPages) * 100;
+        const progress = getBookProgressPercent(book, sessions);
 
         // Filter creator info based on visibility flags
         const result: typeof book & { progress: number } = {
@@ -534,16 +581,10 @@ export const getPublicBooksStats = query({
         .withIndex("by_book", (q) => q.eq("bookId", book._id))
         .collect();
 
-      const pagesRead = sessions.reduce((sum, session) => {
-        if (session.isRead && !session.isMissed) {
-          return sum + (session.actualPages ?? session.plannedPages);
-        }
-        return sum;
-      }, 0);
+      const pagesRead = getEffectivePagesReadForStats(book, sessions);
+      const progress = getBookProgressPercent(book, sessions);
 
       totalPagesRead += pagesRead;
-      const progress = book.totalPages > 0 ? (pagesRead / book.totalPages) * 100 : 0;
-
       if (progress >= 100) completed += 1;
       else if (progress > 0) inProgress += 1;
       else notStarted += 1;
@@ -580,14 +621,7 @@ export const getPublicBook = query({
       .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
       .collect();
 
-    const totalPagesRead = sessions.reduce((sum, session) => {
-      if (session.isRead) {
-        return sum + (session.actualPages || session.plannedPages);
-      }
-      return sum;
-    }, 0);
-
-    const progress = (totalPagesRead / book.totalPages) * 100;
+    const progress = getBookProgressPercent(book, sessions);
 
     // Filter creator info based on visibility flags
     const result = {
@@ -624,14 +658,7 @@ export const getPublicBooksByUserId = query({
           .withIndex("by_book", (q) => q.eq("bookId", book._id))
           .collect();
 
-        const totalPagesRead = sessions.reduce((sum, session) => {
-          if (session.isRead && !session.isMissed) {
-            return sum + (session.actualPages || session.plannedPages);
-          }
-          return sum;
-        }, 0);
-
-        const progress = (totalPagesRead / book.totalPages) * 100;
+        const progress = getBookProgressPercent(book, sessions);
 
         const result: typeof book & { progress: number } = {
           ...book,
@@ -684,14 +711,7 @@ export const getBooksForProfile = query({
             .withIndex("by_book", (q) => q.eq("bookId", book._id))
             .collect();
 
-          const totalPagesRead = sessions.reduce((sum, session) => {
-            if (session.isRead && !session.isMissed) {
-              return sum + (session.actualPages || session.plannedPages);
-            }
-            return sum;
-          }, 0);
-
-          const progress = (totalPagesRead / book.totalPages) * 100;
+          const progress = getBookProgressPercent(book, sessions);
 
           const result: typeof book & { progress: number } = {
             ...book,
@@ -719,14 +739,7 @@ export const getBooksForProfile = query({
           .withIndex("by_book", (q) => q.eq("bookId", book._id))
           .collect();
 
-        const totalPagesRead = sessions.reduce((sum, session) => {
-          if (session.isRead && !session.isMissed) {
-            return sum + (session.actualPages || session.plannedPages);
-          }
-          return sum;
-        }, 0);
-
-        const progress = (totalPagesRead / book.totalPages) * 100;
+        const progress = getBookProgressPercent(book, sessions);
 
         const result: typeof book & { progress: number } = {
           ...book,

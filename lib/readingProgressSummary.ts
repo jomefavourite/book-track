@@ -16,6 +16,7 @@ export interface ReadingProgressBookInput {
   totalPages: number;
   startDate: string;
   endDate: string;
+  markedCompleteAt?: number;
 }
 
 /** Minimal session fields (matches reading session documents from queries). */
@@ -62,6 +63,21 @@ export function computeReadingProgressSummary(
   sessions: ReadingProgressSessionInput[]
 ): ReadingProgressSummary {
   const capAtBookTotal = (n: number) => Math.min(n, book.totalPages);
+
+  if (book.markedCompleteAt != null) {
+    return {
+      totalPagesRead: book.totalPages,
+      expectedPageByToday: book.totalPages,
+      progressPercentage: 100,
+      isAhead: false,
+      isBehind: false,
+      pagesDifference: 0,
+      totalPages: book.totalPages,
+      showStatusBanner: false,
+      showExpectedDropdown: false,
+      expectedPerUnaccountedDay: [],
+    };
+  }
 
   const startDate = parseDateFromStorage(book.startDate);
   const endDate = parseDateFromStorage(book.endDate);

@@ -51,6 +51,7 @@ interface BookFormProps {
     showCreatorEmail?: boolean;
     creatorName?: string;
     creatorEmail?: string;
+    progressStyle?: "pages" | "chapters";
   };
 }
 
@@ -103,6 +104,9 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
   );
   const [readingMode, setReadingMode] = useState<"calendar" | "fixed-days">(
     initialBook?.readingMode || "calendar"
+  );
+  const [progressStyle, setProgressStyle] = useState<"pages" | "chapters">(
+    initialBook?.progressStyle ?? "pages"
   );
   const currentMonthIndex = new Date().getMonth();
   const currentYear = new Date().getFullYear();
@@ -404,6 +408,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
             isPublic && showCreatorEmail
               ? user.primaryEmailAddress?.emailAddress || undefined
               : undefined,
+          progressStyle,
         });
 
         router.push(`/books/${initialBook._id}`);
@@ -433,6 +438,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
             isPublic && showCreatorEmail
               ? user.primaryEmailAddress?.emailAddress || undefined
               : undefined,
+          progressStyle,
         });
 
         router.push(`/books/${bookId}`);
@@ -509,6 +515,40 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
               </span>
             </p>
           )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-foreground">
+            How you log reading
+          </label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Chapter-based still uses total pages for your schedule; each day you
+            log the chapter number and pages for that chapter.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-4">
+            <label className="flex items-center">
+              <input
+                type="radio"
+                name="progressStyle"
+                value="pages"
+                checked={progressStyle === "pages"}
+                onChange={() => setProgressStyle("pages")}
+                className="mr-2"
+              />
+              Page-based
+            </label>
+            <label className="flex items-center">
+              <input
+                type="radio"
+                name="progressStyle"
+                value="chapters"
+                checked={progressStyle === "chapters"}
+                onChange={() => setProgressStyle("chapters")}
+                className="mr-2"
+              />
+              Chapter-based
+            </label>
+          </div>
         </div>
 
         <div>
