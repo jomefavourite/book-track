@@ -27,6 +27,8 @@ interface CatchUpSuggestionProps {
     startDate: string;
     endDate: string;
     totalPages: number;
+    markedCompleteAt?: number;
+    progressStyle?: "pages" | "chapters";
   };
   sessions: Array<{
     date: string;
@@ -43,6 +45,10 @@ export default function CatchUpSuggestion({
   sessions,
 }: CatchUpSuggestionProps) {
   const suggestion = useMemo(() => {
+    if (book.markedCompleteAt != null) {
+      return null;
+    }
+
     const startDate = parseDateFromStorage(book.startDate);
     const endDate = parseDateFromStorage(book.endDate);
     const today = startOfToday();
@@ -171,6 +177,13 @@ export default function CatchUpSuggestion({
           : "📚 Catch-Up Suggestion"}
       </h3>
       <p className="text-sm">{suggestion.message}</p>
+      {suggestion.type === "catchup" &&
+        book.progressStyle === "chapters" && (
+          <p className="mt-2 text-xs opacity-90">
+            Catch-up targets are in pages (same as your schedule); keep logging
+            chapter and pages per day when you read.
+          </p>
+        )}
       {suggestion.type === "catchup" && (
         <div className="mt-2 text-sm">
           <p>

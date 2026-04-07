@@ -33,6 +33,10 @@ export default defineSchema({
     name: v.string(),
     author: v.optional(v.string()),
     totalPages: v.number(),
+    /** Default "pages" when omitted (legacy rows). "chapters" = also log chapter number per day */
+    progressStyle: v.optional(
+      v.union(v.literal("pages"), v.literal("chapters"))
+    ),
     readingMode: v.union(v.literal("calendar"), v.literal("fixed-days")),
     startMonth: v.optional(v.string()),
     endMonth: v.optional(v.string()),
@@ -49,6 +53,8 @@ export default defineSchema({
     creatorName: v.optional(v.string()),
     creatorEmail: v.optional(v.string()),
     isArchived: v.optional(v.boolean()),
+    /** Set when the user marks the book complete without day-by-day tracking */
+    markedCompleteAt: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_user_and_order", ["userId", "bookOrder"])
@@ -60,9 +66,16 @@ export default defineSchema({
     date: v.string(),
     plannedPages: v.number(),
     actualPages: v.optional(v.number()),
+    /** Chapter read that day when book uses chapter-based reading; null clears */
+    chapterNumber: v.optional(v.union(v.number(), v.null())),
     isRead: v.boolean(),
     isMissed: v.optional(v.boolean()),
     createdAt: v.number(),
+    // Legacy timer fields (may exist on older documents)
+    timerDurationSec: v.optional(v.number()),
+    timerLastUpdatedAt: v.optional(v.number()),
+    timerRemainingSec: v.optional(v.number()),
+    timerStatus: v.optional(v.string()),
   })
     .index("by_book", ["bookId"])
     .index("by_book_and_date", ["bookId", "date"])
