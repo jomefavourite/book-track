@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "generate-icons": "node scripts/generate-icons.js"
+    "generate-icons": "node scripts/generate-icons.js",
+    "setup:convex-main-push-hook": "bash scripts/setup-convex-main-push-hook.sh"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.8.3",
