@@ -10,6 +10,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { format, differenceInDays } from "date-fns";
 import { parseDateFromStorage } from "@/lib/dateUtils";
+import { isChapterOnlyBook } from "@/lib/chapterTracking";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -20,7 +21,8 @@ interface BookCardProps {
     _id: Id<"books">;
     name: string;
     author?: string;
-    totalPages: number;
+    totalPages?: number;
+    totalChapters?: number;
     readingMode: "calendar" | "fixed-days";
     startDate: string;
     endDate: string;
@@ -30,6 +32,8 @@ interface BookCardProps {
     endYear?: number;
     daysToRead?: number;
     isPublic?: boolean;
+    progressStyle?: "pages" | "chapters";
+    ignorePages?: boolean;
   };
   progress?: number;
 }
@@ -70,6 +74,7 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
   const router = useRouter();
   const startDate = parseDateFromStorage(book.startDate);
   const endDate = parseDateFromStorage(book.endDate);
+  const chapterOnlyMode = isChapterOnlyBook(book);
 
   const handleDelete = async () => {
     if (!user?.id) return;
@@ -193,7 +198,11 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
               {book.author && (
                 <p className="font-medium text-foreground">by {book.author}</p>
               )}
-              <p>{book.totalPages} pages</p>
+              <p>
+                {chapterOnlyMode
+                  ? `${book.totalChapters ?? 0} chapters`
+                  : `${book.totalPages ?? 0} pages`}
+              </p>
               <p className="wrap-break-word sm:break-normal">
                 {(() => {
                   const days = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days

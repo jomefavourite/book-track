@@ -23,7 +23,10 @@ export async function generateMetadata({
   const authorSuffix = book.author ? ` by ${book.author}` : "";
   const progress = Math.round(book.progress ?? 0);
   const creatorPrefix = book.creatorName ? `${book.creatorName}'s ` : "";
-  const description = `${creatorPrefix}${book.name}${authorSuffix}. ${progress}% complete across ${book.totalPages.toLocaleString()} pages on Book-Track.`;
+  const description =
+    book.progressStyle === "chapters" && book.ignorePages
+      ? `${creatorPrefix}${book.name}${authorSuffix}. ${progress}% complete across ${book.totalChapters?.toLocaleString() ?? 0} chapters on Book-Track.`
+      : `${creatorPrefix}${book.name}${authorSuffix}. ${progress}% complete across ${book.totalPages?.toLocaleString() ?? 0} pages on Book-Track.`;
 
   return createPageMetadata({
     title: `${book.name}${authorSuffix}`,

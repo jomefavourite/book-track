@@ -4,12 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useConvexMutation, convexQuery } from "@convex-dev/react-query";
-import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { format, differenceInDays } from "date-fns";
 import { parseDateFromStorage } from "@/lib/dateUtils";
+import { isChapterOnlyBook } from "@/lib/chapterTracking";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -20,7 +20,8 @@ interface ArchivedBookCardProps {
     _id: Id<"books">;
     name: string;
     author?: string;
-    totalPages: number;
+    totalPages?: number;
+    totalChapters?: number;
     readingMode: "calendar" | "fixed-days";
     startDate: string;
     endDate: string;
@@ -30,6 +31,8 @@ interface ArchivedBookCardProps {
     endYear?: number;
     daysToRead?: number;
     isPublic?: boolean;
+    progressStyle?: "pages" | "chapters";
+    ignorePages?: boolean;
   };
   progress?: number;
 }
@@ -69,9 +72,9 @@ export default function ArchivedBookCard({
       });
     },
   });
-  const router = useRouter();
   const startDate = parseDateFromStorage(book.startDate);
   const endDate = parseDateFromStorage(book.endDate);
+  const chapterOnlyMode = isChapterOnlyBook(book);
 
   const handleDelete = async () => {
     if (!user?.id) return;
@@ -163,7 +166,11 @@ export default function ArchivedBookCard({
               {book.author && (
                 <p className="font-medium text-foreground">by {book.author}</p>
               )}
-              <p>{book.totalPages} pages</p>
+              <p>
+                {chapterOnlyMode
+                  ? `${book.totalChapters ?? 0} chapters`
+                  : `${book.totalPages ?? 0} pages`}
+              </p>
               <p className="wrap-break-word sm:break-normal">
                 {(() => {
                   const days = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days

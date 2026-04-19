@@ -32,13 +32,15 @@ export default defineSchema({
     userId: v.string(),
     name: v.string(),
     author: v.optional(v.string()),
-    totalPages: v.number(),
+    totalPages: v.optional(v.number()),
     /** Max chapter selectable in chapter-based tracking mode */
     totalChapters: v.optional(v.number()),
     /** Default "pages" when omitted (legacy rows). "chapters" = also log chapter number per day */
     progressStyle: v.optional(
       v.union(v.literal("pages"), v.literal("chapters"))
     ),
+    /** When true for chapter-based books, page totals and page-based tracking are ignored */
+    ignorePages: v.optional(v.boolean()),
     readingMode: v.union(v.literal("calendar"), v.literal("fixed-days")),
     startMonth: v.optional(v.string()),
     endMonth: v.optional(v.string()),

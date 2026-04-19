@@ -27,7 +27,9 @@ export async function generateMetadata({
     profile.user.name || profile.user.email?.split("@")[0] || "Reader";
   const description =
     profile.stats.totalBooks > 0
-      ? `${displayName} is sharing ${profile.stats.totalBooks} book${profile.stats.totalBooks === 1 ? "" : "s"}, ${profile.stats.completed} completed, and ${profile.stats.totalPagesRead.toLocaleString()} pages read on Book-Track.`
+      ? profile.stats.totalPagesRead > 0
+        ? `${displayName} is sharing ${profile.stats.totalBooks} book${profile.stats.totalBooks === 1 ? "" : "s"}, ${profile.stats.completed} completed, and ${profile.stats.totalPagesRead.toLocaleString()} pages read on Book-Track.`
+        : `${displayName} is sharing ${profile.stats.totalBooks} book${profile.stats.totalBooks === 1 ? "" : "s"} and ${profile.stats.completed} completed reads on Book-Track.`
       : `${displayName} is sharing a reading profile on Book-Track.`;
 
   return createPageMetadata({

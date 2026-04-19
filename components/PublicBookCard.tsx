@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
 import { format, differenceInDays } from "date-fns";
 import { parseDateFromStorage } from "@/lib/dateUtils";
+import { isChapterOnlyBook } from "@/lib/chapterTracking";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 
@@ -13,7 +14,8 @@ interface PublicBookCardProps {
     userId?: string;
     name: string;
     author?: string;
-    totalPages: number;
+    totalPages?: number;
+    totalChapters?: number;
     readingMode: "calendar" | "fixed-days";
     startDate: string;
     endDate: string;
@@ -26,6 +28,8 @@ interface PublicBookCardProps {
     creatorEmail?: string;
     isPublic?: boolean;
     isArchived?: boolean;
+    progressStyle?: "pages" | "chapters";
+    ignorePages?: boolean;
   };
   progress?: number;
   /** When true, show "Public" or "Private" badge based on book.isPublic (e.g. on owner's profile). Default false shows "Public" only. */
@@ -39,6 +43,7 @@ export default function PublicBookCard({
 }: PublicBookCardProps) {
   const startDate = parseDateFromStorage(book.startDate);
   const endDate = parseDateFromStorage(book.endDate);
+  const chapterOnlyMode = isChapterOnlyBook(book);
 
   const isPublic = book.isPublic ?? true;
   const isArchived = book.isArchived ?? false;
@@ -79,7 +84,11 @@ export default function PublicBookCard({
             {book.author && (
               <p className="font-medium text-foreground">by {book.author}</p>
             )}
-            <p>{book.totalPages} pages</p>
+            <p>
+              {chapterOnlyMode
+                ? `${book.totalChapters ?? 0} chapters`
+                : `${book.totalPages ?? 0} pages`}
+            </p>
             <p>
               {(() => {
                 const days = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days

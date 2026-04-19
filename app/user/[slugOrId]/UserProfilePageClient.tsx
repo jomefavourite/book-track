@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { parseDateFromStorage } from "@/lib/dateUtils";
+import { isChapterOnlyBook } from "@/lib/chapterTracking";
 import Navigation from "@/components/Navigation";
 import PublicBookCard from "@/components/PublicBookCard";
 import { Card } from "@/components/ui/card";
@@ -66,8 +67,18 @@ export default function UserProfilePage() {
     }).length;
     const totalPagesRead = Math.round(
       books.reduce(
-        (sum: number, b: { totalPages: number; progress?: number }) =>
-          sum + (b.totalPages * (b.progress ?? 0)) / 100,
+        (
+          sum: number,
+          b: {
+            totalPages?: number;
+            progress?: number;
+            progressStyle?: "pages" | "chapters";
+            ignorePages?: boolean;
+          }
+        ) =>
+          isChapterOnlyBook(b)
+            ? sum
+            : sum + ((b.totalPages ?? 0) * (b.progress ?? 0)) / 100,
         0
       )
     );
@@ -271,17 +282,19 @@ export default function UserProfilePage() {
                   In progress
                 </span>
               </Card>
-              <Card className="flex flex-col items-center gap-2 p-4 text-center">
-                <div className="rounded-full bg-blue-500/10 p-2">
-                  <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <span className="text-2xl font-bold tabular-nums text-foreground">
-                  {stats.totalPagesRead.toLocaleString()}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Pages read
-                </span>
-              </Card>
+              {stats.totalPagesRead > 0 && (
+                <Card className="flex flex-col items-center gap-2 p-4 text-center">
+                  <div className="rounded-full bg-blue-500/10 p-2">
+                    <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <span className="text-2xl font-bold tabular-nums text-foreground">
+                    {stats.totalPagesRead.toLocaleString()}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Pages read
+                  </span>
+                </Card>
+              )}
               <Card className="flex flex-col items-center gap-2 p-4 text-center">
                 <div className="rounded-full bg-violet-500/10 p-2">
                   <Sparkles className="h-5 w-5 text-violet-600 dark:text-violet-400" />
