@@ -9,14 +9,25 @@ import {
   formatDateForStorage,
   getAllDaysInRange,
 } from "@/lib/dateUtils";
-import { distributePagesAcrossDays } from "@/lib/readingCalculator";
+import {
+  distributePagesAcrossDays,
+  distributeChaptersAcrossDays,
+} from "@/lib/readingCalculator";
+import {
+  clampChapterNumber,
+  getHighestChapterRead,
+  isChapterOnlyBook,
+} from "@/lib/chapterTracking";
 
 /** Minimal book fields needed for progress summary (matches Convex book shape). */
 export interface ReadingProgressBookInput {
-  totalPages: number;
+  totalPages?: number;
+  totalChapters?: number;
   startDate: string;
   endDate: string;
   markedCompleteAt?: number;
+  progressStyle?: "pages" | "chapters";
+  ignorePages?: boolean;
 }
 
 /** Minimal session fields (matches reading session documents from queries). */
@@ -26,64 +37,131 @@ export interface ReadingProgressSessionInput {
   actualPages?: number;
   isRead: boolean;
   isMissed?: boolean;
+  chapterNumber?: number | null;
 }
 
 export interface ExpectedPerUnaccountedDayRow {
   key: string;
   label: string;
-  expectedPage: number;
+  expectedPage?: number;
+  expectedChapter?: number;
 }
 
 export interface ReadingProgressSummary {
-  totalPagesRead: number;
-  expectedPageByToday: number;
+  isChapterOnly: boolean;
+  totalPagesRead?: number;
+  expectedPageByToday?: number;
   progressPercentage: number;
   isAhead: boolean;
   isBehind: boolean;
-  pagesDifference: number;
-  totalPages: number;
+  difference: number;
+  differenceUnit: "page" | "chapter";
+  totalPages?: number;
+  totalChapters?: number;
   showStatusBanner: boolean;
   showExpectedDropdown: boolean;
   expectedPerUnaccountedDay: ExpectedPerUnaccountedDayRow[];
+  currentChapter?: number;
+  expectedChapterByToday?: number;
 }
 
-/**
- * Computes reading progress summary including:
- * - Schedule-based cumulative expected through today (`scheduledExpectedPageByToday` internally)
- * - When ahead of cumulative schedule: displayed "Expected by Today" = pages read + remaining planned for today
- *   (not full today plan, since totalPagesRead already includes today's actual pages)
- * - isBehind: totalPagesRead < displayed expectedPageByToday
- * - isAhead (green banner): ahead of cumulative schedule (read > scheduledExpectedPageByToday)
- * - pagesDifference: behind vs displayed expected, or pages ahead vs cumulative schedule (behind takes priority)
- * - Unaccounted-day dropdown rows (excludes read and missed days)
- * - Displayed expectations are capped at book.totalPages (stale vs redistributed per-day plans can otherwise sum above the book)
- */
 export function computeReadingProgressSummary(
   book: ReadingProgressBookInput,
   sessions: ReadingProgressSessionInput[]
 ): ReadingProgressSummary {
-  const capAtBookTotal = (n: number) => Math.min(n, book.totalPages);
-
-  if (book.markedCompleteAt != null) {
-    return {
-      totalPagesRead: book.totalPages,
-      expectedPageByToday: book.totalPages,
-      progressPercentage: 100,
-      isAhead: false,
-      isBehind: false,
-      pagesDifference: 0,
-      totalPages: book.totalPages,
-      showStatusBanner: false,
-      showExpectedDropdown: false,
-      expectedPerUnaccountedDay: [],
-    };
-  }
-
+  const chapterOnly = isChapterOnlyBook(book);
+  const totalPages = book.totalPages ?? 0;
+  const totalChapters = book.totalChapters;
   const startDate = parseDateFromStorage(book.startDate);
   const endDate = parseDateFromStorage(book.endDate);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const showStatusBanner = !isBefore(today, startDate);
+  const sessionsByDate = new Map(sessions.map((session) => [session.date, session]));
+  const allDays = getAllDaysInRange(startDate, endDate);
 
+  if (chapterOnly && typeof totalChapters === "number" && totalChapters > 0) {
+    const chapterDistribution = distributeChaptersAcrossDays(
+      totalChapters,
+      startDate,
+      endDate
+    );
+
+    if (book.markedCompleteAt != null) {
+      return {
+        isChapterOnly: true,
+        progressPercentage: 100,
+        isAhead: false,
+        isBehind: false,
+        difference: 0,
+        differenceUnit: "chapter",
+        totalChapters,
+        showStatusBanner: false,
+        showExpectedDropdown: false,
+        expectedPerUnaccountedDay: [],
+        currentChapter: totalChapters,
+        expectedChapterByToday: totalChapters,
+      };
+    }
+
+    const currentChapter = getHighestChapterRead(sessions, totalChapters);
+    const completedDates = new Set(
+      sessions.filter((session) => session.isRead).map((session) => session.date)
+    );
+    const daysFromStartToToday = allDays.filter(
+      (day) => isBefore(day, today) || isTodayDate(day)
+    );
+    const unaccountedDays = daysFromStartToToday.filter((day) => {
+      const dayKey = formatDateForStorage(day);
+      if (completedDates.has(dayKey)) return false;
+      if (sessionsByDate.get(dayKey)?.isMissed) return false;
+      return true;
+    });
+    const expectedPerUnaccountedDay = unaccountedDays.map((day, index) => {
+      const dayKey = formatDateForStorage(day);
+      return {
+        key: `${dayKey}-${index}`,
+        label: format(day, "MMM d"),
+        expectedChapter: chapterDistribution.get(dayKey) ?? 1,
+      };
+    });
+    const expectedChapterByToday =
+      !isBefore(today, startDate)
+        ? chapterDistribution.get(
+            formatDateForStorage(isAfter(today, endDate) ? endDate : today)
+          ) ?? 1
+        : undefined;
+    const isBehind =
+      expectedChapterByToday !== undefined && currentChapter < expectedChapterByToday;
+    const isAhead =
+      expectedChapterByToday !== undefined && currentChapter > expectedChapterByToday;
+    const difference =
+      expectedChapterByToday === undefined
+        ? 0
+        : isBehind
+          ? expectedChapterByToday - currentChapter
+          : isAhead
+            ? currentChapter - expectedChapterByToday
+            : 0;
+
+    return {
+      isChapterOnly: true,
+      progressPercentage: (currentChapter / totalChapters) * 100,
+      isAhead,
+      isBehind,
+      difference,
+      differenceUnit: "chapter",
+      totalChapters,
+      showStatusBanner,
+      showExpectedDropdown: unaccountedDays.some((day) => isBefore(day, today)),
+      expectedPerUnaccountedDay,
+      currentChapter,
+      expectedChapterByToday,
+    };
+  }
+
+  const capAtBookTotal = (value: number) => Math.min(value, totalPages);
+  const chapterMode = book.progressStyle === "chapters";
   const totalPagesRead = sessions.reduce((sum, session) => {
     if (session.isRead) {
       return sum + (session.actualPages || session.plannedPages || 0);
@@ -91,26 +169,61 @@ export function computeReadingProgressSummary(
     return sum;
   }, 0);
 
-  const pageDistribution = distributePagesAcrossDays(
-    book.totalPages,
-    startDate,
-    endDate
-  );
+  if (book.markedCompleteAt != null) {
+    return {
+      isChapterOnly: false,
+      totalPagesRead: totalPages,
+      expectedPageByToday: totalPages,
+      progressPercentage: 100,
+      isAhead: false,
+      isBehind: false,
+      difference: 0,
+      differenceUnit: "page",
+      totalPages,
+      totalChapters,
+      showStatusBanner: false,
+      showExpectedDropdown: false,
+      expectedPerUnaccountedDay: [],
+      currentChapter:
+        chapterMode && typeof totalChapters === "number" ? totalChapters : undefined,
+      expectedChapterByToday:
+        chapterMode && typeof totalChapters === "number" ? totalChapters : undefined,
+    };
+  }
 
-  const sessionsByDate = new Map(sessions.map((s) => [s.date, s]));
+  const pageDistribution = distributePagesAcrossDays(totalPages, startDate, endDate);
   const plannedPagesForDay = (dayKey: string) =>
-    sessionsByDate.get(dayKey)?.plannedPages ??
-    pageDistribution.get(dayKey) ??
-    0;
+    sessionsByDate.get(dayKey)?.plannedPages ?? pageDistribution.get(dayKey) ?? 0;
 
-  const allDays = getAllDaysInRange(startDate, endDate);
+  const chapterSuggestions = new Map<string, number>();
   let scheduledExpectedPageByToday = 0;
   const daysFromStartToToday: Date[] = [];
+  let lastKnownChapter = 1;
+  let currentChapter: number | undefined;
 
   for (const day of allDays) {
     const dayKey = formatDateForStorage(day);
-    const dayPages = plannedPagesForDay(dayKey);
+    const sessionForDay = sessionsByDate.get(dayKey);
+    const sessionChapter = sessionForDay?.chapterNumber;
 
+    if (
+      chapterMode &&
+      sessionChapter !== undefined &&
+      sessionChapter !== null &&
+      sessionChapter >= 1
+    ) {
+      lastKnownChapter = clampChapterNumber(sessionChapter, totalChapters);
+    }
+
+    if (chapterMode) {
+      const suggestedChapter = clampChapterNumber(lastKnownChapter, totalChapters);
+      chapterSuggestions.set(dayKey, suggestedChapter);
+      if (sessionForDay?.isRead) {
+        currentChapter = suggestedChapter;
+      }
+    }
+
+    const dayPages = plannedPagesForDay(dayKey);
     if (isBefore(day, today) || isTodayDate(day)) {
       scheduledExpectedPageByToday += dayPages;
       daysFromStartToToday.push(day);
@@ -132,7 +245,7 @@ export function computeReadingProgressSummary(
   }
 
   const completedDates = new Set(
-    sessions.filter((s) => s.isRead).map((s) => s.date)
+    sessions.filter((session) => session.isRead).map((session) => session.date)
   );
   const unaccountedDays = daysFromStartToToday.filter((day) => {
     const dayKey = formatDateForStorage(day);
@@ -140,23 +253,28 @@ export function computeReadingProgressSummary(
     if (sessionsByDate.get(dayKey)?.isMissed) return false;
     return true;
   });
-  const showExpectedDropdown = unaccountedDays.some((day) =>
-    isBefore(day, today)
-  );
-
-  let cumulativePlanned = 0;
-  const expectedPerUnaccountedDayRaw = unaccountedDays.map((day, index) => {
+  const expectedPerUnaccountedDay = unaccountedDays.map((day, index) => {
     const dayKey = formatDateForStorage(day);
-    const dayPages = plannedPagesForDay(dayKey);
-    cumulativePlanned += dayPages;
     return {
       key: `${dayKey}-${index}`,
       label: format(day, "MMM d"),
-      expectedPage: totalPagesRead + cumulativePlanned,
+      expectedPage: capAtBookTotal(
+        totalPagesRead +
+          unaccountedDays
+            .slice(0, index + 1)
+            .reduce(
+              (sum, currentDay) =>
+                sum + plannedPagesForDay(formatDateForStorage(currentDay)),
+              0
+            )
+      ),
+      expectedChapter: chapterMode
+        ? chapterSuggestions.get(dayKey) ?? 1
+        : undefined,
     };
   });
 
-  const progressPercentage = (totalPagesRead / book.totalPages) * 100;
+  const progressPercentage = totalPages > 0 ? (totalPagesRead / totalPages) * 100 : 0;
   const aheadOfSchedule = totalPagesRead > scheduledExpectedPageByToday;
   const remainingTodayPlanned = Math.max(0, todayPlannedPages - todayActualPages);
   let expectedPageByToday = aheadOfSchedule
@@ -164,34 +282,35 @@ export function computeReadingProgressSummary(
     : scheduledExpectedPageByToday;
   expectedPageByToday = capAtBookTotal(expectedPageByToday);
 
-  // Displayed expected uses read + remaining today when ahead of schedule, so read > expected is impossible.
-  // "Ahead" for the green banner is vs cumulative schedule only; amber still wins if behind end-of-day target.
   const isBehind = totalPagesRead < expectedPageByToday;
   const isAhead = totalPagesRead > scheduledExpectedPageByToday;
-
-  let pagesDifference = 0;
-  if (isBehind) {
-    pagesDifference = expectedPageByToday - totalPagesRead;
-  } else if (isAhead) {
-    pagesDifference = totalPagesRead - scheduledExpectedPageByToday;
-  }
-  const showStatusBanner = !isBefore(today, startDate);
-
-  const expectedPerUnaccountedDay = expectedPerUnaccountedDayRaw.map((row) => ({
-    ...row,
-    expectedPage: capAtBookTotal(row.expectedPage),
-  }));
+  const difference = isBehind
+    ? expectedPageByToday - totalPagesRead
+    : isAhead
+      ? totalPagesRead - scheduledExpectedPageByToday
+      : 0;
+  const expectedChapterByToday =
+    chapterMode && !isBefore(today, startDate)
+      ? chapterSuggestions.get(
+          formatDateForStorage(isAfter(today, endDate) ? endDate : today)
+        ) ?? 1
+      : undefined;
 
   return {
+    isChapterOnly: false,
     totalPagesRead,
     expectedPageByToday,
     progressPercentage,
     isAhead,
     isBehind,
-    pagesDifference,
-    totalPages: book.totalPages,
+    difference,
+    differenceUnit: "page",
+    totalPages,
+    totalChapters,
     showStatusBanner,
-    showExpectedDropdown,
+    showExpectedDropdown: unaccountedDays.some((day) => isBefore(day, today)),
     expectedPerUnaccountedDay,
+    currentChapter,
+    expectedChapterByToday,
   };
 }

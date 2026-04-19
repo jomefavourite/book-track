@@ -9,6 +9,7 @@ import { useUser, SignInButton } from "@clerk/nextjs";
 import { format, differenceInDays } from "date-fns";
 import { parseDateFromStorage } from "@/lib/dateUtils";
 import { computeReadingProgressSummary } from "@/lib/readingProgressSummary";
+import { getHighestChapterRead, isChapterOnlyBook } from "@/lib/chapterTracking";
 import ReadingProgressStatusBanner from "@/components/ReadingProgressStatusBanner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -71,7 +72,7 @@ export default function BookDetailPage() {
   const errorMessage =
     error instanceof Error
       ? error.message
-      : (error as any)?.message || String(error || "");
+      : String(error || "");
   const isPrivateBookError =
     error &&
     (errorMessage === "Unauthorized" ||
@@ -85,7 +86,7 @@ export default function BookDetailPage() {
       await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
+    } catch {
       // Fallback for browsers that don't support clipboard API
       const textArea = document.createElement("textarea");
       textArea.value = url;
@@ -97,7 +98,7 @@ export default function BookDetailPage() {
         document.execCommand("copy");
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
-      } catch (err) {
+      } catch {
         alert("Failed to copy link. Please copy manually: " + url);
       }
       document.body.removeChild(textArea);
@@ -108,9 +109,19 @@ export default function BookDetailPage() {
     () => (book ? computeReadingProgressSummary(book, sessions) : null),
     [book, sessions]
   );
+  const chapterMode = book?.progressStyle === "chapters";
+  const chapterOnlyMode = book ? isChapterOnlyBook(book) : false;
 
   const sessionProgressPercent = useMemo(() => {
-    if (!book || book.totalPages <= 0) return 0;
+    if (!book) return 0;
+    if (chapterOnlyMode) {
+      if (!book.totalChapters || book.totalChapters <= 0) return 0;
+      return (
+        (getHighestChapterRead(sessions, book.totalChapters) / book.totalChapters) *
+        100
+      );
+    }
+    if (!book.totalPages || book.totalPages <= 0) return 0;
     const totalPagesRead = sessions.reduce((sum, session) => {
       if (session.isRead && !session.isMissed) {
         return sum + (session.actualPages ?? session.plannedPages ?? 0);
@@ -118,7 +129,7 @@ export default function BookDetailPage() {
       return sum;
     }, 0);
     return (totalPagesRead / book.totalPages) * 100;
-  }, [book, sessions]);
+  }, [book, sessions, chapterOnlyMode]);
 
   const invalidateBookProgressQueries = async () => {
     await queryClient.invalidateQueries({
@@ -172,7 +183,7 @@ export default function BookDetailPage() {
             This book is private
           </div>
           <p className="mb-4 text-sm text-muted-foreground">
-            You don't have permission to view this book.
+            You don&apos;t have permission to view this book.
           </p>
           <Link
             href={user ? "/dashboard" : "/"}
@@ -342,11 +353,15 @@ export default function BookDetailPage() {
             </div>
           </div>
           <div className="mt-2 space-y-1 text-sm text-muted-foreground sm:text-base">
-            <p>Total Pages: {book.totalPages}</p>
+            {!chapterOnlyMode && typeof book.totalPages === "number" && (
+              <p>Total Pages: {book.totalPages}</p>
+            )}
             <p>
               Tracking:{" "}
-              {book.progressStyle === "chapters"
-                ? "Chapter-based"
+              {chapterOnlyMode
+                ? "Chapter-only"
+                : book.progressStyle === "chapters"
+                  ? "Chapter-based"
                 : "Page-based"}
             </p>
             {book.progressStyle === "chapters" &&
@@ -421,15 +436,33 @@ export default function BookDetailPage() {
                 Reading Progress Summary
               </h3>
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    Pages Read:
-                  </span>
-                  <span className="font-medium text-foreground">
-                    {progressSummary.totalPagesRead} /{" "}
-                    {progressSummary.totalPages}
-                  </span>
-                </div>
+                {chapterMode && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      Current Chapter:
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {progressSummary.currentChapter
+                        ? `Chapter ${progressSummary.currentChapter}${
+                            typeof book.totalChapters === "number"
+                              ? ` / ${book.totalChapters}`
+                              : ""
+                          }`
+                        : "Not logged yet"}
+                    </span>
+                  </div>
+                )}
+                {!progressSummary.isChapterOnly && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      Pages Read:
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {progressSummary.totalPagesRead} /{" "}
+                      {progressSummary.totalPages}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">
                     Progress:
@@ -443,7 +476,14 @@ export default function BookDetailPage() {
                     Expected by Today:
                   </span>
                   <span className="font-medium text-foreground">
-                    Page {progressSummary.expectedPageByToday}
+                    {progressSummary.isChapterOnly
+                      ? `Chapter ${progressSummary.expectedChapterByToday}`
+                      : `Page ${progressSummary.expectedPageByToday}${
+                          chapterMode &&
+                          progressSummary.expectedChapterByToday !== undefined
+                            ? ` • Chapter ${progressSummary.expectedChapterByToday}`
+                            : ""
+                        }`}
                   </span>
                 </div>
                 {progressSummary.showExpectedDropdown && (
@@ -468,7 +508,15 @@ export default function BookDetailPage() {
                             key={item.key}
                             className="cursor-default"
                           >
-                            {item.label}: Page {item.expectedPage}
+                            {item.label}:{" "}
+                            {progressSummary.isChapterOnly
+                              ? `Chapter ${item.expectedChapter}`
+                              : `Page ${item.expectedPage}${
+                                  chapterMode &&
+                                  item.expectedChapter !== undefined
+                                    ? ` • Chapter ${item.expectedChapter}`
+                                    : ""
+                                }`}
                           </DropdownMenuItem>
                         )
                       )}
@@ -479,7 +527,8 @@ export default function BookDetailPage() {
                   showStatusBanner={progressSummary.showStatusBanner}
                   isAhead={progressSummary.isAhead}
                   isBehind={progressSummary.isBehind}
-                  pagesDifference={progressSummary.pagesDifference}
+                  difference={progressSummary.difference}
+                  differenceUnit={progressSummary.differenceUnit}
                 />
               </div>
             </Card>

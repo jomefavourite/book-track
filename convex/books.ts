@@ -5,6 +5,7 @@ import {
   formatDateForStorage,
   getAllDaysInRange,
   distributePagesAcrossDays,
+  distributeChaptersAcrossDays,
 } from "./dateUtils";
 import {
   getBookProgressPercent,
@@ -14,12 +15,20 @@ import {
 const isValidPositiveInteger = (value: number | undefined): value is number =>
   value !== undefined && Number.isInteger(value) && value > 0;
 
+const isValidPositiveNumber = (value: number | undefined): value is number =>
+  value !== undefined && Number.isFinite(value) && value > 0;
+
+const isChapterOnlyTracking = (options: {
+  progressStyle?: "pages" | "chapters";
+  ignorePages?: boolean;
+}) => options.progressStyle === "chapters" && options.ignorePages === true;
+
 export const createBook = mutation({
   args: {
     userId: v.string(),
     name: v.string(),
     author: v.optional(v.string()),
-    totalPages: v.number(),
+    totalPages: v.optional(v.number()),
     totalChapters: v.optional(v.number()),
     readingMode: v.union(v.literal("calendar"), v.literal("fixed-days")),
     startMonth: v.optional(v.string()),
@@ -38,6 +47,7 @@ export const createBook = mutation({
     progressStyle: v.optional(
       v.union(v.literal("pages"), v.literal("chapters"))
     ),
+    ignorePages: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = args.userId;
@@ -45,18 +55,48 @@ export const createBook = mutation({
       throw new Error("Not authenticated");
     }
 
-    if (
-      args.progressStyle === "chapters" &&
-      !isValidPositiveInteger(args.totalChapters)
-    ) {
+    const progressStyle = args.progressStyle ?? "pages";
+    const ignorePages = isChapterOnlyTracking({
+      progressStyle,
+      ignorePages: args.ignorePages,
+    });
+
+    if (progressStyle === "chapters" && !isValidPositiveInteger(args.totalChapters)) {
       throw new Error("Total chapters is required for chapter-based books");
     }
+    if (!ignorePages && !isValidPositiveNumber(args.totalPages)) {
+      throw new Error("Total pages is required unless pages are ignored");
+    }
 
-    const bookData: any = {
+    const bookData: {
+      userId: string;
+      name: string;
+      author?: string;
+      totalPages?: number;
+      totalChapters?: number;
+      progressStyle: "pages" | "chapters";
+      ignorePages: boolean;
+      readingMode: "calendar" | "fixed-days";
+      startMonth?: string;
+      endMonth?: string;
+      startYear?: number;
+      endYear?: number;
+      daysToRead?: number;
+      startDate: string;
+      endDate: string;
+      createdAt: number;
+      bookOrder?: number;
+      isPublic: boolean;
+      showCreatorName: boolean;
+      showCreatorEmail: boolean;
+      creatorName?: string;
+      creatorEmail?: string;
+      isArchived: boolean;
+    } = {
       userId,
       name: args.name,
-      totalPages: args.totalPages,
-      progressStyle: args.progressStyle ?? "pages",
+      progressStyle,
+      ignorePages,
       readingMode: args.readingMode,
       startMonth: args.startMonth,
       endMonth: args.endMonth,
@@ -82,6 +122,9 @@ export const createBook = mutation({
 
     if (bookData.progressStyle === "chapters") {
       bookData.totalChapters = args.totalChapters;
+    }
+    if (args.totalPages !== undefined) {
+      bookData.totalPages = args.totalPages;
     }
 
     console.log("Book data being inserted:", JSON.stringify(bookData, null, 2));
@@ -194,6 +237,7 @@ export const updateBook = mutation({
     progressStyle: v.optional(
       v.union(v.literal("pages"), v.literal("chapters"))
     ),
+    ignorePages: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = args.userId;
@@ -230,6 +274,7 @@ export const updateBook = mutation({
       creatorName?: string;
       creatorEmail?: string;
       progressStyle?: "pages" | "chapters";
+      ignorePages?: boolean;
     } = {};
 
     if (args.name !== undefined) {
@@ -286,9 +331,18 @@ export const updateBook = mutation({
     if (args.progressStyle !== undefined) {
       updates.progressStyle = args.progressStyle;
     }
+    if (args.ignorePages !== undefined) {
+      updates.ignorePages = args.ignorePages;
+    }
 
     const finalProgressStyle = args.progressStyle ?? book.progressStyle ?? "pages";
+    const finalIgnorePages = isChapterOnlyTracking({
+      progressStyle: finalProgressStyle,
+      ignorePages: args.ignorePages ?? book.ignorePages,
+    });
     const finalTotalChapters = args.totalChapters ?? book.totalChapters;
+    const finalTotalPages =
+      args.totalPages ?? (finalIgnorePages ? book.totalPages : book.totalPages);
 
     if (finalProgressStyle === "chapters") {
       if (!isValidPositiveInteger(finalTotalChapters)) {
@@ -297,34 +351,45 @@ export const updateBook = mutation({
       updates.totalChapters = finalTotalChapters;
     } else {
       delete updates.totalChapters;
+      updates.ignorePages = false;
+    }
+
+    if (!finalIgnorePages && !isValidPositiveNumber(finalTotalPages)) {
+      throw new Error("Total pages is required unless pages are ignored");
     }
 
     // Determine the final values after update
     const finalStartDate = args.startDate ?? book.startDate;
     const finalEndDate = args.endDate ?? book.endDate;
-    const finalTotalPages = args.totalPages ?? book.totalPages;
 
     // Check if dates or totalPages have changed
     const datesChanged =
       args.startDate !== undefined || args.endDate !== undefined;
     const totalPagesChanged = args.totalPages !== undefined;
+    const ignorePagesChanged = args.ignorePages !== undefined;
 
     // If dates or totalPages changed, update reading sessions
-    if (datesChanged || totalPagesChanged) {
+    if (datesChanged || totalPagesChanged || ignorePagesChanged) {
       // Get all existing sessions for this book
       const existingSessions = await ctx.db
         .query("readingSessions")
         .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
         .collect();
 
-      // Calculate new page distribution
       const newStartDate = parseDateFromStorage(finalStartDate);
       const newEndDate = parseDateFromStorage(finalEndDate);
-      const newDistribution = distributePagesAcrossDays(
-        finalTotalPages,
-        newStartDate,
-        newEndDate
-      );
+      const newDistribution =
+        !finalIgnorePages && isValidPositiveNumber(finalTotalPages)
+          ? distributePagesAcrossDays(finalTotalPages, newStartDate, newEndDate)
+          : null;
+      const chapterDistribution =
+        finalIgnorePages && isValidPositiveInteger(finalTotalChapters)
+          ? distributeChaptersAcrossDays(
+              finalTotalChapters,
+              newStartDate,
+              newEndDate
+            )
+          : null;
 
       // Create a map of existing sessions by date
       const existingSessionsMap = new Map();
@@ -338,14 +403,26 @@ export const updateBook = mutation({
       // Update or create sessions for each day in the new range
       for (const day of newDays) {
         const dateKey = formatDateForStorage(day);
-        const newPlannedPages = newDistribution.get(dateKey) ?? 0;
+        const newPlannedPages = newDistribution?.get(dateKey) ?? 0;
+        const expectedChapterForDay = chapterDistribution?.get(dateKey);
         const existingSession = existingSessionsMap.get(dateKey);
 
         if (existingSession) {
-          // Update existing session's plannedPages, preserve isRead, isMissed, actualPages
-          await ctx.db.patch(existingSession._id, {
-            plannedPages: newPlannedPages,
-          });
+          if (!finalIgnorePages && newDistribution) {
+            // Update existing session's plannedPages, preserve isRead, isMissed, actualPages
+            await ctx.db.patch(existingSession._id, {
+              plannedPages: newPlannedPages,
+            });
+          } else if (
+            chapterDistribution &&
+            existingSession.chapterNumber != null &&
+            expectedChapterForDay !== undefined &&
+            existingSession.chapterNumber > expectedChapterForDay
+          ) {
+            await ctx.db.patch(existingSession._id, {
+              chapterNumber: expectedChapterForDay,
+            });
+          }
         } else {
           // Create new session for this date
           await ctx.db.insert("readingSessions", {
@@ -512,7 +589,7 @@ export const archiveBook = mutation({
       throw new Error("Unauthorized");
     }
 
-    await ctx.db.patch(args.bookId, { isArchived: true } as any);
+    await ctx.db.patch(args.bookId, { isArchived: true });
   },
 });
 
@@ -537,7 +614,7 @@ export const unarchiveBook = mutation({
       throw new Error("Unauthorized");
     }
 
-    await ctx.db.patch(args.bookId, { isArchived: false } as any);
+    await ctx.db.patch(args.bookId, { isArchived: false });
   },
 });
 

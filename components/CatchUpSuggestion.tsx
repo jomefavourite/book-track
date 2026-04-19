@@ -1,14 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import {
-  format,
-  parseISO,
-  isBefore,
-  isAfter,
-  isToday as isTodayDate,
-  startOfToday,
-} from "date-fns";
+import { isAfter, startOfToday } from "date-fns";
 import {
   parseDateFromStorage,
   formatDateForStorage,
@@ -18,17 +11,24 @@ import {
   calculateCatchUpPages,
   getMissedDays,
   distributePagesAcrossDays,
+  distributeChaptersAcrossDays,
 } from "@/lib/readingCalculator";
 import { Id } from "@/convex/_generated/dataModel";
+import {
+  getHighestChapterRead,
+  isChapterOnlyBook,
+} from "@/lib/chapterTracking";
 
 interface CatchUpSuggestionProps {
   bookId: Id<"books">;
   book: {
     startDate: string;
     endDate: string;
-    totalPages: number;
+    totalPages?: number;
+    totalChapters?: number;
     markedCompleteAt?: number;
     progressStyle?: "pages" | "chapters";
+    ignorePages?: boolean;
   };
   sessions: Array<{
     date: string;
@@ -36,11 +36,11 @@ interface CatchUpSuggestionProps {
     isMissed?: boolean;
     actualPages?: number;
     plannedPages: number;
+    chapterNumber?: number | null;
   }>;
 }
 
 export default function CatchUpSuggestion({
-  bookId,
   book,
   sessions,
 }: CatchUpSuggestionProps) {
@@ -57,51 +57,14 @@ export default function CatchUpSuggestion({
       return null;
     }
 
-    // Calculate total pages read (matching progress summary logic - all isRead sessions)
-    const totalPagesRead = sessions.reduce((sum, session) => {
-      if (session.isRead) {
-        return sum + (session.actualPages || session.plannedPages || 0);
-      }
-      return sum;
-    }, 0);
-
-    // Calculate expected page by today
-    const pageDistribution = distributePagesAcrossDays(
-      book.totalPages,
-      startDate,
-      endDate
-    );
-
-    const allDays = getAllDaysInRange(startDate, endDate);
-    let expectedPageByToday = 0;
-
-    for (const day of allDays) {
-      const dayKey = formatDateForStorage(day);
-      const dayPages = pageDistribution.get(dayKey) || 0;
-
-      if (isBefore(day, today) || isTodayDate(day)) {
-        expectedPageByToday += dayPages;
-      } else {
-        break;
-      }
-    }
-
-    // If user is ahead or on track, don't show catch-up suggestion
-    if (totalPagesRead >= expectedPageByToday) {
-      return null;
-    }
-
-    // Build a Set of explicitly missed dates to exclude from calculations
     const explicitlyMissedDates = new Set(
-      sessions.filter((s) => s.isMissed).map((s) => s.date)
+      sessions.filter((session) => session.isMissed).map((session) => session.date)
     );
-
-    // Get days that are past and not read (excluding explicitly missed days)
     const completedDates = new Set(
-      sessions.filter((s) => s.isRead && !s.isMissed).map((s) => s.date)
+      sessions
+        .filter((session) => session.isRead && !session.isMissed)
+        .map((session) => session.date)
     );
-
-    // Get missed days, excluding explicitly marked missed days
     const missedDays = getMissedDays(
       startDate,
       endDate,
@@ -109,53 +72,104 @@ export default function CatchUpSuggestion({
       explicitlyMissedDates
     );
 
-    // Only show catch-up if there are missed days
     if (missedDays.length === 0) {
       return null;
     }
 
-    // Calculate total pages read for catch-up calculation (excluding missed days)
-    const totalPagesReadForCatchUp = sessions.reduce((sum, session) => {
-      // Only count pages from read days, exclude missed days
-      if (session.isRead && !session.isMissed) {
-        return sum + (session.actualPages || session.plannedPages);
-      }
-      return sum;
-    }, 0);
-
-    const remainingPages = book.totalPages - totalPagesReadForCatchUp;
-
-    // Calculate remaining days excluding explicitly missed days
     const allRemainingDays = getAllDaysInRange(today, endDate);
     const remainingDays = allRemainingDays.filter((day) => {
       const dayKey = formatDateForStorage(day);
       return !explicitlyMissedDates.has(dayKey);
     }).length;
 
+    if (isChapterOnlyBook(book) && typeof book.totalChapters === "number") {
+      const currentChapter = getHighestChapterRead(sessions, book.totalChapters);
+      const todayKey = formatDateForStorage(today);
+      const chapterDistribution = distributeChaptersAcrossDays(
+        book.totalChapters,
+        startDate,
+        endDate
+      );
+      const expectedChapterByToday = chapterDistribution.get(todayKey) ?? 1;
+
+      if (currentChapter >= expectedChapterByToday) {
+        return null;
+      }
+
+      const remainingChapters = Math.max(0, book.totalChapters - currentChapter);
+      if (remainingDays <= 0) {
+        return {
+          type: "overdue" as const,
+          message: `You have ${remainingChapters} chapter${
+            remainingChapters === 1 ? "" : "s"
+          } remaining and the reading period has ended.`,
+        };
+      }
+
+      const suggestedChapter = Math.min(
+        book.totalChapters,
+        currentChapter + Math.ceil(remainingChapters / remainingDays)
+      );
+
+      return {
+        type: "catchup" as const,
+        message: `You've missed ${missedDays.length} day(s). To catch up, reach Chapter ${suggestedChapter} today.`,
+        remainingChapters,
+        remainingDays,
+      };
+    }
+
+    const totalPages = book.totalPages ?? 0;
+    const totalPagesRead = sessions.reduce((sum, session) => {
+      if (session.isRead) {
+        return sum + (session.actualPages || session.plannedPages || 0);
+      }
+      return sum;
+    }, 0);
+
+    const pageDistribution = distributePagesAcrossDays(totalPages, startDate, endDate);
+    let expectedPageByToday = 0;
+    for (const day of getAllDaysInRange(startDate, endDate)) {
+      const dayKey = formatDateForStorage(day);
+      const dayPages = pageDistribution.get(dayKey) || 0;
+      if (day <= today) {
+        expectedPageByToday += dayPages;
+      } else {
+        break;
+      }
+    }
+
+    if (totalPagesRead >= expectedPageByToday) {
+      return null;
+    }
+
+    const totalPagesReadForCatchUp = sessions.reduce((sum, session) => {
+      if (session.isRead && !session.isMissed) {
+        return sum + (session.actualPages || session.plannedPages);
+      }
+      return sum;
+    }, 0);
+
+    const remainingPages = totalPages - totalPagesReadForCatchUp;
+
     if (remainingDays <= 0) {
       return {
         type: "overdue" as const,
         message: `You have ${remainingPages} pages remaining and the reading period has ended.`,
-        suggestedPages: remainingPages,
       };
     }
 
     const suggestedPages = calculateCatchUpPages(
-      book.totalPages,
+      totalPages,
       totalPagesReadForCatchUp,
       remainingDays
     );
 
-    // Count only past unread days (explicitly missed days are excluded)
-    const totalMissedDays = missedDays.length;
-
     return {
       type: "catchup" as const,
-      missedDays: totalMissedDays,
+      message: `You've missed ${missedDays.length} day(s). To catch up, read ${suggestedPages} pages today.`,
       remainingPages,
       remainingDays,
-      suggestedPages,
-      message: `You've missed ${totalMissedDays} day(s). To catch up, read ${suggestedPages} pages today.`,
     };
   }, [book, sessions]);
 
@@ -178,20 +192,24 @@ export default function CatchUpSuggestion({
       </h3>
       <p className="text-sm">{suggestion.message}</p>
       {suggestion.type === "catchup" &&
-        book.progressStyle === "chapters" && (
-          <p className="mt-2 text-xs opacity-90">
-            Catch-up targets are in pages (same as your schedule); keep logging
-            chapter and pages per day when you read.
-          </p>
+        "remainingPages" in suggestion && (
+          <div className="mt-2 text-sm">
+            <p>
+              Remaining: {suggestion.remainingPages} pages over{" "}
+              {suggestion.remainingDays} days
+            </p>
+          </div>
         )}
-      {suggestion.type === "catchup" && (
-        <div className="mt-2 text-sm">
-          <p>
-            Remaining: {suggestion.remainingPages} pages over{" "}
-            {suggestion.remainingDays} days
-          </p>
-        </div>
-      )}
+      {suggestion.type === "catchup" &&
+        "remainingChapters" in suggestion && (
+          <div className="mt-2 text-sm">
+            <p>
+              Remaining: {suggestion.remainingChapters} chapter
+              {suggestion.remainingChapters === 1 ? "" : "s"} over{" "}
+              {suggestion.remainingDays} days
+            </p>
+          </div>
+        )}
     </div>
   );
 }

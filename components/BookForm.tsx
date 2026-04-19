@@ -6,23 +6,15 @@ import { useConvexMutation, convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import {
   format,
-  isSameMonth,
-  addDays,
-  eachDayOfInterval,
   differenceInDays,
 } from "date-fns";
 import {
   MONTHS,
-  getDateRangeForMonths,
-  getMonthDateRange,
   formatDateForStorage,
   parseDateFromStorage,
 } from "@/lib/dateUtils";
 import {
-  generateReadingOptions,
   calculateDailyPages,
-  calculateDaysInMonthRangeForBook,
-  distributePagesAcrossDays,
 } from "@/lib/readingCalculator";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
@@ -37,7 +29,7 @@ interface BookFormProps {
     _id: Id<"books">;
     name: string;
     author?: string;
-    totalPages: number;
+    totalPages?: number;
     totalChapters?: number;
     readingMode: "calendar" | "fixed-days";
     startDate: string;
@@ -53,6 +45,7 @@ interface BookFormProps {
     creatorName?: string;
     creatorEmail?: string;
     progressStyle?: "pages" | "chapters";
+    ignorePages?: boolean;
   };
 }
 
@@ -101,7 +94,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
   const [name, setName] = useState(initialBook?.name || "");
   const [author, setAuthor] = useState(initialBook?.author || "");
   const [totalPages, setTotalPages] = useState(
-    initialBook?.totalPages.toString() || ""
+    initialBook?.totalPages?.toString() || ""
   );
   const [totalChapters, setTotalChapters] = useState(
     initialBook?.totalChapters?.toString() || ""
@@ -112,6 +105,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
   const [progressStyle, setProgressStyle] = useState<"pages" | "chapters">(
     initialBook?.progressStyle ?? "pages"
   );
+  const [ignorePages, setIgnorePages] = useState(initialBook?.ignorePages ?? false);
   const currentMonthIndex = new Date().getMonth();
   const currentYear = new Date().getFullYear();
 
@@ -143,17 +137,14 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
   const defaultEndMonth = initialBook?.endMonth || defaultStartMonth;
   const defaultEndYear = initialBook?.endYear || defaultStartYear;
 
-  const [startMonth, setStartMonth] = useState(defaultStartMonth);
-  const [startYear, setStartYear] = useState(defaultStartYear);
-  const [endMonth, setEndMonth] = useState(defaultEndMonth);
-  const [endYear, setEndYear] = useState(defaultEndYear);
+  const [, setStartMonth] = useState(defaultStartMonth);
+  const [, setStartYear] = useState(defaultStartYear);
+  const [, setEndMonth] = useState(defaultEndMonth);
+  const [, setEndYear] = useState(defaultEndYear);
   const [daysToRead, setDaysToRead] = useState(
     initialBook?.daysToRead?.toString() || ""
   );
-  const [selectedDays, setSelectedDays] = useState<number | null>(null);
-  const [customDays, setCustomDays] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [autoSelectedDays, setAutoSelectedDays] = useState<number | null>(null);
   const [isPublic, setIsPublic] = useState(initialBook?.isPublic || false);
   const [showCreatorName, setShowCreatorName] = useState(
     initialBook?.showCreatorName || false
@@ -161,17 +152,6 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
   const [showCreatorEmail, setShowCreatorEmail] = useState(
     initialBook?.showCreatorEmail || false
   );
-
-  // Show current year and next 10 years to cover future dates
-  const years = Array.from({ length: 11 }, (_, i) => currentYear + i);
-
-  // Calculate available months based on selected year
-  const getAvailableMonths = (year: number) => {
-    if (year > currentYear) return MONTHS; // Future year, all months available
-    if (year < currentYear) return []; // Past year, no months available
-    // Current year: only months from current month onwards
-    return MONTHS.filter((_, index) => index >= currentMonthIndex);
-  };
 
   // Calculate total days from selected dates
   const calculateTotalDays = (): number | null => {
@@ -199,13 +179,13 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
     }
   }, [endDate]);
 
-  const readingOptions =
-    totalPages && !isNaN(Number(totalPages))
-      ? generateReadingOptions(Number(totalPages))
-      : [];
+  const chapterOnlyMode = progressStyle === "chapters" && ignorePages;
 
   // Calculate pages per day based on current form state
   const calculateCurrentPagesPerDay = () => {
+    if (chapterOnlyMode) {
+      return null;
+    }
     if (!totalPages || isNaN(Number(totalPages))) {
       return null;
     }
@@ -232,53 +212,11 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
 
   const handleModeChange = (mode: "calendar" | "fixed-days") => {
     setReadingMode(mode);
-    setSelectedDays(null);
-    setCustomDays("");
-    setAutoSelectedDays(null);
-  };
-
-  // Helper function to check if start date is after end date
-  const isStartAfterEnd = (
-    startMonth: string,
-    startYear: number,
-    endMonth: string,
-    endYear: number
-  ) => {
-    const startMonthIndex = MONTHS.indexOf(
-      startMonth as (typeof MONTHS)[number]
-    );
-    const endMonthIndex = MONTHS.indexOf(endMonth as (typeof MONTHS)[number]);
-
-    if (startYear > endYear) {
-      return true;
-    }
-    if (startYear === endYear && startMonthIndex > endMonthIndex) {
-      return true;
-    }
-    return false;
-  };
-
-  const handleStartMonthChange = (newStartMonth: string) => {
-    setStartMonth(newStartMonth);
-    // If start month is after end month, update end month and year to match start
-    if (isStartAfterEnd(newStartMonth, startYear, endMonth, endYear)) {
-      setEndMonth(newStartMonth);
-      setEndYear(startYear);
-    }
-  };
-
-  const handleStartYearChange = (newStartYear: number) => {
-    setStartYear(newStartYear);
-    // If start year/month is after end year/month, update end to match start
-    if (isStartAfterEnd(startMonth, newStartYear, endMonth, endYear)) {
-      setEndMonth(startMonth);
-      setEndYear(newStartYear);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !totalPages || isNaN(Number(totalPages))) {
+    if (!name) {
       return;
     }
 
@@ -339,9 +277,10 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
 
         // Warn user if days exceed 365, but allow them to proceed
         if (days > 365) {
-          const proceed = confirm(
-            `You've entered ${days} days, which exceeds the recommended maximum of 365 days. This may result in very low daily page targets (${calculateDailyPages(Number(totalPages), days).toFixed(1)} pages/day).\n\nDo you want to continue?`
-          );
+          const warningMessage = chapterOnlyMode
+            ? `You've entered ${days} days, which exceeds the recommended maximum of 365 days.\n\nDo you want to continue?`
+            : `You've entered ${days} days, which exceeds the recommended maximum of 365 days. This may result in very low daily page targets (${calculateDailyPages(Number(totalPages), days).toFixed(1)} pages/day).\n\nDo you want to continue?`;
+          const proceed = confirm(warningMessage);
           if (!proceed) {
             setIsSubmitting(false);
             return;
@@ -384,9 +323,26 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
       }
 
       const authorValue = author.trim() || undefined;
+      const parsedTotalPages = Number(totalPages);
       const parsedTotalChapters = Number(totalChapters);
       const totalChaptersValue =
         progressStyle === "chapters" ? parsedTotalChapters : undefined;
+      const totalPagesValue =
+        !chapterOnlyMode && totalPages && !isNaN(parsedTotalPages)
+          ? parsedTotalPages
+          : undefined;
+
+      if (
+        !chapterOnlyMode &&
+        (!totalPages ||
+          isNaN(parsedTotalPages) ||
+          !Number.isFinite(parsedTotalPages) ||
+          parsedTotalPages < 1)
+      ) {
+        alert("Please enter a valid total pages count");
+        setIsSubmitting(false);
+        return;
+      }
 
       if (
         progressStyle === "chapters" &&
@@ -407,7 +363,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
           userId: user.id,
           name,
           author: authorValue,
-          totalPages: Number(totalPages),
+          totalPages: totalPagesValue,
           readingMode,
           startDate: startDateValue,
           endDate: endDateValue,
@@ -428,6 +384,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
               ? user.primaryEmailAddress?.emailAddress || undefined
               : undefined,
           progressStyle,
+          ignorePages: progressStyle === "chapters" ? ignorePages : false,
           totalChapters: totalChaptersValue,
         });
 
@@ -438,7 +395,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
           userId: user.id,
           name,
           author: authorValue,
-          totalPages: Number(totalPages),
+          totalPages: totalPagesValue,
           readingMode,
           startMonth: startMonthValue,
           endMonth: endMonthValue,
@@ -459,6 +416,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
               ? user.primaryEmailAddress?.emailAddress || undefined
               : undefined,
           progressStyle,
+          ignorePages: progressStyle === "chapters" ? ignorePages : false,
           totalChapters: totalChaptersValue,
         });
 
@@ -515,7 +473,8 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
           />
         </div>
 
-        <div>
+        {!chapterOnlyMode && (
+          <div>
           <label className="block text-sm font-medium text-foreground">
             Total Pages
           </label>
@@ -536,16 +495,17 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
               </span>
             </p>
           )}
-        </div>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-foreground">
             How you log reading
           </label>
           <p className="mt-1 text-xs text-muted-foreground">
-            Chapter-based still uses total pages for your schedule. Total
-            chapters only controls the chapter dropdown you use while logging
-            each read day.
+            Page-based books track reading with pages. Chapter-based books can
+            either keep page scheduling or ignore pages completely and track by
+            chapter only.
           </p>
           <div className="mt-2 flex flex-wrap gap-4">
             <label className="flex items-center">
@@ -574,23 +534,37 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
         </div>
 
         {progressStyle === "chapters" && (
-          <div>
-            <label className="block text-sm font-medium text-foreground">
-              Total Chapters
+          <div className="space-y-4">
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                checked={ignorePages}
+                onChange={(e) => setIgnorePages(e.target.checked)}
+                className="mr-2 rounded border-input text-foreground focus:ring-ring"
+              />
+              <span className="text-sm text-foreground">
+                Ignore pages completely
+              </span>
             </label>
-            <input
-              type="number"
-              value={totalChapters}
-              onChange={(e) => setTotalChapters(e.target.value)}
-              required={progressStyle === "chapters"}
-              min="1"
-              step="1"
-              className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <p className="mt-2 text-sm text-muted-foreground">
-              This is only used to power chapter selection while logging
-              reading. Your schedule still comes from total pages and dates.
-            </p>
+            <div>
+              <label className="block text-sm font-medium text-foreground">
+                Total Chapters
+              </label>
+              <input
+                type="number"
+                value={totalChapters}
+                onChange={(e) => setTotalChapters(e.target.value)}
+                required={progressStyle === "chapters"}
+                min="1"
+                step="1"
+                className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <p className="mt-2 text-sm text-muted-foreground">
+                {chapterOnlyMode
+                  ? "Your schedule and progress will be chapter-based."
+                  : "This powers chapter selection while logging. Your schedule still comes from total pages and dates."}
+              </p>
+            </div>
           </div>
         )}
 
@@ -673,7 +647,8 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
                             {totalDays}
                           </span>
                         </p>
-                        {totalPages &&
+                        {!chapterOnlyMode &&
+                          totalPages &&
                           !isNaN(Number(totalPages)) &&
                           totalDays > 0 && (
                             <p className="text-sm text-muted-foreground">
@@ -710,15 +685,16 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
             />
             {daysToRead &&
               !isNaN(Number(daysToRead)) &&
-              Number(daysToRead) > 365 && (
+              Number(daysToRead) > 365 && !chapterOnlyMode && (
                 <p className="mt-2 text-sm font-medium text-amber-600 dark:text-amber-500">
-                  ⚠️ The recommended maximum is 365 days. You've entered{" "}
+                  ⚠️ The recommended maximum is 365 days. You&apos;ve entered{" "}
                   {daysToRead} days. This may result in very low daily page
                   targets.
                 </p>
               )}
             {daysToRead &&
               !isNaN(Number(daysToRead)) &&
+              !chapterOnlyMode &&
               totalPages &&
               !isNaN(Number(totalPages)) && (
                 <p className="mt-2 text-sm text-muted-foreground">

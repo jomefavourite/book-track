@@ -90,17 +90,19 @@ export default function PublicBooksPage() {
                   Not started
                 </span>
               </Card>
-              <Card className="flex flex-col items-center gap-2 p-4 text-center">
-                <div className="rounded-full bg-blue-500/10 p-2">
-                  <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <span className="text-2xl font-bold tabular-nums text-foreground">
-                  {statsPending ? "—" : stats.totalPagesRead.toLocaleString()}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Pages read
-                </span>
-              </Card>
+              {stats.totalPagesRead > 0 && (
+                <Card className="flex flex-col items-center gap-2 p-4 text-center">
+                  <div className="rounded-full bg-blue-500/10 p-2">
+                    <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <span className="text-2xl font-bold tabular-nums text-foreground">
+                    {statsPending ? "—" : stats.totalPagesRead.toLocaleString()}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Pages read
+                  </span>
+                </Card>
+              )}
             </div>
           </div>
         )}
@@ -122,7 +124,7 @@ export default function PublicBooksPage() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {booksWithProgress.map((book: any) => (
+            {booksWithProgress.map((book) => (
               <PublicBookCard
                 key={book._id}
                 book={book}

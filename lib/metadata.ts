@@ -88,9 +88,11 @@ function getConvexClient(): ConvexHttpClient | null {
 }
 
 type ProfileBook = {
-  totalPages: number;
+  totalPages?: number;
   progress?: number;
   startDate: string;
+  progressStyle?: "pages" | "chapters";
+  ignorePages?: boolean;
 };
 
 export async function getProfileMetadataBySlugOrId(slugOrId: string) {
@@ -114,7 +116,10 @@ export async function getProfileMetadataBySlugOrId(slugOrId: string) {
     const completed = safeBooks.filter((book) => (book.progress ?? 0) >= 100).length;
     const totalPagesRead = Math.round(
       safeBooks.reduce(
-        (sum, book) => sum + (book.totalPages * (book.progress ?? 0)) / 100,
+        (sum, book) =>
+          book.progressStyle === "chapters" && book.ignorePages
+            ? sum
+            : sum + ((book.totalPages ?? 0) * (book.progress ?? 0)) / 100,
         0
       )
     );

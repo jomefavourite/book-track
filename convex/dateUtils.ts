@@ -34,3 +34,22 @@ export function distributePagesAcrossDays(
   return distribution;
 }
 
+export function distributeChaptersAcrossDays(
+  totalChapters: number,
+  startDate: Date,
+  endDate: Date
+): Map<string, number> {
+  const days = getAllDaysInRange(startDate, endDate);
+  const distribution = new Map<string, number>();
+
+  days.forEach((day, index) => {
+    const dateKey = formatDateForStorage(day);
+    const expectedChapter = Math.min(
+      totalChapters,
+      Math.max(1, Math.ceil(((index + 1) * totalChapters) / days.length))
+    );
+    distribution.set(dateKey, expectedChapter);
+  });
+
+  return distribution;
+}

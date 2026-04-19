@@ -4,7 +4,7 @@ import type { ReadingProgressSummary } from '@/lib/readingProgressSummary';
 
 type BannerProps = Pick<
   ReadingProgressSummary,
-  'showStatusBanner' | 'isAhead' | 'isBehind' | 'pagesDifference'
+  'showStatusBanner' | 'isAhead' | 'isBehind' | 'difference' | 'differenceUnit'
 >;
 
 /**
@@ -15,17 +15,18 @@ export default function ReadingProgressStatusBanner({
   showStatusBanner,
   isAhead,
   isBehind,
-  pagesDifference,
+  difference,
+  differenceUnit,
 }: BannerProps) {
   if (!showStatusBanner) {
     return null;
   }
 
-  if (isBehind && pagesDifference > 0) {
+  if (isBehind && difference > 0) {
     return (
       <div className="mt-2 rounded-md bg-amber-100 p-2 text-sm text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-        ⚠️ You&apos;re {pagesDifference} page
-        {pagesDifference !== 1 ? 's' : ''} behind schedule. Keep going!
+        ⚠️ You&apos;re {difference} {differenceUnit}
+        {difference !== 1 ? 's' : ''} behind schedule. Keep going!
       </div>
     );
   }
