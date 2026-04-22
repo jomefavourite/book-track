@@ -20,7 +20,12 @@ import {
   parseDateFromStorage,
   getAllDaysInRange,
   getMonthDateRange,
+  formatTimerDuration,
+  formatCountdown,
 } from "@/lib/dateUtils";
+import { Timer } from "lucide-react";
+import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
+import { playTimerEndSound } from "@/lib/timerSound";
 import {
   distributePagesAcrossDays,
   distributeChaptersAcrossDays,
@@ -119,6 +124,8 @@ export default function CalendarView({
                   variables.chapterNumber !== undefined
                     ? variables.chapterNumber
                     : session.chapterNumber,
+                timerDurationSec:
+                  variables.timerDurationSec ?? session.timerDurationSec,
               };
             }
             return session;
@@ -233,6 +240,56 @@ export default function CalendarView({
 
   // Mobile modal state
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [openTimerDateKey, setOpenTimerDateKey] = useState<string | null>(null);
+
+  // Active timer — one at a time, persists across dialog open/close
+  const [activeTimerDateKey, setActiveTimerDateKey] = useState<string | null>(null);
+  const [timerPhase, setTimerPhase] = useState<TimerPhase>({ status: "setup" });
+  const [timerDisplaySec, setTimerDisplaySec] = useState(0);
+
+  useEffect(() => {
+    if (timerPhase.status !== "running") return;
+    const { endsAt, totalSec } = timerPhase;
+    const id = setInterval(() => {
+      const remaining = Math.ceil((endsAt - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setTimerDisplaySec(0);
+        setTimerPhase({ status: "finished", totalSec });
+        playTimerEndSound();
+      } else {
+        setTimerDisplaySec(remaining);
+      }
+    }, 100);
+    return () => clearInterval(id);
+  }, [timerPhase]);
+
+  function handleTimerStart(dateKey: string, totalSec: number) {
+    setActiveTimerDateKey(dateKey);
+    setTimerDisplaySec(totalSec);
+    setTimerPhase({ status: "running", endsAt: Date.now() + totalSec * 1000, totalSec });
+  }
+
+  function handleTimerPause() {
+    if (timerPhase.status !== "running") return;
+    const remainingSec = Math.ceil((timerPhase.endsAt - Date.now()) / 1000);
+    setTimerDisplaySec(remainingSec);
+    setTimerPhase({ status: "paused", remainingSec, totalSec: timerPhase.totalSec });
+  }
+
+  function handleTimerResume() {
+    if (timerPhase.status !== "paused") return;
+    setTimerPhase({
+      status: "running",
+      endsAt: Date.now() + timerPhase.remainingSec * 1000,
+      totalSec: timerPhase.totalSec,
+    });
+  }
+
+  function handleTimerReset() {
+    setActiveTimerDateKey(null);
+    setTimerPhase({ status: "setup" });
+    setTimerDisplaySec(0);
+  }
   const isMobileModalOpen = selectedDay !== null;
   const [isMobileActionPending, setIsMobileActionPending] = useState(false);
 
@@ -1358,6 +1415,33 @@ export default function CalendarView({
                         )}
                       </div>
                     )}
+                    {session?.timerDurationSec && !isMissed && !isRead && (
+                      <div className="hidden sm:flex items-center gap-0.5 text-[9px] text-muted-foreground">
+                        <Timer className="h-2.5 w-2.5" />
+                        {formatTimerDuration(session.timerDurationSec)}
+                      </div>
+                    )}
+                    {canEdit && !isRead && !isMissed && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenTimerDateKey(dateKey);
+                        }}
+                        className="hidden sm:flex items-center gap-0.5 rounded text-muted-foreground transition-colors hover:text-foreground"
+                        aria-label="Reading timer"
+                      >
+                        {activeTimerDateKey === dateKey && timerPhase.status !== "setup" ? (
+                          <span className="inline-flex items-center gap-0.5 font-mono text-[9px]">
+                            <Timer className="h-2.5 w-2.5" />
+                            {timerPhase.status === "finished"
+                              ? "Done!"
+                              : formatCountdown(timerDisplaySec)}
+                          </span>
+                        ) : (
+                          <Timer className="h-3 w-3" />
+                        )}
+                      </button>
+                    )}
                   </div>
 
                   {/* Mobile: Show minimal info at bottom */}
@@ -1366,7 +1450,7 @@ export default function CalendarView({
                       <div className="truncate text-[9px] font-medium text-green-800 dark:text-green-100 leading-2.5">
                         <span className="block">
                           {chapterOnlyMode
-                            ? `Target: Ch ${plannedChapter}`
+                            ? <span>Tg: Ch {plannedChapter}</span>
                             : `Plan:${plannedPages}`}
                         </span>
                         <span className="block">
@@ -1384,13 +1468,20 @@ export default function CalendarView({
                         Missed
                       </div>
                     )}
-                    {!isRead && !isMissed && (chapterOnlyMode || plannedPages > 0) && (
+                    {!isRead && !isMissed && activeTimerDateKey === dateKey && timerPhase.status !== "setup" ? (
+                      <div className="flex items-center gap-0.5 font-mono text-[9px] text-muted-foreground">
+                        <Timer className="h-2.5 w-2.5" />
+                        {timerPhase.status === "finished"
+                          ? "Done!"
+                          : formatCountdown(timerDisplaySec)}
+                      </div>
+                    ) : !isRead && !isMissed && (chapterOnlyMode || plannedPages > 0) ? (
                       <div className="truncate text-[9px] text-muted-foreground">
                         {chapterOnlyMode
-                          ? `Chapter ${plannedChapter}`
+                          ? `Chapter  ${plannedChapter}`
                           : `${session?.plannedPages || plannedPages} pages`}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1485,10 +1576,60 @@ export default function CalendarView({
                 handleInputChange(formatDateForStorage(selectedDay), value)
               }
               onInputBlur={() => handleInputBlur(selectedDay)}
+              onTimerOpen={() => {
+                setOpenTimerDateKey(formatDateForStorage(selectedDay));
+                setSelectedDay(null);
+              }}
+              savedTimerDurationSec={
+                sessionsMap.get(formatDateForStorage(selectedDay))
+                  ?.timerDurationSec
+              }
             />
           )}
         </DialogContent>
       </Dialog>
+
+      {openTimerDateKey && (() => {
+        const timerSession = sessionsMap.get(openTimerDateKey);
+        return (
+          <ReadingTimer
+            open={true}
+            onOpenChange={(open) =>
+              setOpenTimerDateKey(open ? openTimerDateKey : null)
+            }
+            dayLabel={format(
+              parseDateFromStorage(openTimerDateKey),
+              "MMM d, yyyy"
+            )}
+            sessionId={timerSession?._id}
+            userId={user?.id ?? ""}
+            savedDurationSec={timerSession?.timerDurationSec}
+            onSaved={(durationSec) => {
+              queryClient.setQueryData<ReadingSessionDoc[]>(
+                sessionsQueryKey,
+                (old) =>
+                  old?.map((s) =>
+                    s._id === timerSession?._id
+                      ? { ...s, timerDurationSec: durationSec }
+                      : s
+                  )
+              );
+            }}
+            phase={
+              activeTimerDateKey === openTimerDateKey
+                ? timerPhase
+                : { status: "setup" }
+            }
+            displaySec={
+              activeTimerDateKey === openTimerDateKey ? timerDisplaySec : 0
+            }
+            onStart={(totalSec) => handleTimerStart(openTimerDateKey, totalSec)}
+            onPause={handleTimerPause}
+            onResume={handleTimerResume}
+            onReset={handleTimerReset}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -1516,6 +1657,8 @@ interface DayDetailModalProps {
   inputValue: string;
   onInputChange: (value: string) => void;
   onInputBlur: () => void;
+  onTimerOpen?: () => void;
+  savedTimerDurationSec?: number;
 }
 
 function DayDetailModal({
@@ -1539,6 +1682,8 @@ function DayDetailModal({
   inputValue,
   onInputChange,
   onInputBlur,
+  onTimerOpen,
+  savedTimerDurationSec,
 }: DayDetailModalProps) {
   return (
     <div className="space-y-6">
@@ -1764,6 +1909,22 @@ function DayDetailModal({
             </div>
           )}
         </div>
+
+        {/* Timer Section */}
+        {canEdit && !isRead && !isMissed && (
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-foreground">Reading Timer</h3>
+            <button
+              onClick={onTimerOpen}
+              className="flex w-full items-center gap-2 rounded-lg border border-input px-4 py-3 text-sm font-medium text-foreground hover:bg-accent"
+            >
+              <Timer className="h-5 w-5" />
+              {savedTimerDurationSec
+                ? `Timer: ${formatTimerDuration(savedTimerDurationSec)}`
+                : "Set Timer"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
