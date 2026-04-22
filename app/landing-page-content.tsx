@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import Navigation from "@/components/Navigation";
 import PublicBookCard from "@/components/PublicBookCard";
+import PWAInstallBanner from "@/components/PWAInstallBanner";
 
 export default function LandingPage() {
   const { data: publicBooks, isPending } = useQuery({
@@ -17,6 +18,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <PWAInstallBanner />
       {/* Header */}
       <Navigation isLandingPage={true} />
 
