@@ -24,6 +24,8 @@ export default defineSchema({
     timezone: v.optional(v.string()),
     reminder1LastSentDate: v.optional(v.string()),
     reminder2LastSentDate: v.optional(v.string()),
+    reminder1ScheduledJobId: v.optional(v.string()),
+    reminder2ScheduledJobId: v.optional(v.string()),
   })
     .index("by_clerk_id", ["clerkId"])
     .index("by_slug", ["slug"]),

@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
   internalAction,
@@ -10,12 +11,112 @@ import {
 import { internal } from "./_generated/api";
 
 export const DEFAULT_REMINDER_TIME = "20:00";
+const REMINDER_WINDOW_MINUTES = 2;
 
 const HHMM_REGEX = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+type ReminderSlot = 1 | 2;
+type ReminderChannel = "push" | "email" | "both";
 
 function parseMinutesSinceMidnight(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;
+}
+
+function getZonedDateParts(
+  date: Date,
+  timezone: string
+): {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+} {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? "0");
+
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+    hour: get("hour"),
+    minute: get("minute"),
+    second: get("second"),
+  };
+}
+
+function getTimeZoneOffsetMs(date: Date, timezone: string): number {
+  const parts = getZonedDateParts(date, timezone);
+  const asUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  );
+  return asUtc - date.getTime();
+}
+
+function getUtcTimestampForTimeZone(
+  timezone: string,
+  parts: {
+    year: number;
+    month: number;
+    day: number;
+    hour: number;
+    minute: number;
+    second?: number;
+  }
+): number {
+  const utcGuess = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second ?? 0
+  );
+  const offset = getTimeZoneOffsetMs(new Date(utcGuess), timezone);
+  return utcGuess - offset;
+}
+
+function getNextReminderRunAt(timezone: string, hhmm: string): number {
+  const now = new Date();
+  const nowParts = getZonedDateParts(now, timezone);
+  const [targetHour, targetMinute] = hhmm.split(":").map(Number);
+
+  const targetDate = new Date(
+    Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day)
+  );
+
+  if (
+    nowParts.hour > targetHour ||
+    (nowParts.hour === targetHour && nowParts.minute >= targetMinute)
+  ) {
+    targetDate.setUTCDate(targetDate.getUTCDate() + 1);
+  }
+
+  return getUtcTimestampForTimeZone(timezone, {
+    year: targetDate.getUTCFullYear(),
+    month: targetDate.getUTCMonth() + 1,
+    day: targetDate.getUTCDate(),
+    hour: targetHour,
+    minute: targetMinute,
+    second: 0,
+  });
 }
 
 function getTodayAndCurrentMinutesInTz(timezone: string): {
@@ -49,16 +150,35 @@ function isInReminderWindow(
   return currentMinutes >= windowStart && currentMinutes <= windowEnd;
 }
 
-export const listUsersWithReminders = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const users = await ctx.db.query("users").collect();
-    return users.filter(
-      (u) =>
-        u.remindersEnabled !== false &&
-        typeof u.timezone === "string" &&
-        u.timezone.length > 0
-    );
+function getReminderTimeForSlot(user: Doc<"users">, slot: ReminderSlot): string | null {
+  if (slot === 1) {
+    return user.reminder1Time && HHMM_REGEX.test(user.reminder1Time)
+      ? user.reminder1Time
+      : DEFAULT_REMINDER_TIME;
+  }
+
+  return user.reminder2Time && HHMM_REGEX.test(user.reminder2Time)
+    ? user.reminder2Time
+    : null;
+}
+
+function getScheduledReminderJobId(
+  user: Doc<"users">,
+  slot: ReminderSlot
+): string | undefined {
+  return slot === 1 ? user.reminder1ScheduledJobId : user.reminder2ScheduledJobId;
+}
+
+function toScheduledFunctionId(
+  id: string | undefined
+): Id<"_scheduled_functions"> | null {
+  return id ? (id as Id<"_scheduled_functions">) : null;
+}
+
+export const getUserById = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.userId);
   },
 });
 
@@ -87,96 +207,205 @@ export const markReminderSent = internalMutation({
   },
 });
 
-export const checkAndSendReminders = internalAction({
-  args: {},
-  handler: async (ctx) => {
-    const users = await ctx.runQuery(internal.reminders.listUsersWithReminders, {});
-    const windowMinutes = 1;
+export const patchReminderScheduledJobId = internalMutation({
+  args: {
+    userId: v.id("users"),
+    slot: v.union(v.literal(1), v.literal(2)),
+    scheduledJobId: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(
+      args.userId,
+      args.slot === 1
+        ? { reminder1ScheduledJobId: args.scheduledJobId ?? undefined }
+        : { reminder2ScheduledJobId: args.scheduledJobId ?? undefined }
+    );
+  },
+});
 
-    for (const user of users) {
-      try {
-        const timezone = user.timezone ?? "UTC";
-        const { dateStr: todayStr, minutesSinceMidnight: currentMinutes } =
-          getTodayAndCurrentMinutesInTz(timezone);
+export const scheduleReminderSlot = internalAction({
+  args: {
+    userId: v.id("users"),
+    slot: v.union(v.literal(1), v.literal(2)),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await ctx.runQuery(internal.reminders.getUserById, {
+      userId: args.userId,
+    });
+    if (!user) return null;
 
-        const reminder1 =
-          user.reminder1Time && HHMM_REGEX.test(user.reminder1Time)
-            ? user.reminder1Time
-            : DEFAULT_REMINDER_TIME;
-        const reminder2 =
-          user.reminder2Time && HHMM_REGEX.test(user.reminder2Time)
-            ? user.reminder2Time
-            : null;
+    const reminderTime = getReminderTimeForSlot(user, args.slot);
+    if (user.remindersEnabled === false || !user.timezone || !reminderTime) {
+      await ctx.runMutation(internal.reminders.patchReminderScheduledJobId, {
+        userId: args.userId,
+        slot: args.slot,
+        scheduledJobId: null,
+      });
+      return null;
+    }
 
-        const reminder1Minutes = parseMinutesSinceMidnight(reminder1);
-        const reminder2Minutes = reminder2
-          ? parseMinutesSinceMidnight(reminder2)
-          : null;
+    const runAt = getNextReminderRunAt(user.timezone, reminderTime);
+    const jobId = await ctx.scheduler.runAt(
+      runAt,
+      internal.reminders.deliverScheduledReminder,
+      {
+        userId: args.userId,
+        slot: args.slot,
+      }
+    );
 
-        const slotsDue: Array<1 | 2> = [];
-        if (
-          isInReminderWindow(currentMinutes, reminder1Minutes, windowMinutes) &&
-          user.reminder1LastSentDate !== todayStr
-        ) {
-          slotsDue.push(1);
+    await ctx.runMutation(internal.reminders.patchReminderScheduledJobId, {
+      userId: args.userId,
+      slot: args.slot,
+      scheduledJobId: jobId,
+    });
+
+    return null;
+  },
+});
+
+export const rescheduleReminderJobs = internalAction({
+  args: { userId: v.id("users") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await ctx.runQuery(internal.reminders.getUserById, {
+      userId: args.userId,
+    });
+    if (!user) return null;
+
+    for (const slot of [1, 2] as const) {
+      const scheduledJobId = toScheduledFunctionId(getScheduledReminderJobId(user, slot));
+      if (scheduledJobId) {
+        try {
+          await ctx.scheduler.cancel(scheduledJobId);
+        } catch (error) {
+          console.error(
+            `Failed to cancel existing reminder job for user ${user._id}, slot ${slot}:`,
+            error
+          );
         }
-        if (
-          reminder2Minutes !== null &&
-          isInReminderWindow(currentMinutes, reminder2Minutes, windowMinutes) &&
-          user.reminder2LastSentDate !== todayStr
-        ) {
-          slotsDue.push(2);
+      }
+
+      await ctx.runMutation(internal.reminders.patchReminderScheduledJobId, {
+        userId: args.userId,
+        slot,
+        scheduledJobId: null,
+      });
+    }
+
+    if (user.remindersEnabled === false || !user.timezone?.trim()) {
+      return null;
+    }
+
+    await ctx.runAction(internal.reminders.scheduleReminderSlot, {
+      userId: args.userId,
+      slot: 1,
+    });
+
+    if (getReminderTimeForSlot(user, 2)) {
+      await ctx.runAction(internal.reminders.scheduleReminderSlot, {
+        userId: args.userId,
+        slot: 2,
+      });
+    }
+
+    return null;
+  },
+});
+
+export const deliverScheduledReminder = internalAction({
+  args: {
+    userId: v.id("users"),
+    slot: v.union(v.literal(1), v.literal(2)),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await ctx.runQuery(internal.reminders.getUserById, {
+      userId: args.userId,
+    });
+    if (!user) return null;
+
+    await ctx.runMutation(internal.reminders.patchReminderScheduledJobId, {
+      userId: args.userId,
+      slot: args.slot,
+      scheduledJobId: null,
+    });
+
+    const reminderTime = getReminderTimeForSlot(user, args.slot);
+    if (user.remindersEnabled === false || !user.timezone || !reminderTime) {
+      return null;
+    }
+
+    const { dateStr: todayStr, minutesSinceMidnight: currentMinutes } =
+      getTodayAndCurrentMinutesInTz(user.timezone);
+    const reminderMinutes = parseMinutesSinceMidnight(reminderTime);
+    const lastSentDate =
+      args.slot === 1 ? user.reminder1LastSentDate : user.reminder2LastSentDate;
+
+    if (
+      !isInReminderWindow(currentMinutes, reminderMinutes, REMINDER_WINDOW_MINUTES)
+    ) {
+      console.log(
+        `Skipping stale reminder for user ${user._id}, slot ${args.slot}: expected ${reminderTime} in ${user.timezone}`
+      );
+      await ctx.runAction(internal.reminders.scheduleReminderSlot, {
+        userId: args.userId,
+        slot: args.slot,
+      });
+      return null;
+    }
+
+    let sent = false;
+    const channel = (user.reminderChannel ?? "push") as ReminderChannel;
+    const doPush = channel === "push" || channel === "both";
+    const doEmail = channel === "email" || channel === "both";
+
+    if (lastSentDate !== todayStr && doPush) {
+      const sub = await ctx.runQuery(internal.reminders.getPushSubscriptionForUser, {
+        userId: user._id,
+      });
+      if (sub) {
+        try {
+          await ctx.runAction(internal.remindersSend.sendPushPayload, {
+            endpoint: sub.endpoint,
+            p256dh: sub.p256dh,
+            auth: sub.auth,
+          });
+          sent = true;
+        } catch (pushErr) {
+          console.error(`Push failed for user ${user._id}:`, pushErr);
         }
-
-        for (const slot of slotsDue) {
-          const channel = user.reminderChannel ?? "push";
-          const doPush = channel === "push" || channel === "both";
-          const doEmail = channel === "email" || channel === "both";
-
-          let sent = false;
-
-          if (doPush) {
-            const sub = await ctx.runQuery(
-              internal.reminders.getPushSubscriptionForUser,
-              { userId: user._id }
-            );
-            if (sub) {
-              try {
-                await ctx.runAction(internal.remindersSend.sendPushPayload, {
-                  endpoint: sub.endpoint,
-                  p256dh: sub.p256dh,
-                  auth: sub.auth,
-                });
-                sent = true;
-              } catch (pushErr) {
-                console.error(`Push failed for user ${user._id}:`, pushErr);
-              }
-            }
-          }
-
-          if (doEmail && user.email) {
-            try {
-              await ctx.runAction(internal.remindersSend.sendEmailPayload, {
-                email: user.email,
-              });
-              sent = true;
-            } catch (emailErr) {
-              console.error(`Email failed for user ${user._id}:`, emailErr);
-            }
-          }
-
-          if (sent) {
-            await ctx.runMutation(internal.reminders.markReminderSent, {
-              userId: user._id,
-              slot,
-              dateStr: todayStr,
-            });
-          }
-        }
-      } catch (err) {
-        console.error(`Reminder check failed for user ${user._id}:`, err);
+      } else {
+        console.log(`No push subscription found for user ${user._id}`);
       }
     }
+
+    if (lastSentDate !== todayStr && doEmail && user.email) {
+      try {
+        await ctx.runAction(internal.remindersSend.sendEmailPayload, {
+          email: user.email,
+        });
+        sent = true;
+      } catch (emailErr) {
+        console.error(`Email failed for user ${user._id}:`, emailErr);
+      }
+    }
+
+    if (sent && lastSentDate !== todayStr) {
+      await ctx.runMutation(internal.reminders.markReminderSent, {
+        userId: user._id,
+        slot: args.slot,
+        dateStr: todayStr,
+      });
+    }
+
+    await ctx.runAction(internal.reminders.scheduleReminderSlot, {
+      userId: args.userId,
+      slot: args.slot,
+    });
+
+    return null;
   },
 });
 
@@ -253,6 +482,9 @@ export const updateReminderSettings = mutation({
     if (args.timezone !== undefined) updates.timezone = args.timezone.trim();
 
     await ctx.db.patch(user._id, updates);
+    await ctx.scheduler.runAfter(0, internal.reminders.rescheduleReminderJobs, {
+      userId: user._id,
+    });
     return user._id;
   },
 });
@@ -291,9 +523,16 @@ export const savePushSubscription = mutation({
     };
     if (existing) {
       await ctx.db.patch(existing._id, payload);
+      await ctx.scheduler.runAfter(0, internal.reminders.rescheduleReminderJobs, {
+        userId,
+      });
       return existing._id;
     }
-    return await ctx.db.insert("pushSubscriptions", payload);
+    const insertedId = await ctx.db.insert("pushSubscriptions", payload);
+    await ctx.scheduler.runAfter(0, internal.reminders.rescheduleReminderJobs, {
+      userId,
+    });
+    return insertedId;
   },
 });
 

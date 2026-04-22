@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useAction, useMutation as useConvexMutation } from "convex/react";
@@ -110,6 +110,40 @@ export default function SettingsPage() {
     api.reminders.savePushSubscription
   );
   const sendTestPushAction = useAction(api.reminders.sendTestPush);
+
+  const savedReminderSettings = useMemo(
+    () =>
+      settings
+        ? {
+            enabled: settings.remindersEnabled ?? false,
+            reminder1Time: settings.reminder1Time ?? DEFAULT_REMINDER_TIME,
+            reminder2Enabled: !!settings.reminder2Time,
+            reminder2Time: settings.reminder2Time ?? "09:00",
+            timezone:
+              settings.timezone && TIMEZONE_OPTIONS.includes(settings.timezone)
+                ? settings.timezone
+                : DEFAULT_TIMEZONE,
+            channel: settings.reminderChannel ?? "push",
+          }
+        : null,
+    [settings]
+  );
+
+  const currentReminderSettings = useMemo(
+    () => ({
+      enabled,
+      reminder1Time,
+      reminder2Enabled,
+      reminder2Time,
+      timezone,
+      channel,
+    }),
+    [enabled, reminder1Time, reminder2Enabled, reminder2Time, timezone, channel]
+  );
+
+  const hasUnsavedReminderChanges =
+    savedReminderSettings !== null &&
+    JSON.stringify(savedReminderSettings) !== JSON.stringify(currentReminderSettings);
 
   useEffect(() => {
     if (settings) {
@@ -535,8 +569,22 @@ export default function SettingsPage() {
                   type="submit"
                   disabled={savePending}
                 >
-                  {savePending ? "Saving…" : "Save settings"}
+                  {savePending
+                    ? "Saving…"
+                    : hasUnsavedReminderChanges
+                      ? "Save settings to apply changes"
+                      : "Save settings"}
                 </Button>
+                {hasUnsavedReminderChanges && (
+                  <p
+                    className="text-sm text-amber-600 dark:text-amber-400"
+                    role="status"
+                  >
+                    You changed your reminder settings. Click{" "}
+                    <span className="font-medium">Save settings</span> again to
+                    apply the new reminder time, channel, or timezone.
+                  </p>
+                )}
                 {enabled && (channel === "push" || channel === "both") && (
                   <Button
                     type="button"
@@ -547,7 +595,7 @@ export default function SettingsPage() {
                     {testPending ? "Sending test…" : "Send test notification"}
                   </Button>
                 )}
-                {saveSuccess && (
+                {saveSuccess && !hasUnsavedReminderChanges && (
                   <p
                     className="text-sm text-green-600 dark:text-green-400"
                     role="status"
