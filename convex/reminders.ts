@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-import type { Doc } from "./_generated/dataModel";
 import {
   action,
   internalAction,
@@ -43,7 +42,7 @@ function getTodayAndCurrentMinutesInTz(timezone: string): {
 function isInReminderWindow(
   currentMinutes: number,
   reminderMinutes: number,
-  windowMinutes: number = 15
+  windowMinutes: number = 1
 ): boolean {
   const windowStart = reminderMinutes;
   const windowEnd = reminderMinutes + windowMinutes - 1;
@@ -60,20 +59,6 @@ export const listUsersWithReminders = internalQuery({
         typeof u.timezone === "string" &&
         u.timezone.length > 0
     );
-  },
-});
-
-export const getSessionsForUserAndDate = internalQuery({
-  args: {
-    clerkId: v.string(),
-    date: v.string(),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("readingSessions")
-      .withIndex("by_user", (q) => q.eq("userId", args.clerkId))
-      .collect()
-      .then((sessions) => sessions.filter((s) => s.date === args.date));
   },
 });
 
@@ -106,7 +91,7 @@ export const checkAndSendReminders = internalAction({
   args: {},
   handler: async (ctx) => {
     const users = await ctx.runQuery(internal.reminders.listUsersWithReminders, {});
-    const windowMinutes = 15;
+    const windowMinutes = 1;
 
     for (const user of users) {
       try {
@@ -144,14 +129,6 @@ export const checkAndSendReminders = internalAction({
         }
 
         for (const slot of slotsDue) {
-          const hasUnread = await ctx.runQuery(
-            internal.reminders.getSessionsForUserAndDate,
-            { clerkId: user.clerkId, date: todayStr }
-          ).then((sessions: Doc<"readingSessions">[]) =>
-            sessions.some((s: Doc<"readingSessions">) => !s.isRead && !(s.isMissed ?? false))
-          );
-          if (!hasUnread) continue;
-
           const channel = user.reminderChannel ?? "push";
           const doPush = channel === "push" || channel === "both";
           const doEmail = channel === "email" || channel === "both";

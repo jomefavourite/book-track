@@ -5,7 +5,7 @@ const crons = cronJobs();
 
 crons.interval(
   "check reminder times",
-  { minutes: 15 },
+  { minutes: 1 },
   internal.reminders.checkAndSendReminders
 );
 
