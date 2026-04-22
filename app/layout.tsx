@@ -65,7 +65,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Book-Track",
+    title: "Book-Trackr",
   },
 };
 
@@ -98,7 +98,7 @@ export default function RootLayout({
             defaultTheme="light"
             enableSystem
             disableTransitionOnChange
-            storageKey="book-track-theme"
+            storageKey="book-trackr-theme"
           >
             <ConvexClientProvider>
             <SyncUser />

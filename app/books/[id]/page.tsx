@@ -14,7 +14,7 @@ export async function generateMetadata({
   if (!book) {
     return createPageMetadata({
       title: "Book",
-      description: "Follow shared reading progress on Book-Track.",
+      description: "Follow shared reading progress on Book-Trackr.",
       path: `/books/${id}`,
       noIndex: true,
     });
@@ -25,8 +25,8 @@ export async function generateMetadata({
   const creatorPrefix = book.creatorName ? `${book.creatorName}'s ` : "";
   const description =
     book.progressStyle === "chapters" && book.ignorePages
-      ? `${creatorPrefix}${book.name}${authorSuffix}. ${progress}% complete across ${book.totalChapters?.toLocaleString() ?? 0} chapters on Book-Track.`
-      : `${creatorPrefix}${book.name}${authorSuffix}. ${progress}% complete across ${book.totalPages?.toLocaleString() ?? 0} pages on Book-Track.`;
+      ? `${creatorPrefix}${book.name}${authorSuffix}. ${progress}% complete across ${book.totalChapters?.toLocaleString() ?? 0} chapters on Book-Trackr.`
+      : `${creatorPrefix}${book.name}${authorSuffix}. ${progress}% complete across ${book.totalPages?.toLocaleString() ?? 0} pages on Book-Trackr.`;
 
   return createPageMetadata({
     title: `${book.name}${authorSuffix}`,

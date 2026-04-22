@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
-import { useMutation as useConvexMutation } from "convex/react";
+import { useAction, useMutation as useConvexMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Link from "next/link";
@@ -22,6 +22,7 @@ const DEFAULT_REMINDER_TIME = "20:00";
 const DEFAULT_TIMEZONE = "Africa/Lagos";
 
 type ReminderChannel = "push" | "email" | "both";
+type PushPermissionState = NotificationPermission | "unsupported";
 
 function getTimezoneOptions(): string[] {
   if (typeof Intl === "undefined" || !("supportedValuesOf" in Intl)) {
@@ -41,6 +42,42 @@ function getTimezoneOptions(): string[] {
 
 const TIMEZONE_OPTIONS = getTimezoneOptions();
 
+function isIosSafariLikeDevice() {
+  if (typeof navigator === "undefined" || typeof window === "undefined") return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !("MSStream" in window);
+}
+
+function isInStandaloneMode() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    ("standalone" in navigator &&
+      (navigator as Navigator & { standalone?: boolean }).standalone === true)
+  );
+}
+
+function canUsePushNotifications() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  return (
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    "Notification" in window
+  );
+}
+
+function getPushUnsupportedMessage() {
+  if (typeof window === "undefined") {
+    return "Push notifications are only available in the browser.";
+  }
+  if (!window.isSecureContext && window.location.hostname !== "localhost") {
+    return "Push notifications require HTTPS.";
+  }
+  if (isIosSafariLikeDevice() && !isInStandaloneMode()) {
+    return "On iPhone and iPad, Safari only allows push after you install Book-Trackr to the Home Screen.";
+  }
+  return "This browser does not support web push notifications.";
+}
+
 export default function SettingsPage() {
   const { user, isLoaded } = useUser();
   const { isSignedIn } = useAuth();
@@ -51,16 +88,19 @@ export default function SettingsPage() {
   const [reminder2Time, setReminder2Time] = useState("09:00");
   const [timezone, setTimezone] = useState(DEFAULT_TIMEZONE);
   const [channel, setChannel] = useState<ReminderChannel>("push");
-  const [pushPermissionRequested, setPushPermissionRequested] = useState(false);
+  const [pushPermission, setPushPermission] =
+    useState<PushPermissionState>("unsupported");
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
   const [savePending, setSavePending] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [testPending, setTestPending] = useState(false);
+  const [testSuccess, setTestSuccess] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const { data: settings, isPending: settingsPending } = useQuery({
-    ...convexQuery(api.reminders.getReminderSettings, {
-      userId: user?.id ?? "",
-    }),
-    enabled: isLoaded && !!user?.id,
+    ...convexQuery(api.reminders.getReminderSettings, {}),
+    enabled: isLoaded && isSignedIn,
   });
 
   const updateReminderSettingsMutation = useConvexMutation(
@@ -69,6 +109,7 @@ export default function SettingsPage() {
   const savePushSubscriptionMutation = useConvexMutation(
     api.reminders.savePushSubscription
   );
+  const sendTestPushAction = useAction(api.reminders.sendTestPush);
 
   useEffect(() => {
     if (settings) {
@@ -82,31 +123,129 @@ export default function SettingsPage() {
           : DEFAULT_TIMEZONE
       );
       setChannel(settings.reminderChannel ?? "push");
+      setPushSubscribed(settings.pushSubscriptionExists);
     } else if (isLoaded && user?.id && !settingsPending) {
       setTimezone(DEFAULT_TIMEZONE);
     }
   }, [settings, isLoaded, user?.id, settingsPending]);
 
-  async function subscribePush(): Promise<PushSubscription | null> {
+  useEffect(() => {
+    async function syncPushState() {
+      const supported = canUsePushNotifications();
+      setPushSupported(supported);
+      if (!supported) {
+        setPushPermission("unsupported");
+        return;
+      }
+
+      setPushPermission(Notification.permission);
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        const subscription = await registration?.pushManager.getSubscription();
+        if (subscription) {
+          setPushSubscribed(true);
+        }
+      } catch (error) {
+        console.warn("Unable to inspect push subscription state:", error);
+      }
+    }
+
+    void syncPushState();
+  }, []);
+
+  async function ensureServiceWorkerRegistration() {
+    if (!("serviceWorker" in navigator)) {
+      throw new Error(getPushUnsupportedMessage());
+    }
+
+    if (!window.isSecureContext && window.location.hostname !== "localhost") {
+      throw new Error(getPushUnsupportedMessage());
+    }
+
+    const existingRegistration = await navigator.serviceWorker.getRegistration();
+    if (existingRegistration) {
+      return existingRegistration;
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+      return registration;
+    } catch (error) {
+      throw new Error(
+        process.env.NODE_ENV === "production"
+          ? "The push service worker could not be registered. Reload the page and try again."
+          : "Push notifications only work in a production build or deployed app. Use `npm run build && npm start` locally."
+      );
+    }
+  }
+
+  async function ensureNotificationPermission() {
+    if (!("Notification" in window)) {
+      throw new Error(getPushUnsupportedMessage());
+    }
+
+    if (Notification.permission === "denied") {
+      setPushPermission("denied");
+      throw new Error(
+        "Push notifications are blocked for this site. Re-enable them in your browser settings and try again."
+      );
+    }
+
+    if (Notification.permission === "granted") {
+      setPushPermission("granted");
+      return "granted";
+    }
+
+    const permission = await Notification.requestPermission();
+    setPushPermission(permission);
+    if (permission !== "granted") {
+      throw new Error(
+        permission === "denied"
+          ? "Push notifications were blocked. Re-enable them in your browser settings and try again."
+          : "Push permission was dismissed, so the app cannot subscribe this device yet."
+      );
+    }
+
+    return permission;
+  }
+
+  async function ensurePushSubscription(): Promise<PushSubscription> {
     const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-    if (!key) return null;
-    if (!("serviceWorker" in navigator) || !("PushManager" in window))
-      return null;
-    const SW_READY_MS = 20000;
-    const reg = await Promise.race([
-      navigator.serviceWorker.ready,
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Push notifications require a service worker. Try reloading the page and saving again.")),
-          SW_READY_MS
-        )
-      ),
-    ]);
-    const sub = await reg.pushManager.subscribe({
+    if (!key) {
+      throw new Error(
+        "NEXT_PUBLIC_VAPID_PUBLIC_KEY is missing from the app environment, so this browser cannot create a push subscription."
+      );
+    }
+    if (!canUsePushNotifications()) {
+      throw new Error(getPushUnsupportedMessage());
+    }
+
+    await ensureNotificationPermission();
+    const registration = await ensureServiceWorkerRegistration();
+    const existingSubscription = await registration.pushManager.getSubscription();
+    if (existingSubscription) {
+      return existingSubscription;
+    }
+
+    return await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(key) as BufferSource,
     });
-    return sub;
+  }
+
+  async function persistPushSubscription(subscription: PushSubscription) {
+    const json = subscription.toJSON();
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
+      throw new Error("The browser returned an incomplete push subscription.");
+    }
+
+    await savePushSubscriptionMutation({
+      endpoint: json.endpoint,
+      p256dh: json.keys.p256dh,
+      auth: json.keys.auth,
+    });
+    setPushSubscribed(true);
   }
 
   function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -128,9 +267,9 @@ export default function SettingsPage() {
     setSavePending(true);
     setSaveError(null);
     setSaveSuccess(false);
+    setTestSuccess(null);
     try {
       await updateReminderSettingsMutation({
-        userId: user.id,
         remindersEnabled: enabled,
         reminder1Time: reminder1Time || DEFAULT_REMINDER_TIME,
         reminder2Time: reminder2Enabled ? reminder2Time : null,
@@ -138,34 +277,12 @@ export default function SettingsPage() {
         reminderChannel: channel,
       });
       queryClient.invalidateQueries({
-        queryKey: convexQuery(api.reminders.getReminderSettings, {
-          userId: user.id,
-        }).queryKey,
+        queryKey: convexQuery(api.reminders.getReminderSettings, {}).queryKey,
       });
 
-      if (
-        (channel === "push" || channel === "both") &&
-        enabled &&
-        !pushPermissionRequested
-      ) {
-        const permission = await Notification.requestPermission();
-        if (permission === "granted") {
-          const sub = await subscribePush();
-          if (sub) {
-            const json = sub.toJSON();
-            await savePushSubscriptionMutation({
-              userId: user.id,
-              endpoint: json.endpoint!,
-              p256dh: json.keys!.p256dh,
-              auth: json.keys!.auth,
-            });
-            setPushPermissionRequested(true);
-          } else {
-            setSaveError(
-              "Push subscription failed. Ensure NEXT_PUBLIC_VAPID_PUBLIC_KEY is set and use a production build (npm run build && npm start)."
-            );
-          }
-        }
+      if ((channel === "push" || channel === "both") && enabled) {
+        const subscription = await ensurePushSubscription();
+        await persistPushSubscription(subscription);
       }
 
       setSavePending(false);
@@ -177,6 +294,34 @@ export default function SettingsPage() {
         err instanceof Error ? err.message : "Failed to save settings"
       );
       console.error(err);
+    }
+  }
+
+  async function handleSendTestPush() {
+    if (!isSignedIn) return;
+
+    setTestPending(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+    setTestSuccess(null);
+
+    try {
+      const subscription = await ensurePushSubscription();
+      await persistPushSubscription(subscription);
+      await sendTestPushAction({});
+      queryClient.invalidateQueries({
+        queryKey: convexQuery(api.reminders.getReminderSettings, {}).queryKey,
+      });
+      setTestSuccess(
+        "Test notification sent. If it doesn’t appear, close the tab or app, then check browser and OS notification settings."
+      );
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Failed to send a test notification"
+      );
+      console.error(err);
+    } finally {
+      setTestPending(false);
     }
   }
 
@@ -362,6 +507,25 @@ export default function SettingsPage() {
                         <span className="text-sm">Both</span>
                       </label>
                     </div>
+                    {(channel === "push" || channel === "both") && (
+                      <div className="mt-3 space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                          Push status:{" "}
+                          {pushSupported
+                            ? pushSubscribed
+                              ? pushPermission === "granted"
+                                ? "connected on this device"
+                                : "subscription exists, but browser permission is not granted right now"
+                              : "not connected yet"
+                            : "not supported on this browser/device"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {pushSupported
+                            ? "Best path: save your settings, then send a test notification immediately. On iPhone and iPad, install the app to the Home Screen first."
+                            : getPushUnsupportedMessage()}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -373,12 +537,30 @@ export default function SettingsPage() {
                 >
                   {savePending ? "Saving…" : "Save settings"}
                 </Button>
+                {enabled && (channel === "push" || channel === "both") && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={testPending}
+                    onClick={handleSendTestPush}
+                  >
+                    {testPending ? "Sending test…" : "Send test notification"}
+                  </Button>
+                )}
                 {saveSuccess && (
                   <p
                     className="text-sm text-green-600 dark:text-green-400"
                     role="status"
                   >
                     Settings saved.
+                  </p>
+                )}
+                {testSuccess && (
+                  <p
+                    className="text-sm text-green-600 dark:text-green-400"
+                    role="status"
+                  >
+                    {testSuccess}
                   </p>
                 )}
                 {saveError && (

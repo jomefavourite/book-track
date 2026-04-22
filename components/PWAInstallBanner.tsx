@@ -67,7 +67,7 @@ export default function PWAInstallBanner() {
           B
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-foreground">Install Book-Track</p>
+          <p className="text-sm font-semibold text-foreground">Install Book-Trackr</p>
           {mode === "chrome" ? (
             <p className="mt-0.5 text-xs text-muted-foreground">
               Add to your home screen for quick access.

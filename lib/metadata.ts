@@ -3,11 +3,11 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
-export const SITE_NAME = "Book-Track";
+export const SITE_NAME = "Book-Trackr";
 export const DEFAULT_DESCRIPTION =
   "Track your reading progress, plan your schedule, and share your reading journey.";
 export const DEFAULT_OG_IMAGE = "/icon-512.png";
-const DEFAULT_SITE_URL = "https://booktrack.favouritejome.dev";
+const DEFAULT_SITE_URL = "https://booktrackr.app";
 
 export function getSiteUrl(): string {
   const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();

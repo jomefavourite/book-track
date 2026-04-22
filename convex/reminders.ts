@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import {
+  action,
   internalAction,
   internalMutation,
   internalQuery,
@@ -208,17 +209,27 @@ const reminderChannelValidator = v.union(
   v.literal("both")
 );
 
+const reminderSettingsValidator = v.object({
+  remindersEnabled: v.boolean(),
+  reminder1Time: v.string(),
+  reminder2Time: v.union(v.string(), v.null()),
+  reminderChannel: reminderChannelValidator,
+  timezone: v.union(v.string(), v.null()),
+  pushSubscriptionExists: v.boolean(),
+});
+
 export const updateReminderSettings = mutation({
   args: {
-    userId: v.string(),
     remindersEnabled: v.optional(v.boolean()),
     reminder1Time: v.optional(v.string()),
     reminder2Time: v.optional(v.union(v.string(), v.null())),
     reminderChannel: v.optional(reminderChannelValidator),
     timezone: v.optional(v.string()),
   },
+  returns: v.id("users"),
   handler: async (ctx, args) => {
-    const clerkId = args.userId;
+    const identity = await ctx.auth.getUserIdentity();
+    const clerkId = identity?.subject;
     if (!clerkId) throw new Error("Not authenticated");
     const user = await ctx.db
       .query("users")
@@ -271,16 +282,17 @@ export const updateReminderSettings = mutation({
 
 export const savePushSubscription = mutation({
   args: {
-    userId: v.string(),
     endpoint: v.string(),
     p256dh: v.string(),
     auth: v.string(),
   },
+  returns: v.id("pushSubscriptions"),
   handler: async (ctx, args) => {
     if (!args.endpoint?.trim() || !args.p256dh?.trim() || !args.auth?.trim()) {
       throw new Error("endpoint, p256dh, and auth are required");
     }
-    const clerkId = args.userId;
+    const identity = await ctx.auth.getUserIdentity();
+    const clerkId = identity?.subject;
     if (!clerkId) throw new Error("Not authenticated");
     const user = await ctx.db
       .query("users")
@@ -309,21 +321,91 @@ export const savePushSubscription = mutation({
 });
 
 export const getReminderSettings = query({
-  args: { userId: v.string() },
+  args: {},
+  returns: v.union(reminderSettingsValidator, v.null()),
   handler: async (ctx, args) => {
-    const clerkId = args.userId;
+    const identity = await ctx.auth.getUserIdentity();
+    const clerkId = identity?.subject;
     if (!clerkId) return null;
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
       .unique();
     if (!user) return null;
+    const pushSubscription = await ctx.db
+      .query("pushSubscriptions")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .first();
     return {
       remindersEnabled: user.remindersEnabled ?? false,
       reminder1Time: user.reminder1Time ?? DEFAULT_REMINDER_TIME,
       reminder2Time: user.reminder2Time ?? null,
       reminderChannel: (user.reminderChannel ?? "push") as "push" | "email" | "both",
       timezone: user.timezone ?? null,
+      pushSubscriptionExists: pushSubscription !== null,
     };
+  },
+});
+
+export const getPushSubscriptionByClerkId = internalQuery({
+  args: { clerkId: v.string() },
+  returns: v.union(
+    v.object({
+      endpoint: v.string(),
+      p256dh: v.string(),
+      auth: v.string(),
+    }),
+    v.null()
+  ),
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .unique();
+    if (!user) return null;
+
+    const subscription = await ctx.db
+      .query("pushSubscriptions")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .first();
+    if (!subscription) return null;
+
+    return {
+      endpoint: subscription.endpoint,
+      p256dh: subscription.p256dh,
+      auth: subscription.auth,
+    };
+  },
+});
+
+export const sendTestPush = action({
+  args: {},
+  returns: v.object({ ok: v.boolean() }),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const clerkId = identity?.subject;
+    if (!clerkId) throw new Error("Not authenticated");
+
+    const subscription = await ctx.runQuery(
+      internal.reminders.getPushSubscriptionByClerkId,
+      { clerkId }
+    );
+    if (!subscription) {
+      throw new Error(
+        "No push subscription found yet. Save push reminders first, then try again."
+      );
+    }
+
+    await ctx.runAction(internal.remindersSend.sendPushPayload, {
+      endpoint: subscription.endpoint,
+      p256dh: subscription.p256dh,
+      auth: subscription.auth,
+      title: "Book-Trackr test notification",
+      body: "Push is connected. Your daily reminders can reach this device now.",
+      url: "/dashboard/settings",
+      tag: "book-trackr-test",
+    });
+
+    return { ok: true };
   },
 });

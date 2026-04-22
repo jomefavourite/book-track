@@ -128,7 +128,7 @@ export default function LandingPage() {
         </h3>
         <Card className="p-8">
           <p className="mb-6 text-lg text-muted-foreground">
-            Install Book-Track as a Progressive Web App for offline access and
+            Install Book-Trackr as a Progressive Web App for offline access and
             an app-like experience on your device.
           </p>
           <div className="space-y-6">
@@ -138,7 +138,7 @@ export default function LandingPage() {
               </h4>
               <p className="text-muted-foreground">
                 Click the install icon in the address bar, or go to the menu →
-                "Install Book-Track"
+                "Install Book-Trackr"
               </p>
             </div>
             <div>

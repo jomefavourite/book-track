@@ -17,7 +17,7 @@ export async function generateMetadata({
   if (!profile) {
     return createPageMetadata({
       title: "Reader Profile",
-      description: "Explore shared reading journeys on Book-Track.",
+      description: "Explore shared reading journeys on Book-Trackr.",
       path: `/user/${slugOrId}`,
       noIndex: true,
     });
@@ -28,9 +28,9 @@ export async function generateMetadata({
   const description =
     profile.stats.totalBooks > 0
       ? profile.stats.totalPagesRead > 0
-        ? `${displayName} is sharing ${profile.stats.totalBooks} book${profile.stats.totalBooks === 1 ? "" : "s"}, ${profile.stats.completed} completed, and ${profile.stats.totalPagesRead.toLocaleString()} pages read on Book-Track.`
-        : `${displayName} is sharing ${profile.stats.totalBooks} book${profile.stats.totalBooks === 1 ? "" : "s"} and ${profile.stats.completed} completed reads on Book-Track.`
-      : `${displayName} is sharing a reading profile on Book-Track.`;
+        ? `${displayName} is sharing ${profile.stats.totalBooks} book${profile.stats.totalBooks === 1 ? "" : "s"}, ${profile.stats.completed} completed, and ${profile.stats.totalPagesRead.toLocaleString()} pages read on Book-Trackr.`
+        : `${displayName} is sharing ${profile.stats.totalBooks} book${profile.stats.totalBooks === 1 ? "" : "s"} and ${profile.stats.completed} completed reads on Book-Trackr.`
+      : `${displayName} is sharing a reading profile on Book-Trackr.`;
 
   return createPageMetadata({
     title: `${displayName}'s Reading Profile`,

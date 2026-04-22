@@ -1,6 +1,6 @@
 {
-  "name": "Book-Track",
-  "short_name": "Book-Track",
+  "name": "Book-Trackr",
+  "short_name": "Book-Trackr",
   "description": "Track your reading progress with calendar and fixed-days modes",
   "start_url": "/",
   "display": "standalone",

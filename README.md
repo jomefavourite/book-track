@@ -1,4 +1,4 @@
-# Book-Track
+# Book-Trackr
 
 A Progressive Web App (PWA) for tracking your reading progress with calendar and fixed-days modes.
 
