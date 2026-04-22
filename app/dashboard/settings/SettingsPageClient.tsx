@@ -92,12 +92,12 @@ export default function SettingsPage() {
     if (!key) return null;
     if (!("serviceWorker" in navigator) || !("PushManager" in window))
       return null;
-    const SW_READY_MS = 8000;
+    const SW_READY_MS = 20000;
     const reg = await Promise.race([
       navigator.serviceWorker.ready,
       new Promise<never>((_, reject) =>
         setTimeout(
-          () => reject(new Error("Service worker not ready")),
+          () => reject(new Error("Push notifications require a service worker. Try reloading the page and saving again.")),
           SW_READY_MS
         )
       ),
