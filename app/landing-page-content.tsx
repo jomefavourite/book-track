@@ -11,6 +11,57 @@ import Navigation from "@/components/Navigation";
 import PublicBookCard from "@/components/PublicBookCard";
 import PWAInstallBanner from "@/components/PWAInstallBanner";
 
+const featureCards = [
+  {
+    icon: "🗓️",
+    title: "Flexible Reading Plans",
+    description:
+      "Switch between calendar mode and fixed-days mode so each book fits your schedule, not the other way around.",
+  },
+  {
+    icon: "📚",
+    title: "Pages or Chapters",
+    description:
+      "Track progress by pages or chapters, including chapter-only books with smarter daily targets and progress summaries.",
+  },
+  {
+    icon: "⏱️",
+    title: "Reading Timer",
+    description:
+      "Run a focused reading timer for the day, save the session length, and keep momentum without leaving your plan.",
+  },
+  {
+    icon: "🔔",
+    title: "Daily Reminders",
+    description:
+      "Set one or two reminder times and get notified by push, email, or both when it is time to read.",
+  },
+  {
+    icon: "📈",
+    title: "Catch-Up Insights",
+    description:
+      "See completion progress, missed days, and catch-up suggestions so you always know what to read next.",
+  },
+  {
+    icon: "🌍",
+    title: "Public Profiles and Sharing",
+    description:
+      "Share books publicly, build a reader profile, and let people follow your reading journey when you want them to.",
+  },
+  {
+    icon: "🗂️",
+    title: "Organize Your Library",
+    description:
+      "Keep active books in focus, archive finished ones, and manage multiple reading journeys from one dashboard.",
+  },
+  {
+    icon: "📱",
+    title: "Installable PWA",
+    description:
+      "Install Book-Trackr on your phone or desktop for quick access, offline backup behavior, and app-like reading sessions.",
+  },
+];
+
 export default function LandingPage() {
   const { data: publicBooks, isPending } = useQuery({
     ...convexQuery(api.books.getPublicBooks, {}),
@@ -28,8 +79,8 @@ export default function LandingPage() {
           Track Your Reading Journey
         </h2>
         <p className="mb-8 text-xl text-muted-foreground">
-          Plan, track, and share your reading progress with calendar and
-          fixed-days modes
+          Plan books by pages or chapters, stay on track with reminders and a
+          reading timer, and share your progress when you want to.
         </p>
         <div className="flex justify-center gap-4">
           <SignInButton mode="modal">
@@ -58,66 +109,19 @@ export default function LandingPage() {
         <h3 className="mb-12 text-center text-3xl font-bold text-foreground">
           Features
         </h3>
-        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-          <Card className="p-6">
-            <div className="mb-4 text-4xl">📅</div>
-            <h4 className="mb-2 text-xl font-semibold text-card-foreground">
-              Calendar Mode
-            </h4>
-            <p className="text-muted-foreground">
-              Plan your reading across specific months and track daily progress
-              with a visual calendar
-            </p>
-          </Card>
-          <Card className="p-6">
-            <div className="mb-4 text-4xl">📊</div>
-            <h4 className="mb-2 text-xl font-semibold text-card-foreground">
-              Fixed Days Mode
-            </h4>
-            <p className="text-muted-foreground">
-              Set a target number of days to finish a book and get daily page
-              recommendations
-            </p>
-          </Card>
-          <Card className="p-6">
-            <div className="mb-4 text-4xl">📈</div>
-            <h4 className="mb-2 text-xl font-semibold text-card-foreground">
-              Progress Tracking
-            </h4>
-            <p className="text-muted-foreground">
-              Visualize your reading progress with percentage completion and
-              catch-up suggestions
-            </p>
-          </Card>
-          <Card className="p-6">
-            <div className="mb-4 text-4xl">🌐</div>
-            <h4 className="mb-2 text-xl font-semibold text-card-foreground">
-              Public Sharing
-            </h4>
-            <p className="text-muted-foreground">
-              Share your reading journey publicly or keep it private. Control
-              your visibility settings
-            </p>
-          </Card>
-          <Card className="p-6">
-            <div className="mb-4 text-4xl">📱</div>
-            <h4 className="mb-2 text-xl font-semibold text-card-foreground">
-              PWA Support
-            </h4>
-            <p className="text-muted-foreground">
-              Install as a Progressive Web App for offline access and an
-              app-like experience
-            </p>
-          </Card>
-          <Card className="p-6">
-            <div className="mb-4 text-4xl">☁️</div>
-            <h4 className="mb-2 text-xl font-semibold text-card-foreground">
-              Cloud Sync
-            </h4>
-            <p className="text-muted-foreground">
-              Your reading data syncs across all your devices automatically
-            </p>
-          </Card>
+        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+          {featureCards.map((feature) => (
+            <Card
+              key={feature.title}
+              className="p-6"
+            >
+              <div className="mb-4 text-4xl">{feature.icon}</div>
+              <h4 className="mb-2 text-xl font-semibold text-card-foreground">
+                {feature.title}
+              </h4>
+              <p className="text-muted-foreground">{feature.description}</p>
+            </Card>
+          ))}
         </div>
       </section>
 
