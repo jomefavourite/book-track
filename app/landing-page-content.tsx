@@ -78,7 +78,7 @@ export default function LandingPage() {
         <h2 className="mb-4 text-5xl font-bold text-foreground">
           Track Your Reading Journey
         </h2>
-        <p className="mb-8 text-xl text-muted-foreground">
+        <p className="mb-8 text-xl text-muted-foreground max-w-2xl mx-auto">
           Plan books by pages or chapters, stay on track with reminders and a
           reading timer, and share your progress when you want to.
         </p>
