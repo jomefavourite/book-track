@@ -7,7 +7,7 @@ import { useTheme } from "next-themes";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
-import { User } from "lucide-react";
+import { Bell, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
 import AuthButton from "@/components/AuthButton";
@@ -259,7 +259,19 @@ export default function Navigation({
           </div>
 
           {/* Mobile Hamburger Menu - visible on mobile only */}
-          <div className="sm:hidden">
+          <div className="sm:hidden flex items-center gap-2">
+            {showAuth && isSignedIn && (
+              <Button
+                variant="outline"
+                size="icon"
+                asChild
+                aria-label="Reminder settings"
+              >
+                <Link href="/dashboard/settings">
+                  <Bell className="h-5 w-5" />
+                </Link>
+              </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

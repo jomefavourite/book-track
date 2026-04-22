@@ -20,8 +20,6 @@ import { Input } from "@/components/ui/input";
 
 const DEFAULT_REMINDER_TIME = "20:00";
 const DEFAULT_TIMEZONE = "Africa/Lagos";
-
-type ReminderChannel = "push" | "email" | "both";
 type PushPermissionState = NotificationPermission | "unsupported";
 
 function getTimezoneOptions(): string[] {
@@ -87,7 +85,6 @@ export default function SettingsPage() {
   const [reminder2Enabled, setReminder2Enabled] = useState(false);
   const [reminder2Time, setReminder2Time] = useState("09:00");
   const [timezone, setTimezone] = useState(DEFAULT_TIMEZONE);
-  const [channel, setChannel] = useState<ReminderChannel>("push");
   const [pushPermission, setPushPermission] =
     useState<PushPermissionState>("unsupported");
   const [pushSupported, setPushSupported] = useState(false);
@@ -123,7 +120,6 @@ export default function SettingsPage() {
               settings.timezone && TIMEZONE_OPTIONS.includes(settings.timezone)
                 ? settings.timezone
                 : DEFAULT_TIMEZONE,
-            channel: settings.reminderChannel ?? "push",
           }
         : null,
     [settings]
@@ -136,9 +132,8 @@ export default function SettingsPage() {
       reminder2Enabled,
       reminder2Time,
       timezone,
-      channel,
     }),
-    [enabled, reminder1Time, reminder2Enabled, reminder2Time, timezone, channel]
+    [enabled, reminder1Time, reminder2Enabled, reminder2Time, timezone]
   );
 
   const hasUnsavedReminderChanges =
@@ -156,7 +151,6 @@ export default function SettingsPage() {
           ? settings.timezone
           : DEFAULT_TIMEZONE
       );
-      setChannel(settings.reminderChannel ?? "push");
       setPushSubscribed(settings.pushSubscriptionExists);
     } else if (isLoaded && user?.id && !settingsPending) {
       setTimezone(DEFAULT_TIMEZONE);
@@ -308,13 +302,12 @@ export default function SettingsPage() {
         reminder1Time: reminder1Time || DEFAULT_REMINDER_TIME,
         reminder2Time: reminder2Enabled ? reminder2Time : null,
         timezone: timezone.trim() || DEFAULT_TIMEZONE,
-        reminderChannel: channel,
       });
       queryClient.invalidateQueries({
         queryKey: convexQuery(api.reminders.getReminderSettings, {}).queryKey,
       });
 
-      if ((channel === "push" || channel === "both") && enabled) {
+      if (enabled) {
         const subscription = await ensurePushSubscription();
         await persistPushSubscription(subscription);
       }
@@ -406,7 +399,7 @@ export default function SettingsPage() {
             <CardTitle>Reminder settings</CardTitle>
             <CardDescription>
               Get notified to read your book for the day. Choose one or two
-              times and how you’d like to be reminded.
+              times and get a push notification when it is time to read.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -502,64 +495,25 @@ export default function SettingsPage() {
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <span className="mb-2 block text-sm font-medium">
-                      Notify me via
-                    </span>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="channel"
-                          value="push"
-                          checked={channel === "push"}
-                          onChange={() => setChannel("push")}
-                          className="h-4 w-4"
-                        />
-                        <span className="text-sm">Push</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="channel"
-                          value="email"
-                          checked={channel === "email"}
-                          onChange={() => setChannel("email")}
-                          className="h-4 w-4"
-                        />
-                        <span className="text-sm">Email</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="channel"
-                          value="both"
-                          checked={channel === "both"}
-                          onChange={() => setChannel("both")}
-                          className="h-4 w-4"
-                        />
-                        <span className="text-sm">Both</span>
-                      </label>
+                  <div className="mt-1 space-y-2">
+                  
+                    <div className="mt-3 space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        Push status:{" "}
+                        {pushSupported
+                          ? pushSubscribed
+                            ? pushPermission === "granted"
+                              ? "connected on this device"
+                              : "subscription exists, but browser permission is not granted right now"
+                            : "not connected yet"
+                          : "not supported on this browser/device"}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {pushSupported
+                          ? "Best path: Install the app to the Home Screen first and save settings."
+                          : getPushUnsupportedMessage()}
+                      </p>
                     </div>
-                    {(channel === "push" || channel === "both") && (
-                      <div className="mt-3 space-y-2">
-                        <p className="text-sm text-muted-foreground">
-                          Push status:{" "}
-                          {pushSupported
-                            ? pushSubscribed
-                              ? pushPermission === "granted"
-                                ? "connected on this device"
-                                : "subscription exists, but browser permission is not granted right now"
-                              : "not connected yet"
-                            : "not supported on this browser/device"}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {pushSupported
-                            ? "Best path: save your settings, then send a test notification immediately. On iPhone and iPad, install the app to the Home Screen first."
-                            : getPushUnsupportedMessage()}
-                        </p>
-                      </div>
-                    )}
                   </div>
                 </>
               )}
@@ -582,10 +536,10 @@ export default function SettingsPage() {
                   >
                     You changed your reminder settings. Click{" "}
                     <span className="font-medium">Save settings</span> again to
-                    apply the new reminder time, channel, or timezone.
+                    apply the new reminder time or timezone.
                   </p>
                 )}
-                {enabled && (channel === "push" || channel === "both") && (
+                {enabled && (
                   <Button
                     type="button"
                     variant="outline"

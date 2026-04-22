@@ -34,7 +34,7 @@ const featureCards = [
     icon: "🔔",
     title: "Daily Reminders",
     description:
-      "Set one or two reminder times and get notified by push, email, or both when it is time to read.",
+      "Set one or two reminder times and get notified by push when it is time to read.",
   },
   {
     icon: "📈",

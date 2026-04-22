@@ -4,7 +4,6 @@ import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import webpush from "web-push";
 
-const APP_NAME = "Book-Trackr";
 const REMINDER_TITLE = "Time to read!";
 const REMINDER_BODY = "You have reading planned for today. Open the app to log your progress.";
 
@@ -42,33 +41,5 @@ export const sendPushPayload = internalAction({
     });
     await webpush.sendNotification(subscription, payload);
     return null;
-  },
-});
-
-export const sendEmailPayload = internalAction({
-  args: { email: v.string() },
-  handler: async (ctx, args) => {
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-      throw new Error("RESEND_API_KEY must be set for email reminders");
-    }
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://booktrackr.app";
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        from: `${APP_NAME} <notifications@resend.dev>`,
-        to: [args.email],
-        subject: `${REMINDER_TITLE} – ${APP_NAME}`,
-        html: `<p>${REMINDER_BODY}</p><p><a href="${appUrl}">Open ${APP_NAME}</a></p>`,
-      }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Resend API error: ${res.status} ${text}`);
-    }
   },
 });

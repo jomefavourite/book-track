@@ -15,7 +15,6 @@ const REMINDER_WINDOW_MINUTES = 2;
 
 const HHMM_REGEX = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
 type ReminderSlot = 1 | 2;
-type ReminderChannel = "push" | "email" | "both";
 
 function parseMinutesSinceMidnight(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
@@ -357,11 +356,8 @@ export const deliverScheduledReminder = internalAction({
     }
 
     let sent = false;
-    const channel = (user.reminderChannel ?? "push") as ReminderChannel;
-    const doPush = channel === "push" || channel === "both";
-    const doEmail = channel === "email" || channel === "both";
 
-    if (lastSentDate !== todayStr && doPush) {
+    if (lastSentDate !== todayStr) {
       const sub = await ctx.runQuery(internal.reminders.getPushSubscriptionForUser, {
         userId: user._id,
       });
@@ -378,17 +374,6 @@ export const deliverScheduledReminder = internalAction({
         }
       } else {
         console.log(`No push subscription found for user ${user._id}`);
-      }
-    }
-
-    if (lastSentDate !== todayStr && doEmail && user.email) {
-      try {
-        await ctx.runAction(internal.remindersSend.sendEmailPayload, {
-          email: user.email,
-        });
-        sent = true;
-      } catch (emailErr) {
-        console.error(`Email failed for user ${user._id}:`, emailErr);
       }
     }
 
@@ -409,11 +394,7 @@ export const deliverScheduledReminder = internalAction({
   },
 });
 
-const reminderChannelValidator = v.union(
-  v.literal("push"),
-  v.literal("email"),
-  v.literal("both")
-);
+const reminderChannelValidator = v.literal("push");
 
 const reminderSettingsValidator = v.object({
   remindersEnabled: v.boolean(),
@@ -458,16 +439,16 @@ export const updateReminderSettings = mutation({
     }
     if (
       args.reminderChannel !== undefined &&
-      !["push", "email", "both"].includes(args.reminderChannel)
+      args.reminderChannel !== "push"
     ) {
-      throw new Error("reminderChannel must be push, email, or both");
+      throw new Error("Only push reminders are supported");
     }
 
     const updates: {
       remindersEnabled?: boolean;
       reminder1Time?: string;
       reminder2Time?: string;
-      reminderChannel?: "push" | "email" | "both";
+      reminderChannel?: "push";
       timezone?: string;
       updatedAt: number;
     } = { updatedAt: Date.now() };
@@ -477,8 +458,7 @@ export const updateReminderSettings = mutation({
     if (args.reminder1Time !== undefined) updates.reminder1Time = args.reminder1Time;
     if (args.reminder2Time !== undefined)
       updates.reminder2Time = args.reminder2Time ?? undefined;
-    if (args.reminderChannel !== undefined)
-      updates.reminderChannel = args.reminderChannel;
+    updates.reminderChannel = "push";
     if (args.timezone !== undefined) updates.timezone = args.timezone.trim();
 
     await ctx.db.patch(user._id, updates);
@@ -556,7 +536,7 @@ export const getReminderSettings = query({
       remindersEnabled: user.remindersEnabled ?? false,
       reminder1Time: user.reminder1Time ?? DEFAULT_REMINDER_TIME,
       reminder2Time: user.reminder2Time ?? null,
-      reminderChannel: (user.reminderChannel ?? "push") as "push" | "email" | "both",
+      reminderChannel: "push" as const,
       timezone: user.timezone ?? null,
       pushSubscriptionExists: pushSubscription !== null,
     };
