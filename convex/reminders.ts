@@ -108,78 +108,95 @@ export const checkAndSendReminders = internalAction({
     const windowMinutes = 15;
 
     for (const user of users) {
-      const timezone = user.timezone ?? "UTC";
-      const { dateStr: todayStr, minutesSinceMidnight: currentMinutes } =
-        getTodayAndCurrentMinutesInTz(timezone);
+      try {
+        const timezone = user.timezone ?? "UTC";
+        const { dateStr: todayStr, minutesSinceMidnight: currentMinutes } =
+          getTodayAndCurrentMinutesInTz(timezone);
 
-      const reminder1 =
-        user.reminder1Time && HHMM_REGEX.test(user.reminder1Time)
-          ? user.reminder1Time
-          : DEFAULT_REMINDER_TIME;
-      const reminder2 =
-        user.reminder2Time && HHMM_REGEX.test(user.reminder2Time)
-          ? user.reminder2Time
+        const reminder1 =
+          user.reminder1Time && HHMM_REGEX.test(user.reminder1Time)
+            ? user.reminder1Time
+            : DEFAULT_REMINDER_TIME;
+        const reminder2 =
+          user.reminder2Time && HHMM_REGEX.test(user.reminder2Time)
+            ? user.reminder2Time
+            : null;
+
+        const reminder1Minutes = parseMinutesSinceMidnight(reminder1);
+        const reminder2Minutes = reminder2
+          ? parseMinutesSinceMidnight(reminder2)
           : null;
 
-      const reminder1Minutes = parseMinutesSinceMidnight(reminder1);
-      const reminder2Minutes = reminder2
-        ? parseMinutesSinceMidnight(reminder2)
-        : null;
+        const slotsDue: Array<1 | 2> = [];
+        if (
+          isInReminderWindow(currentMinutes, reminder1Minutes, windowMinutes) &&
+          user.reminder1LastSentDate !== todayStr
+        ) {
+          slotsDue.push(1);
+        }
+        if (
+          reminder2Minutes !== null &&
+          isInReminderWindow(currentMinutes, reminder2Minutes, windowMinutes) &&
+          user.reminder2LastSentDate !== todayStr
+        ) {
+          slotsDue.push(2);
+        }
 
-      const slotsDue: Array<1 | 2> = [];
-      if (
-        isInReminderWindow(currentMinutes, reminder1Minutes, windowMinutes) &&
-        user.reminder1LastSentDate !== todayStr
-      ) {
-        slotsDue.push(1);
-      }
-      if (
-        reminder2Minutes !== null &&
-        isInReminderWindow(currentMinutes, reminder2Minutes, windowMinutes) &&
-        user.reminder2LastSentDate !== todayStr
-      ) {
-        slotsDue.push(2);
-      }
-
-      for (const slot of slotsDue) {
-        const hasUnread = await ctx.runQuery(
-          internal.reminders.getSessionsForUserAndDate,
-          { clerkId: user.clerkId, date: todayStr }
-        ).then((sessions: Doc<"readingSessions">[]) =>
-          sessions.some((s: Doc<"readingSessions">) => !s.isRead && !(s.isMissed ?? false))
-        );
-        if (!hasUnread) continue;
-
-        const channel = user.reminderChannel ?? "push";
-        const doPush =
-          channel === "push" || channel === "both";
-        const doEmail =
-          channel === "email" || channel === "both";
-
-        if (doPush) {
-          const sub = await ctx.runQuery(
-            internal.reminders.getPushSubscriptionForUser,
-            { userId: user._id }
+        for (const slot of slotsDue) {
+          const hasUnread = await ctx.runQuery(
+            internal.reminders.getSessionsForUserAndDate,
+            { clerkId: user.clerkId, date: todayStr }
+          ).then((sessions: Doc<"readingSessions">[]) =>
+            sessions.some((s: Doc<"readingSessions">) => !s.isRead && !(s.isMissed ?? false))
           );
-          if (sub) {
-            await ctx.runAction(internal.remindersSend.sendPushPayload, {
-              endpoint: sub.endpoint,
-              p256dh: sub.p256dh,
-              auth: sub.auth,
+          if (!hasUnread) continue;
+
+          const channel = user.reminderChannel ?? "push";
+          const doPush = channel === "push" || channel === "both";
+          const doEmail = channel === "email" || channel === "both";
+
+          let sent = false;
+
+          if (doPush) {
+            const sub = await ctx.runQuery(
+              internal.reminders.getPushSubscriptionForUser,
+              { userId: user._id }
+            );
+            if (sub) {
+              try {
+                await ctx.runAction(internal.remindersSend.sendPushPayload, {
+                  endpoint: sub.endpoint,
+                  p256dh: sub.p256dh,
+                  auth: sub.auth,
+                });
+                sent = true;
+              } catch (pushErr) {
+                console.error(`Push failed for user ${user._id}:`, pushErr);
+              }
+            }
+          }
+
+          if (doEmail && user.email) {
+            try {
+              await ctx.runAction(internal.remindersSend.sendEmailPayload, {
+                email: user.email,
+              });
+              sent = true;
+            } catch (emailErr) {
+              console.error(`Email failed for user ${user._id}:`, emailErr);
+            }
+          }
+
+          if (sent) {
+            await ctx.runMutation(internal.reminders.markReminderSent, {
+              userId: user._id,
+              slot,
+              dateStr: todayStr,
             });
           }
         }
-        if (doEmail && user.email) {
-          await ctx.runAction(internal.remindersSend.sendEmailPayload, {
-            email: user.email,
-          });
-        }
-
-        await ctx.runMutation(internal.reminders.markReminderSent, {
-          userId: user._id,
-          slot,
-          dateStr: todayStr,
-        });
+      } catch (err) {
+        console.error(`Reminder check failed for user ${user._id}:`, err);
       }
     }
   },

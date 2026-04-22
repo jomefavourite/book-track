@@ -104,6 +104,7 @@ export const updateSession = mutation({
     chapterNumber: v.optional(v.union(v.number(), v.null())),
     isRead: v.optional(v.boolean()),
     isMissed: v.optional(v.boolean()),
+    timerDurationSec: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = args.userId;
@@ -127,6 +128,7 @@ export const updateSession = mutation({
       chapterNumber?: number | null;
       isRead?: boolean;
       isMissed?: boolean;
+      timerDurationSec?: number;
     } = {};
 
     if (args.actualPages !== undefined) {
@@ -159,6 +161,10 @@ export const updateSession = mutation({
         updateData.isRead = false;
         updateData.chapterNumber = null;
       }
+    }
+
+    if (args.timerDurationSec !== undefined) {
+      updateData.timerDurationSec = args.timerDurationSec;
     }
 
     await ctx.db.patch(args.sessionId, updateData);

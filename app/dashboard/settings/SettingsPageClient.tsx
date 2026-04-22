@@ -9,7 +9,13 @@ import { useUser, useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 const DEFAULT_REMINDER_TIME = "20:00";
@@ -22,9 +28,9 @@ function getTimezoneOptions(): string[] {
     return [DEFAULT_TIMEZONE, "UTC"];
   }
   try {
-    const zones = (Intl as { supportedValuesOf(key: string): string[] }).supportedValuesOf(
-      "timeZone"
-    );
+    const zones = (
+      Intl as { supportedValuesOf(key: string): string[] }
+    ).supportedValuesOf("timeZone");
     const sorted = [...zones].sort((a, b) => a.localeCompare(b));
     if (sorted.includes(DEFAULT_TIMEZONE)) return sorted;
     return [DEFAULT_TIMEZONE, ...sorted];
@@ -84,12 +90,16 @@ export default function SettingsPage() {
   async function subscribePush(): Promise<PushSubscription | null> {
     const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     if (!key) return null;
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window))
+      return null;
     const SW_READY_MS = 8000;
     const reg = await Promise.race([
       navigator.serviceWorker.ready,
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Service worker not ready")), SW_READY_MS)
+        setTimeout(
+          () => reject(new Error("Service worker not ready")),
+          SW_READY_MS
+        )
       ),
     ]);
     const sub = await reg.pushManager.subscribe({
@@ -101,7 +111,9 @@ export default function SettingsPage() {
 
   function urlBase64ToUint8Array(base64String: string): Uint8Array {
     const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const base64 = (base64String + padding)
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
     const rawData = atob(base64);
     const outputArray = new Uint8Array(rawData.length);
     for (let i = 0; i < rawData.length; ++i) {
@@ -130,12 +142,12 @@ export default function SettingsPage() {
           userId: user.id,
         }).queryKey,
       });
-      setSavePending(false);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 4000);
 
-      // Request push subscription only when Push/Both and not yet saved (so we can retry if it failed before)
-      if ((channel === "push" || channel === "both") && enabled && !pushPermissionRequested) {
+      if (
+        (channel === "push" || channel === "both") &&
+        enabled &&
+        !pushPermissionRequested
+      ) {
         const permission = await Notification.requestPermission();
         if (permission === "granted") {
           const sub = await subscribePush();
@@ -150,14 +162,20 @@ export default function SettingsPage() {
             setPushPermissionRequested(true);
           } else {
             setSaveError(
-              "Push subscription failed. Set NEXT_PUBLIC_VAPID_PUBLIC_KEY in .env.local (same as Convex VAPID_PUBLIC_KEY) and run a production build (npm run build && npm start)."
+              "Push subscription failed. Ensure NEXT_PUBLIC_VAPID_PUBLIC_KEY is set and use a production build (npm run build && npm start)."
             );
           }
         }
       }
+
+      setSavePending(false);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err) {
       setSavePending(false);
-      setSaveError(err instanceof Error ? err.message : "Failed to save settings");
+      setSaveError(
+        err instanceof Error ? err.message : "Failed to save settings"
+      );
       console.error(err);
     }
   }
@@ -178,8 +196,13 @@ export default function SettingsPage() {
       <>
         <Navigation />
         <div className="mx-auto max-w-6xl p-3 sm:p-6">
-          <p className="text-muted-foreground">Sign in to manage reminder settings.</p>
-          <Button asChild className="mt-4">
+          <p className="text-muted-foreground">
+            Sign in to manage reminder settings.
+          </p>
+          <Button
+            asChild
+            className="mt-4"
+          >
             <Link href="/sign-in">Sign in</Link>
           </Button>
         </div>
@@ -203,11 +226,15 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle>Reminder settings</CardTitle>
             <CardDescription>
-              Get notified to read your book for the day. Choose one or two times and how you’d like to be reminded.
+              Get notified to read your book for the day. Choose one or two
+              times and how you’d like to be reminded.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSave} className="space-y-6">
+            <form
+              onSubmit={handleSave}
+              className="space-y-6"
+            >
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
@@ -216,7 +243,10 @@ export default function SettingsPage() {
                   onChange={(e) => setEnabled(e.target.checked)}
                   className="h-4 w-4 rounded border-input"
                 />
-                <label htmlFor="reminders-enabled" className="text-sm font-medium">
+                <label
+                  htmlFor="reminders-enabled"
+                  className="text-sm font-medium"
+                >
                   Enable daily reminders
                 </label>
               </div>
@@ -224,7 +254,10 @@ export default function SettingsPage() {
               {enabled && (
                 <>
                   <div>
-                    <label htmlFor="reminder1" className="mb-1 block text-sm font-medium">
+                    <label
+                      htmlFor="reminder1"
+                      className="mb-1 block text-sm font-medium"
+                    >
                       First reminder time
                     </label>
                     <Input
@@ -243,13 +276,19 @@ export default function SettingsPage() {
                       onChange={(e) => setReminder2Enabled(e.target.checked)}
                       className="h-4 w-4 rounded border-input"
                     />
-                    <label htmlFor="reminder2-enabled" className="text-sm font-medium">
+                    <label
+                      htmlFor="reminder2-enabled"
+                      className="text-sm font-medium"
+                    >
                       Second reminder
                     </label>
                   </div>
                   {reminder2Enabled && (
                     <div>
-                      <label htmlFor="reminder2" className="mb-1 block text-sm font-medium">
+                      <label
+                        htmlFor="reminder2"
+                        className="mb-1 block text-sm font-medium"
+                      >
                         Second reminder time
                       </label>
                       <Input
@@ -262,7 +301,10 @@ export default function SettingsPage() {
                     </div>
                   )}
                   <div>
-                    <label htmlFor="timezone" className="mb-1 block text-sm font-medium">
+                    <label
+                      htmlFor="timezone"
+                      className="mb-1 block text-sm font-medium"
+                    >
                       Timezone
                     </label>
                     <select
@@ -272,14 +314,19 @@ export default function SettingsPage() {
                       className="flex h-9 w-full max-w-[280px] rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     >
                       {TIMEZONE_OPTIONS.map((tz) => (
-                        <option key={tz} value={tz}>
+                        <option
+                          key={tz}
+                          value={tz}
+                        >
                           {tz.replace(/_/g, " ")}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <span className="mb-2 block text-sm font-medium">Notify me via</span>
+                    <span className="mb-2 block text-sm font-medium">
+                      Notify me via
+                    </span>
                     <div className="flex gap-4">
                       <label className="flex items-center gap-2">
                         <input
@@ -320,16 +367,25 @@ export default function SettingsPage() {
               )}
 
               <div className="flex flex-col gap-2">
-                <Button type="submit" disabled={savePending}>
+                <Button
+                  type="submit"
+                  disabled={savePending}
+                >
                   {savePending ? "Saving…" : "Save settings"}
                 </Button>
                 {saveSuccess && (
-                  <p className="text-sm text-green-600 dark:text-green-400" role="status">
+                  <p
+                    className="text-sm text-green-600 dark:text-green-400"
+                    role="status"
+                  >
                     Settings saved.
                   </p>
                 )}
                 {saveError && (
-                  <p className="text-sm text-destructive" role="alert">
+                  <p
+                    className="text-sm text-destructive"
+                    role="alert"
+                  >
                     {saveError}
                   </p>
                 )}

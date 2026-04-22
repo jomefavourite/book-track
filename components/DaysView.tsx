@@ -7,7 +7,7 @@ import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
 import { useUser } from "@clerk/nextjs";
-import { formatDateForStorage, parseDateFromStorage } from "@/lib/dateUtils";
+import { formatDateForStorage, parseDateFromStorage, formatTimerDuration, formatCountdown } from "@/lib/dateUtils";
 import {
   calculateDailyPages,
   distributeChaptersAcrossDays,
@@ -18,6 +18,9 @@ import {
 } from "@/lib/chapterTracking";
 import CatchUpSuggestion from "./CatchUpSuggestion";
 import { Input } from "./ui/input";
+import { Timer } from "lucide-react";
+import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
+import { playTimerEndSound } from "@/lib/timerSound";
 
 interface DaysViewProps {
   bookId: Id<"books">;
@@ -94,6 +97,8 @@ export default function DaysView({
                   variables.chapterNumber !== undefined
                     ? variables.chapterNumber
                     : session.chapterNumber,
+                timerDurationSec:
+                  variables.timerDurationSec ?? session.timerDurationSec,
               };
             }
             return session;
@@ -204,6 +209,57 @@ export default function DaysView({
   const [chapterInputValues, setChapterInputValues] = useState<
     Map<string, string>
   >(new Map());
+  const [openTimerDateKey, setOpenTimerDateKey] = useState<string | null>(null);
+
+  // Active timer — one at a time, persists across dialog open/close
+  const [activeTimerDateKey, setActiveTimerDateKey] = useState<string | null>(null);
+  const [timerPhase, setTimerPhase] = useState<TimerPhase>({ status: "setup" });
+  const [timerDisplaySec, setTimerDisplaySec] = useState(0);
+
+  // Countdown interval — only runs when timer is active
+  useEffect(() => {
+    if (timerPhase.status !== "running") return;
+    const { endsAt, totalSec } = timerPhase;
+    const id = setInterval(() => {
+      const remaining = Math.ceil((endsAt - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setTimerDisplaySec(0);
+        setTimerPhase({ status: "finished", totalSec });
+        playTimerEndSound();
+      } else {
+        setTimerDisplaySec(remaining);
+      }
+    }, 100);
+    return () => clearInterval(id);
+  }, [timerPhase]);
+
+  function handleTimerStart(dateKey: string, totalSec: number) {
+    setActiveTimerDateKey(dateKey);
+    setTimerDisplaySec(totalSec);
+    setTimerPhase({ status: "running", endsAt: Date.now() + totalSec * 1000, totalSec });
+  }
+
+  function handleTimerPause() {
+    if (timerPhase.status !== "running") return;
+    const remainingSec = Math.ceil((timerPhase.endsAt - Date.now()) / 1000);
+    setTimerDisplaySec(remainingSec);
+    setTimerPhase({ status: "paused", remainingSec, totalSec: timerPhase.totalSec });
+  }
+
+  function handleTimerResume() {
+    if (timerPhase.status !== "paused") return;
+    setTimerPhase({
+      status: "running",
+      endsAt: Date.now() + timerPhase.remainingSec * 1000,
+      totalSec: timerPhase.totalSec,
+    });
+  }
+
+  function handleTimerReset() {
+    setActiveTimerDateKey(null);
+    setTimerPhase({ status: "setup" });
+    setTimerDisplaySec(0);
+  }
 
   // Sync input values with sessions when they change
   useEffect(() => {
@@ -834,7 +890,28 @@ export default function DaysView({
               >
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex-1">
-                    <div className="text-sm font-medium">Day {dayNumber}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium">Day {dayNumber}</span>
+                      {/* Timer — only for unread, non-missed days */}
+                      {canEdit && !isRead && !isMissed && (
+                        <button
+                          onClick={() => setOpenTimerDateKey(dateKey)}
+                          className="flex items-center gap-0.5 rounded text-muted-foreground transition-colors hover:text-foreground"
+                          aria-label="Reading timer"
+                        >
+                          {activeTimerDateKey === dateKey && timerPhase.status !== "setup" ? (
+                            <span className="inline-flex items-center gap-0.5 font-mono text-[10px]">
+                              <Timer className="h-2.5 w-2.5" />
+                              {timerPhase.status === "finished"
+                                ? "Done!"
+                                : formatCountdown(timerDisplaySec)}
+                            </span>
+                          ) : (
+                            <Timer className="h-3 w-3" />
+                          )}
+                        </button>
+                      )}
+                    </div>
                     <div
                       className={`text-xs ${
                         isRead
@@ -953,6 +1030,12 @@ export default function DaysView({
                       : `Plan: ${session?.plannedPages ?? pagesPerDay} pages`}
                   </div>
                 )}
+                {session?.timerDurationSec && !isMissed && (
+                  <div className="mb-1 flex items-center gap-0.5 text-xs text-muted-foreground">
+                    <Timer className="h-3 w-3" />
+                    {formatTimerDuration(session.timerDurationSec)}
+                  </div>
+                )}
                 {isRead && (
                   <div className="space-y-2">
                     {chapterMode && (
@@ -1053,6 +1136,33 @@ export default function DaysView({
                     Missed
                   </div>
                 )}
+                <ReadingTimer
+                  open={openTimerDateKey === dateKey}
+                  onOpenChange={(open) =>
+                    setOpenTimerDateKey(open ? dateKey : null)
+                  }
+                  dayLabel={`Day ${dayNumber} – ${format(date, "MMM d")}`}
+                  sessionId={session?._id}
+                  userId={user?.id ?? ""}
+                  savedDurationSec={session?.timerDurationSec}
+                  onSaved={(durationSec) => {
+                    queryClient.setQueryData<ReadingSessionDoc[]>(
+                      sessionsQueryKey,
+                      (old) =>
+                        old?.map((s) =>
+                          s._id === session?._id
+                            ? { ...s, timerDurationSec: durationSec }
+                            : s
+                        )
+                    );
+                  }}
+                  phase={activeTimerDateKey === dateKey ? timerPhase : { status: "setup" }}
+                  displaySec={activeTimerDateKey === dateKey ? timerDisplaySec : 0}
+                  onStart={(totalSec) => handleTimerStart(dateKey, totalSec)}
+                  onPause={handleTimerPause}
+                  onResume={handleTimerResume}
+                  onReset={handleTimerReset}
+                />
               </div>
             );
           })}

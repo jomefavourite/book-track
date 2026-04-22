@@ -70,3 +70,19 @@ export function getAllDaysInRange(start: Date, end: Date): Date[] {
   return eachDayOfInterval({ start, end });
 }
 
+export function formatTimerDuration(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  return `${s}s`;
+}
+
+export function formatCountdown(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
+}
+
