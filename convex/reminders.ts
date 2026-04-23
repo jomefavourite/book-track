@@ -394,7 +394,11 @@ export const deliverScheduledReminder = internalAction({
   },
 });
 
-const reminderChannelValidator = v.literal("push");
+const reminderChannelValidator = v.union(
+  v.literal("push"),
+  v.literal("email"),
+  v.literal("both")
+);
 
 const reminderSettingsValidator = v.object({
   remindersEnabled: v.boolean(),
@@ -437,13 +441,6 @@ export const updateReminderSettings = mutation({
     if (args.timezone !== undefined && !args.timezone?.trim()) {
       throw new Error("timezone must be non-empty");
     }
-    if (
-      args.reminderChannel !== undefined &&
-      args.reminderChannel !== "push"
-    ) {
-      throw new Error("Only push reminders are supported");
-    }
-
     const updates: {
       remindersEnabled?: boolean;
       reminder1Time?: string;
