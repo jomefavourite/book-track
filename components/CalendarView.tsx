@@ -474,8 +474,66 @@ export default function CalendarView({
 
   const chapterSuggestions = useMemo(() => {
     const suggestions = new Map<string, number>();
-    let lastKnownChapter = 1;
 
+    if (chapterOnlyMode && chapterDropdownMax !== null) {
+      // Find the highest chapter logged and the last day it was logged on
+      let lastKnownChapter = 0;
+      let lastReadIndex = -1;
+
+      readingPeriodDays.forEach((day, index) => {
+        const dateKey = formatDateForStorage(day);
+        const session = sessionsMap.get(dateKey);
+        if (
+          session?.isRead &&
+          !session?.isMissed &&
+          session.chapterNumber != null &&
+          session.chapterNumber >= 1
+        ) {
+          lastKnownChapter = Math.max(lastKnownChapter, session.chapterNumber);
+          lastReadIndex = index;
+        }
+      });
+
+      // Unread non-missed days after the last read day
+      const remainingDays = readingPeriodDays.filter((day, index) => {
+        if (index <= lastReadIndex) return false;
+        const dateKey = formatDateForStorage(day);
+        const session = sessionsMap.get(dateKey);
+        return !session?.isMissed;
+      });
+
+      const remainingChapters = chapterDropdownMax - lastKnownChapter;
+      const N = remainingDays.length;
+
+      // Seed all days with a fallback (read days use actual chapter; future/missed use static)
+      readingPeriodDays.forEach((day, index) => {
+        const dateKey = formatDateForStorage(day);
+        if (index <= lastReadIndex) {
+          const ch = sessionsMap.get(dateKey)?.chapterNumber ?? chapterDistribution.get(dateKey) ?? 1;
+          suggestions.set(dateKey, Math.max(1, ch));
+        } else {
+          suggestions.set(dateKey, chapterDistribution.get(dateKey) ?? 1);
+        }
+      });
+
+      // Override future non-missed days with the adaptive redistribution
+      remainingDays.forEach((day, i) => {
+        const dateKey = formatDateForStorage(day);
+        const target =
+          N > 0
+            ? Math.min(
+                chapterDropdownMax,
+                lastKnownChapter + Math.ceil(((i + 1) * remainingChapters) / N)
+              )
+            : chapterDropdownMax;
+        suggestions.set(dateKey, Math.max(1, target));
+      });
+
+      return suggestions;
+    }
+
+    // Non-chapterOnlyMode: sequential suggestion following last logged chapter
+    let lastKnownChapter = 1;
     readingPeriodDays.forEach((day) => {
       const dateKey = formatDateForStorage(day);
       const sessionChapter = sessionsMap.get(dateKey)?.chapterNumber;
@@ -491,12 +549,7 @@ export default function CalendarView({
         lastKnownChapter = Math.min(lastKnownChapter, chapterDropdownMax);
       }
 
-      suggestions.set(
-        dateKey,
-        chapterOnlyMode
-          ? chapterDistribution.get(dateKey) ?? 1
-          : Math.max(1, lastKnownChapter)
-      );
+      suggestions.set(dateKey, Math.max(1, lastKnownChapter));
     });
 
     return suggestions;
@@ -1124,7 +1177,7 @@ export default function CalendarView({
             const plannedPages =
               session?.plannedPages ?? (pageDistribution.get(dateKey) || 0);
             const plannedChapter = chapterOnlyMode
-              ? chapterDistribution.get(dateKey) ?? defaultChapterForDate(dateKey)
+              ? chapterSuggestions.get(dateKey) ?? defaultChapterForDate(dateKey)
               : undefined;
             const isInPeriod = isInReadingPeriod(day);
             const isToday = isSameDay(day, new Date());

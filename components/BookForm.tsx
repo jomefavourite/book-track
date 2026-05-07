@@ -725,7 +725,9 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
                   checked={isPublic}
                   onChange={(e) => {
                     setIsPublic(e.target.checked);
-                    if (!e.target.checked) {
+                    if (e.target.checked) {
+                      setShowCreatorName(true);
+                    } else {
                       setShowCreatorName(false);
                       setShowCreatorEmail(false);
                     }
@@ -751,17 +753,6 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
                     />
                     <span className="text-sm text-foreground">
                       Show my name on public book
-                    </span>
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={showCreatorEmail}
-                      onChange={(e) => setShowCreatorEmail(e.target.checked)}
-                      className="mr-2 rounded border-input text-foreground focus:ring-ring"
-                    />
-                    <span className="text-sm text-foreground">
-                      Show my email on public book
                     </span>
                   </label>
                 </div>
