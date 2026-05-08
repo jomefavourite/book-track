@@ -4,6 +4,7 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  output: 'export',
   turbopack: {},
   outputFileTracingRoot: path.join(__dirname),
 };
