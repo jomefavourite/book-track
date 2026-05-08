@@ -9,6 +9,10 @@ export const metadata: Metadata = createPageMetadata({
   noIndex: true,
 });
 
+export function generateStaticParams() {
+  return [];
+}
+
 export default function EditBookPage() {
   return <EditBookPageClient />;
 }
