@@ -79,8 +79,7 @@ export default function LandingPage() {
           Track Your Reading Journey
         </h2>
         <p className="mb-8 text-xl text-muted-foreground max-w-2xl mx-auto">
-          Plan books by pages or chapters, stay on track with reminders and a
-          reading timer, and share your progress when you want to.
+          Plan books and stay on track with your reading goals. Build a consistent habit reading and share your reading journey with friends.
         </p>
         <div className="flex justify-center gap-4">
           <SignInButton mode="modal">
