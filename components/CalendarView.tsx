@@ -1450,6 +1450,97 @@ export default function CalendarView({
                         </div>
                         {canEdit &&
                           chapterMode &&
+                          !chapterOnlyMode && (
+                            <div className="flex gap-1">
+                              {useChapterDropdown ? (
+                                <select
+                                  value={String(defaultChapterForDate(dateKey))}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    handleChapterInputChange(
+                                      dateKey,
+                                      e.target.value
+                                    );
+                                    void handleChapterUpdate(
+                                      day,
+                                      Number(e.target.value)
+                                    );
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  disabled={!canEdit}
+                                  className="h-6 min-w-0 flex-1 rounded border border-input bg-background px-1 text-[10px] text-foreground dark:text-foreground sm:h-7 sm:text-xs"
+                                >
+                                  {Array.from(
+                                    { length: chapterDropdownMax },
+                                    (_, index) => index + 1
+                                  ).map((chapter) => (
+                                    <option
+                                      key={chapter}
+                                      value={chapter}
+                                    >
+                                      Ch {chapter}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <Input
+                                  type="number"
+                                  inputMode="numeric"
+                                  value={String(defaultChapterForDate(dateKey))}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    handleChapterInputChange(
+                                      dateKey,
+                                      e.target.value
+                                    );
+                                  }}
+                                  onBlur={(e) => {
+                                    e.stopPropagation();
+                                    void handleChapterInputBlur(day);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.currentTarget.blur();
+                                    }
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  disabled={!canEdit}
+                                  min="1"
+                                  placeholder="Ch."
+                                  className="h-6 min-w-0 flex-1 px-1 text-foreground dark:text-foreground text-[10px] sm:h-7 sm:text-xs"
+                                />
+                              )}
+                              <Input
+                                type="number"
+                                id="actualPages"
+                                value={
+                                  inputValues.get(dateKey) ??
+                                  (session?.actualPages || plannedPages).toString()
+                                }
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  handleInputChange(dateKey, e.target.value);
+                                }}
+                                onBlur={(e) => {
+                                  e.stopPropagation();
+                                  handleInputBlur(day);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.currentTarget.blur();
+                                  }
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                disabled={!canEdit}
+                                min="0"
+                                placeholder="Pg"
+                                className="h-6 w-12 shrink-0 px-1 text-foreground dark:text-foreground text-[10px] sm:h-7 sm:w-14 sm:text-xs"
+                              />
+                            </div>
+                          )}
+                        {canEdit &&
+                          chapterMode &&
+                          chapterOnlyMode &&
                           (useChapterDropdown ? (
                             <select
                               value={String(defaultChapterForDate(dateKey))}
@@ -1508,7 +1599,7 @@ export default function CalendarView({
                               className="h-6 w-full px-1 text-foreground dark:text-foreground text-[10px] sm:h-7 sm:text-xs"
                             />
                           ))}
-                        {canEdit && !chapterOnlyMode && (
+                        {canEdit && !chapterMode && !chapterOnlyMode && (
                           <Input
                             type="number"
                             id="actualPages"
@@ -1876,73 +1967,144 @@ function DayDetailModal({
 
           {isRead && (
             <div className="space-y-3">
-              {chapterMode && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-foreground">
-                    Chapter
-                  </label>
-                  {useChapterDropdown && chapterMax ? (
-                    <select
-                      value={chapterValue}
-                      onChange={(e) => {
-                        onChapterSelect(e.target.value);
-                      }}
-                      disabled={!canEdit}
-                      className="w-full rounded-md border border-input bg-background px-4 py-3 text-lg font-semibold text-foreground"
-                    >
-                      {Array.from(
-                        { length: chapterMax },
-                        (_, index) => index + 1
-                      ).map((chapter) => (
-                        <option
-                          key={chapter}
-                          value={chapter}
-                        >
-                          Chapter {chapter}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
+              {chapterMode && !chapterOnlyMode ? (
+                <div className="flex gap-3">
+                  <div className="min-w-0 flex-1">
+                    <label className="mb-1 block text-sm font-medium text-foreground">
+                      Chapter
+                    </label>
+                    {useChapterDropdown && chapterMax ? (
+                      <select
+                        value={chapterValue}
+                        onChange={(e) => {
+                          onChapterSelect(e.target.value);
+                        }}
+                        disabled={!canEdit}
+                        className="w-full rounded-md border border-input bg-background px-4 py-3 text-lg font-semibold text-foreground"
+                      >
+                        {Array.from(
+                          { length: chapterMax },
+                          (_, index) => index + 1
+                        ).map((chapter) => (
+                          <option
+                            key={chapter}
+                            value={chapter}
+                          >
+                            Chapter {chapter}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        value={chapterValue}
+                        onChange={(e) => onChapterChange(e.target.value)}
+                        onBlur={onChapterBlur}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        disabled={!canEdit}
+                        min="1"
+                        className="w-full px-4 py-3 text-lg font-semibold"
+                        placeholder="Chapter number"
+                      />
+                    )}
+                  </div>
+                  <div className="w-28 shrink-0">
+                    <label className="mb-1 block text-sm font-medium text-foreground">
+                      Pages
+                    </label>
                     <Input
                       type="number"
-                      inputMode="numeric"
-                      value={chapterValue}
-                      onChange={(e) => onChapterChange(e.target.value)}
-                      onBlur={onChapterBlur}
+                      value={inputValue}
+                      onChange={(e) => onInputChange(e.target.value)}
+                      onBlur={onInputBlur}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.currentTarget.blur();
                         }
                       }}
                       disabled={!canEdit}
-                      min="1"
+                      min="0"
                       className="w-full px-4 py-3 text-lg font-semibold"
-                      placeholder="Chapter number"
+                      placeholder="Pages"
                     />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {chapterMode && (
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-foreground">
+                        Chapter
+                      </label>
+                      {useChapterDropdown && chapterMax ? (
+                        <select
+                          value={chapterValue}
+                          onChange={(e) => {
+                            onChapterSelect(e.target.value);
+                          }}
+                          disabled={!canEdit}
+                          className="w-full rounded-md border border-input bg-background px-4 py-3 text-lg font-semibold text-foreground"
+                        >
+                          {Array.from(
+                            { length: chapterMax },
+                            (_, index) => index + 1
+                          ).map((chapter) => (
+                            <option
+                              key={chapter}
+                              value={chapter}
+                            >
+                              Chapter {chapter}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <Input
+                          type="number"
+                          inputMode="numeric"
+                          value={chapterValue}
+                          onChange={(e) => onChapterChange(e.target.value)}
+                          onBlur={onChapterBlur}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.currentTarget.blur();
+                            }
+                          }}
+                          disabled={!canEdit}
+                          min="1"
+                          className="w-full px-4 py-3 text-lg font-semibold"
+                          placeholder="Chapter number"
+                        />
+                      )}
+                    </div>
                   )}
-                </div>
-              )}
-              {!chapterOnlyMode && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-foreground">
-                    Pages Covered
-                  </label>
-                  <Input
-                    type="number"
-                    value={inputValue}
-                    onChange={(e) => onInputChange(e.target.value)}
-                    onBlur={onInputBlur}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.currentTarget.blur();
-                      }
-                    }}
-                    disabled={!canEdit}
-                    min="0"
-                    className="w-full px-4 py-3 text-lg font-semibold"
-                    placeholder="Enter pages"
-                  />
-                </div>
+                  {!chapterOnlyMode && (
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-foreground">
+                        Pages Covered
+                      </label>
+                      <Input
+                        type="number"
+                        value={inputValue}
+                        onChange={(e) => onInputChange(e.target.value)}
+                        onBlur={onInputBlur}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        disabled={!canEdit}
+                        min="0"
+                        className="w-full px-4 py-3 text-lg font-semibold"
+                        placeholder="Enter pages"
+                      />
+                    </div>
+                  )}
+                </>
               )}
               <div>
                 <label className="mb-1 block text-sm font-medium text-foreground">

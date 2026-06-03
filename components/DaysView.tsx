@@ -1068,96 +1068,190 @@ export default function DaysView({
                 )}
                 {isRead && (
                   <div className="space-y-2">
-                    {chapterMode && (
-                      <div>
-                        <label className="block text-xs font-medium text-white">
-                          Chapter
-                        </label>
-                        {useChapterDropdown ? (
-                          <select
-                            value={String(defaultChapterForDate(dateKey))}
-                            onChange={(e) => {
-                              handleChapterInputChange(dateKey, e.target.value);
-                              void handleChapterUpdate(
-                                dateKey,
-                                Number(e.target.value)
-                              );
-                            }}
-                            disabled={!canEdit}
-                            className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
-                              canEdit
-                                ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
-                                : "cursor-not-allowed opacity-50"
-                            }`}
-                          >
-                            {Array.from(
-                              { length: chapterDropdownMax },
-                              (_, index) => index + 1
-                            ).map((chapter) => (
-                              <option key={chapter} value={chapter}>
-                                Chapter {chapter}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
+                    {chapterMode && !chapterOnlyMode ? (
+                      <div className="flex gap-2">
+                        <div className="min-w-0 flex-1">
+                          <label className="block text-xs font-medium text-white">
+                            Chapter
+                          </label>
+                          {useChapterDropdown ? (
+                            <select
+                              value={String(defaultChapterForDate(dateKey))}
+                              onChange={(e) => {
+                                handleChapterInputChange(dateKey, e.target.value);
+                                void handleChapterUpdate(
+                                  dateKey,
+                                  Number(e.target.value)
+                                );
+                              }}
+                              disabled={!canEdit}
+                              className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
+                                canEdit
+                                  ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
+                                  : "cursor-not-allowed opacity-50"
+                              }`}
+                            >
+                              {Array.from(
+                                { length: chapterDropdownMax },
+                                (_, index) => index + 1
+                              ).map((chapter) => (
+                                <option key={chapter} value={chapter}>
+                                  Chapter {chapter}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <Input
+                              type="number"
+                              inputMode="numeric"
+                              value={String(defaultChapterForDate(dateKey))}
+                              onChange={(e) =>
+                                handleChapterInputChange(dateKey, e.target.value)
+                              }
+                              onBlur={() => handleChapterInputBlur(dateKey)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              disabled={!canEdit}
+                              min="1"
+                              className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
+                                canEdit
+                                  ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
+                                  : "cursor-not-allowed opacity-50"
+                              }`}
+                            />
+                          )}
+                        </div>
+                        <div className="w-20 shrink-0 sm:w-24">
+                          <label className="block text-xs font-medium text-white">
+                            Pages
+                          </label>
                           <Input
                             type="number"
-                            inputMode="numeric"
-                            value={String(defaultChapterForDate(dateKey))}
-                            onChange={(e) =>
-                              handleChapterInputChange(dateKey, e.target.value)
+                            id="actualPages"
+                            value={
+                              inputValues.get(dateKey) ??
+                              (
+                                session?.actualPages ||
+                                session?.plannedPages ||
+                                pagesPerDay
+                              ).toString()
                             }
-                            onBlur={() => handleChapterInputBlur(dateKey)}
+                            onChange={(e) =>
+                              handleInputChange(dateKey, e.target.value)
+                            }
+                            onBlur={() => handleInputBlur(dateKey)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
                                 e.currentTarget.blur();
                               }
                             }}
                             disabled={!canEdit}
-                            min="1"
+                            min="0"
                             className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
                               canEdit
                                 ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
                                 : "cursor-not-allowed opacity-50"
                             }`}
                           />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {chapterMode && (
+                          <div>
+                            <label className="block text-xs font-medium text-white">
+                              Chapter
+                            </label>
+                            {useChapterDropdown ? (
+                              <select
+                                value={String(defaultChapterForDate(dateKey))}
+                                onChange={(e) => {
+                                  handleChapterInputChange(dateKey, e.target.value);
+                                  void handleChapterUpdate(
+                                    dateKey,
+                                    Number(e.target.value)
+                                  );
+                                }}
+                                disabled={!canEdit}
+                                className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
+                                  canEdit
+                                    ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
+                                    : "cursor-not-allowed opacity-50"
+                                }`}
+                              >
+                                {Array.from(
+                                  { length: chapterDropdownMax },
+                                  (_, index) => index + 1
+                                ).map((chapter) => (
+                                  <option key={chapter} value={chapter}>
+                                    Chapter {chapter}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <Input
+                                type="number"
+                                inputMode="numeric"
+                                value={String(defaultChapterForDate(dateKey))}
+                                onChange={(e) =>
+                                  handleChapterInputChange(dateKey, e.target.value)
+                                }
+                                onBlur={() => handleChapterInputBlur(dateKey)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.currentTarget.blur();
+                                  }
+                                }}
+                                disabled={!canEdit}
+                                min="1"
+                                className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
+                                  canEdit
+                                    ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
+                                    : "cursor-not-allowed opacity-50"
+                                }`}
+                              />
+                            )}
+                          </div>
                         )}
-                      </div>
-                    )}
-                    {!chapterOnlyMode && (
-                      <div>
-                        <label className="block text-xs font-medium text-white">
-                          Pages Covered
-                        </label>
-                        <Input
-                          type="number"
-                          id="actualPages"
-                          value={
-                            inputValues.get(dateKey) ??
-                            (
-                              session?.actualPages ||
-                              session?.plannedPages ||
-                              pagesPerDay
-                            ).toString()
-                          }
-                          onChange={(e) =>
-                            handleInputChange(dateKey, e.target.value)
-                          }
-                          onBlur={() => handleInputBlur(dateKey)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.currentTarget.blur();
-                            }
-                          }}
-                          disabled={!canEdit}
-                          min="0"
-                          className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
-                            canEdit
-                              ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
-                              : "cursor-not-allowed opacity-50"
-                          }`}
-                        />
-                      </div>
+                        {!chapterOnlyMode && (
+                          <div>
+                            <label className="block text-xs font-medium text-white">
+                              Pages Covered
+                            </label>
+                            <Input
+                              type="number"
+                              id="actualPages"
+                              value={
+                                inputValues.get(dateKey) ??
+                                (
+                                  session?.actualPages ||
+                                  session?.plannedPages ||
+                                  pagesPerDay
+                                ).toString()
+                              }
+                              onChange={(e) =>
+                                handleInputChange(dateKey, e.target.value)
+                              }
+                              onBlur={() => handleInputBlur(dateKey)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              disabled={!canEdit}
+                              min="0"
+                              className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
+                                canEdit
+                                  ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
+                                  : "cursor-not-allowed opacity-50"
+                              }`}
+                            />
+                          </div>
+                        )}
+                      </>
                     )}
                     {canEdit && (
                       <ReflectionNoteEditor
