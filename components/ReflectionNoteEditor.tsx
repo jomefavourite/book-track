@@ -1,16 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BookOpenText } from "lucide-react";
+import { BookOpenText, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface ReflectionNoteEditorProps {
   dayLabel: string;
@@ -49,58 +46,81 @@ export default function ReflectionNoteEditor({
   };
 
   return (
-    <>
-      <Button
-        type="button"
-        variant={hasNote ? "secondary" : "outline"}
-        size="sm"
-        disabled={!canEdit}
-        onClick={(event) => {
-          event.stopPropagation();
-          setOpen(true);
-        }}
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant={hasNote ? "secondary" : "outline"}
+          size="sm"
+          disabled={!canEdit}
+          onClick={(event) => event.stopPropagation()}
+          className={
+            compact
+              ? "h-6 w-full justify-start gap-1 px-1.5 text-[10px]"
+              : "h-8 w-full justify-start gap-1.5 text-xs"
+          }
+        >
+          <BookOpenText className={compact ? "h-3 w-3" : "h-4 w-4"} />
+          <span className="truncate">{hasNote ? "Edit note" : "Add note"}</span>
+          <ChevronDown
+            className={`ml-auto shrink-0 transition-transform ${
+              open ? "rotate-180" : ""
+            } ${compact ? "h-3 w-3" : "h-4 w-4"}`}
+          />
+        </Button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent
+        align="start"
+        sideOffset={6}
+        onClick={(event) => event.stopPropagation()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
         className={
           compact
-            ? "h-6 w-full justify-start px-1.5 text-[10px]"
-            : "h-8 w-full justify-start text-xs"
+            ? "w-[min(calc(100vw-2rem),20rem)] p-3"
+            : "w-[min(calc(100vw-2rem),28rem)] p-4"
         }
       >
-        <BookOpenText className={compact ? "h-3 w-3" : "h-4 w-4"} />
-        <span className="truncate">{hasNote ? "Edit note" : "Add note"}</span>
-      </Button>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
+        <div
           onClick={(event) => event.stopPropagation()}
-          className="sm:max-w-xl"
+          onKeyDown={(event) => event.stopPropagation()}
+          className="space-y-3"
         >
-          <DialogHeader>
-            <DialogTitle>Reflection note</DialogTitle>
-            <DialogDescription>{dayLabel}</DialogDescription>
-          </DialogHeader>
+          <div>
+            <h3 className="text-sm font-semibold text-popover-foreground">
+              Reflection note
+            </h3>
+            <p className="text-xs text-muted-foreground">{dayLabel}</p>
+          </div>
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             disabled={!canEdit || isSaving}
-            rows={8}
-            className="min-h-40 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            placeholder="What stood out from today&apos;s reading?"
+            rows={compact ? 5 : 7}
+            className="min-h-28 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            placeholder="What stood out from today's reading?"
           />
-          <DialogFooter>
+          <div className="flex justify-end gap-2">
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={() => setOpen(false)}
               disabled={isSaving}
             >
               Cancel
             </Button>
-            <Button type="button" onClick={save} disabled={!canEdit || isSaving}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={save}
+              disabled={!canEdit || isSaving}
+            >
               {isSaving ? "Saving..." : "Save note"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+          </div>
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
