@@ -35,6 +35,12 @@ import {
   getHighestChapterRead,
   isChapterOnlyBook,
 } from "@/lib/chapterTracking";
+import {
+  computeChapterSuggestions,
+  getDisplayTargetChapterForDate,
+  getReadChapterForDate,
+  getTargetChapterForDate,
+} from "@/lib/chapterPlanning";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -478,94 +484,23 @@ export default function CalendarView({
     [readingPeriod]
   );
 
-  const chapterSuggestions = useMemo(() => {
-    const suggestions = new Map<string, number>();
-
-    if (chapterOnlyMode && chapterDropdownMax !== null) {
-      // Find the highest chapter logged and the last day it was logged on
-      let lastKnownChapter = 0;
-      let lastReadIndex = -1;
-
-      readingPeriodDays.forEach((day, index) => {
-        const dateKey = formatDateForStorage(day);
-        const session = sessionsMap.get(dateKey);
-        if (
-          session?.isRead &&
-          !session?.isMissed &&
-          session.chapterNumber != null &&
-          session.chapterNumber >= 1
-        ) {
-          lastKnownChapter = Math.max(lastKnownChapter, session.chapterNumber);
-          lastReadIndex = index;
-        }
-      });
-
-      // Unread non-missed days after the last read day
-      const remainingDays = readingPeriodDays.filter((day, index) => {
-        if (index <= lastReadIndex) return false;
-        const dateKey = formatDateForStorage(day);
-        const session = sessionsMap.get(dateKey);
-        return !session?.isMissed;
-      });
-
-      const remainingChapters = chapterDropdownMax - lastKnownChapter;
-      const N = remainingDays.length;
-
-      // Seed all days with a fallback (read days use actual chapter; future/missed use static)
-      readingPeriodDays.forEach((day, index) => {
-        const dateKey = formatDateForStorage(day);
-        if (index <= lastReadIndex) {
-          const ch = sessionsMap.get(dateKey)?.chapterNumber ?? chapterDistribution.get(dateKey) ?? 1;
-          suggestions.set(dateKey, Math.max(1, ch));
-        } else {
-          suggestions.set(dateKey, chapterDistribution.get(dateKey) ?? 1);
-        }
-      });
-
-      // Override future non-missed days with the adaptive redistribution
-      remainingDays.forEach((day, i) => {
-        const dateKey = formatDateForStorage(day);
-        const target =
-          N > 0
-            ? Math.min(
-                chapterDropdownMax,
-                lastKnownChapter + Math.ceil(((i + 1) * remainingChapters) / N)
-              )
-            : chapterDropdownMax;
-        suggestions.set(dateKey, Math.max(1, target));
-      });
-
-      return suggestions;
-    }
-
-    // Non-chapterOnlyMode: sequential suggestion following last logged chapter
-    let lastKnownChapter = 1;
-    readingPeriodDays.forEach((day) => {
-      const dateKey = formatDateForStorage(day);
-      const sessionChapter = sessionsMap.get(dateKey)?.chapterNumber;
-      if (
-        sessionChapter !== undefined &&
-        sessionChapter !== null &&
-        sessionChapter >= 1
-      ) {
-        lastKnownChapter = sessionChapter;
-      }
-
-      if (chapterDropdownMax !== null) {
-        lastKnownChapter = Math.min(lastKnownChapter, chapterDropdownMax);
-      }
-
-      suggestions.set(dateKey, Math.max(1, lastKnownChapter));
-    });
-
-    return suggestions;
-  }, [
-    readingPeriodDays,
-    sessionsMap,
-    chapterDropdownMax,
-    chapterOnlyMode,
-    chapterDistribution,
-  ]);
+  const chapterSuggestions = useMemo(
+    () =>
+      computeChapterSuggestions(
+        readingPeriodDays,
+        (dateKey) => sessionsMap.get(dateKey),
+        chapterDropdownMax,
+        chapterDistribution,
+        chapterOnlyMode
+      ),
+    [
+      readingPeriodDays,
+      sessionsMap,
+      chapterDropdownMax,
+      chapterDistribution,
+      chapterOnlyMode,
+    ]
+  );
 
   const normalizeChapterValue = (value: number) => {
     const normalized = Math.max(1, Math.floor(value));
@@ -581,10 +516,20 @@ export default function CalendarView({
       if (sessionChapter !== undefined && sessionChapter !== null) {
         return normalizeChapterValue(sessionChapter);
       }
-      return chapterSuggestions.get(dateKey) ?? 1;
+      return getTargetChapterForDate(
+        dateKey,
+        chapterSuggestions,
+        chapterDistribution
+      );
     }
     const n = Number(raw);
-    if (isNaN(n) || n < 1) return chapterSuggestions.get(dateKey) ?? 1;
+    if (isNaN(n) || n < 1) {
+      return getTargetChapterForDate(
+        dateKey,
+        chapterSuggestions,
+        chapterDistribution
+      );
+    }
     return normalizeChapterValue(n);
   };
 
@@ -1112,6 +1057,113 @@ export default function CalendarView({
     );
   }
 
+  const renderMobileDayDetail = () => {
+    if (!selectedDay) return null;
+
+    const selectedDateKey = formatDateForStorage(selectedDay);
+    const selectedSession = sessionsMap.get(selectedDateKey);
+    const selectedIsRead = selectedSession?.isRead || false;
+    const selectedChapter = getDisplayTargetChapterForDate(
+      selectedDateKey,
+      selectedSession,
+      chapterSuggestions,
+      chapterDistribution
+    );
+
+    return (
+      <DayDetailModal
+        day={selectedDay}
+        session={selectedSession}
+        plannedPages={
+          selectedSession?.plannedPages ??
+          (pageDistribution.get(selectedDateKey) || 0)
+        }
+        plannedChapter={selectedChapter}
+        isRead={selectedIsRead}
+        isMissed={selectedSession?.isMissed || false}
+        canEdit={canEdit}
+        isActionPending={isMobileActionPending}
+        onReadToggle={() => handleMobileReadToggle(selectedDay)}
+        onMissedToggle={() => handleMobileMissedToggle(selectedDay)}
+        chapterMode={chapterMode}
+        chapterOnlyMode={chapterOnlyMode}
+        useChapterDropdown={useChapterDropdown}
+        chapterMax={chapterDropdownMax ?? undefined}
+        chapterValue={String(defaultChapterForDate(selectedDateKey))}
+        onChapterChange={(value) =>
+          handleChapterInputChange(selectedDateKey, value)
+        }
+        onChapterSelect={(value) => {
+          handleChapterInputChange(selectedDateKey, value);
+          void handleChapterUpdate(selectedDay, Number(value));
+        }}
+        onChapterBlur={() => void handleChapterInputBlur(selectedDay)}
+        inputValue={
+          inputValues.get(selectedDateKey) ??
+          (
+            selectedSession?.actualPages ||
+            selectedSession?.plannedPages ||
+            pageDistribution.get(selectedDateKey) ||
+            0
+          ).toString()
+        }
+        onInputChange={(value) => handleInputChange(selectedDateKey, value)}
+        onInputBlur={() => handleInputBlur(selectedDay)}
+        reflectionNote={selectedSession?.reflectionNote}
+        onReflectionNoteSave={(note) =>
+          handleReflectionNoteSave(selectedDateKey, note)
+        }
+        onTimerOpen={() => {
+          setOpenTimerDateKey(selectedDateKey);
+          setSelectedDay(null);
+        }}
+        savedTimerDurationSec={selectedSession?.timerDurationSec}
+      />
+    );
+  };
+
+  const renderActiveTimer = () => {
+    if (!openTimerDateKey) return null;
+
+    const timerSession = sessionsMap.get(openTimerDateKey);
+
+    return (
+      <ReadingTimer
+        open={true}
+        onOpenChange={(open) =>
+          setOpenTimerDateKey(open ? openTimerDateKey : null)
+        }
+        dayLabel={format(parseDateFromStorage(openTimerDateKey), "MMM d, yyyy")}
+        sessionId={timerSession?._id}
+        userId={user?.id ?? ""}
+        savedDurationSec={timerSession?.timerDurationSec}
+        onSaved={(durationSec) => {
+          queryClient.setQueryData<ReadingSessionDoc[]>(
+            sessionsQueryKey,
+            (old) =>
+              old?.map((s) =>
+                s._id === timerSession?._id
+                  ? { ...s, timerDurationSec: durationSec }
+                  : s
+              )
+          );
+        }}
+        phase={
+          activeTimerDateKey === openTimerDateKey
+            ? timerPhase
+            : { status: "setup" }
+        }
+        displaySec={
+          activeTimerDateKey === openTimerDateKey ? timerDisplaySec : 0
+        }
+        onStart={(totalSec) => handleTimerStart(openTimerDateKey, totalSec)}
+        onPause={handleTimerPause}
+        onResume={handleTimerResume}
+        onReset={handleTimerReset}
+      />
+    );
+  };
+
   return (
     <div className="space-y-4">
       <CatchUpSuggestion
@@ -1194,9 +1246,24 @@ export default function CalendarView({
             // Use session's plannedPages if available (dynamically calculated), otherwise use initial distribution
             const plannedPages =
               session?.plannedPages ?? (pageDistribution.get(dateKey) || 0);
-            const plannedChapter = chapterOnlyMode
-              ? chapterSuggestions.get(dateKey) ?? defaultChapterForDate(dateKey)
+            const targetChapter = chapterOnlyMode
+              ? getDisplayTargetChapterForDate(
+                  dateKey,
+                  session,
+                  chapterSuggestions,
+                  chapterDistribution
+                )
               : undefined;
+            const readChapter =
+              chapterOnlyMode
+                ? getReadChapterForDate(
+                    dateKey,
+                    session,
+                    chapterSuggestions,
+                    chapterDistribution,
+                    normalizeChapterValue
+                  )
+                : undefined;
             const isInPeriod = isInReadingPeriod(day);
             const isToday = isSameDay(day, new Date());
 
@@ -1366,12 +1433,12 @@ export default function CalendarView({
                       <div className="space-y-1">
                         <div className="text-[10px] text-green-800 dark:text-green-100 sm:text-xs">
                           {chapterOnlyMode
-                            ? `Target: Chapter ${plannedChapter}`
+                            ? `Target: Chapter ${targetChapter}`
                             : `Plan: ${plannedPages} pages`}
                         </div>
                         <div className="text-[10px] text-green-800 dark:text-green-100 sm:text-xs">
                           {chapterOnlyMode
-                            ? `Read: Chapter ${defaultChapterForDate(dateKey)}`
+                            ? `Read: Chapter ${readChapter}`
                             : `Read: ${
                                 chapterMode
                                   ? `Ch ${defaultChapterForDate(dateKey)} · `
@@ -1480,11 +1547,6 @@ export default function CalendarView({
                             }
                           />
                         )}
-                        {session?.reflectionNote?.trim() && (
-                          <p className="line-clamp-2 text-[10px] text-green-900 dark:text-green-50">
-                            {session.reflectionNote}
-                          </p>
-                        )}
                       </div>
                     )}
                     {isMissed && (
@@ -1492,10 +1554,10 @@ export default function CalendarView({
                         Missed
                       </div>
                     )}
-                    {!isRead && !isMissed && plannedPages > 0 && (
+                    {!isRead && !isMissed && (chapterOnlyMode || plannedPages > 0) && (
                       <div className="text-[10px] text-muted-foreground sm:text-xs">
                         {chapterOnlyMode
-                          ? `Chapter ${plannedChapter}`
+                          ? `Chapter ${targetChapter}`
                           : `${session?.plannedPages || plannedPages} `}
                         {!chapterOnlyMode && (
                           <span className="hidden sm:inline">pages</span>
@@ -1535,19 +1597,22 @@ export default function CalendarView({
                   <div className="mt-auto flex items-center justify-center sm:hidden">
                     {isRead && (
                       <div className="truncate text-[9px] font-medium text-green-800 dark:text-green-100 leading-2.5">
-                        <span className="block">
-                          {chapterOnlyMode
-                            ? <span>Tg: Ch {plannedChapter}</span>
-                            : `Plan:${plannedPages}`}
-                        </span>
-                        <span className="block">
-                          {chapterOnlyMode
-                            ? `Ch ${defaultChapterForDate(dateKey)}`
-                            : `${chapterMode ? ` Ch ${defaultChapterForDate(dateKey)} · ` : " "}${
+                        {chapterOnlyMode ? (
+                          <>
+                            <span className="block">Tg: Ch {targetChapter}</span>
+                            <span className="block">Rd: Ch {readChapter}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="block">{`Plan:${plannedPages}`}</span>
+                            <span className="block">
+                              {`${chapterMode ? ` Ch ${defaultChapterForDate(dateKey)} · ` : " "}${
                                 inputValues.get(dateKey) ??
                                 (session?.actualPages || plannedPages).toString()
                               } `}
-                        </span>
+                            </span>
+                          </>
+                        )}
                       </div>
                     )}
                     {isMissed && (
@@ -1565,7 +1630,7 @@ export default function CalendarView({
                     ) : !isRead && !isMissed && (chapterOnlyMode || plannedPages > 0) ? (
                       <div className="truncate text-[9px] text-muted-foreground">
                         {chapterOnlyMode
-                          ? `Chapter  ${plannedChapter}`
+                          ? `Chapter ${targetChapter}`
                           : `${session?.plannedPages || plannedPages} pages`}
                       </div>
                     ) : null}
@@ -1602,128 +1667,11 @@ export default function CalendarView({
         }}
       >
         <DialogContent className="bottom-0 left-0 right-0 top-auto max-h-[85vh] w-full max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-t-lg border-t sm:hidden data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom">
-          {selectedDay && (
-            <DayDetailModal
-              day={selectedDay}
-              session={sessionsMap.get(formatDateForStorage(selectedDay))}
-              plannedPages={
-                sessionsMap.get(formatDateForStorage(selectedDay))
-                  ?.plannedPages ??
-                (pageDistribution.get(formatDateForStorage(selectedDay)) || 0)
-              }
-              plannedChapter={
-                chapterDistribution.get(formatDateForStorage(selectedDay)) ??
-                defaultChapterForDate(formatDateForStorage(selectedDay))
-              }
-              isRead={
-                sessionsMap.get(formatDateForStorage(selectedDay))?.isRead ||
-                false
-              }
-              isMissed={
-                sessionsMap.get(formatDateForStorage(selectedDay))?.isMissed ||
-                false
-              }
-              canEdit={canEdit}
-              isActionPending={isMobileActionPending}
-              onReadToggle={() => handleMobileReadToggle(selectedDay)}
-              onMissedToggle={() => handleMobileMissedToggle(selectedDay)}
-              chapterMode={chapterMode}
-              chapterOnlyMode={chapterOnlyMode}
-              useChapterDropdown={useChapterDropdown}
-              chapterMax={chapterDropdownMax ?? undefined}
-              chapterValue={String(
-                defaultChapterForDate(formatDateForStorage(selectedDay))
-              )}
-              onChapterChange={(value) =>
-                handleChapterInputChange(
-                  formatDateForStorage(selectedDay),
-                  value
-                )
-              }
-              onChapterSelect={(value) => {
-                handleChapterInputChange(
-                  formatDateForStorage(selectedDay),
-                  value
-                );
-                void handleChapterUpdate(selectedDay, Number(value));
-              }}
-              onChapterBlur={() => void handleChapterInputBlur(selectedDay)}
-              inputValue={
-                inputValues.get(formatDateForStorage(selectedDay)) ??
-                (
-                  sessionsMap.get(formatDateForStorage(selectedDay))
-                    ?.actualPages ||
-                  sessionsMap.get(formatDateForStorage(selectedDay))
-                    ?.plannedPages ||
-                  pageDistribution.get(formatDateForStorage(selectedDay)) ||
-                  0
-                ).toString()
-              }
-              onInputChange={(value) =>
-                handleInputChange(formatDateForStorage(selectedDay), value)
-              }
-              onInputBlur={() => handleInputBlur(selectedDay)}
-              reflectionNote={
-                sessionsMap.get(formatDateForStorage(selectedDay))
-                  ?.reflectionNote
-              }
-              onReflectionNoteSave={(note) =>
-                handleReflectionNoteSave(formatDateForStorage(selectedDay), note)
-              }
-              onTimerOpen={() => {
-                setOpenTimerDateKey(formatDateForStorage(selectedDay));
-                setSelectedDay(null);
-              }}
-              savedTimerDurationSec={
-                sessionsMap.get(formatDateForStorage(selectedDay))
-                  ?.timerDurationSec
-              }
-            />
-          )}
+          {renderMobileDayDetail()}
         </DialogContent>
       </Dialog>
 
-      {openTimerDateKey && (() => {
-        const timerSession = sessionsMap.get(openTimerDateKey);
-        return (
-          <ReadingTimer
-            open={true}
-            onOpenChange={(open) =>
-              setOpenTimerDateKey(open ? openTimerDateKey : null)
-            }
-            dayLabel={format(
-              parseDateFromStorage(openTimerDateKey),
-              "MMM d, yyyy"
-            )}
-            sessionId={timerSession?._id}
-            userId={user?.id ?? ""}
-            savedDurationSec={timerSession?.timerDurationSec}
-            onSaved={(durationSec) => {
-              queryClient.setQueryData<ReadingSessionDoc[]>(
-                sessionsQueryKey,
-                (old) =>
-                  old?.map((s) =>
-                    s._id === timerSession?._id
-                      ? { ...s, timerDurationSec: durationSec }
-                      : s
-                  )
-              );
-            }}
-            phase={
-              activeTimerDateKey === openTimerDateKey
-                ? timerPhase
-                : { status: "setup" }
-            }
-            displaySec={
-              activeTimerDateKey === openTimerDateKey ? timerDisplaySec : 0
-            }
-            onStart={(totalSec) => handleTimerStart(openTimerDateKey, totalSec)}
-            onPause={handleTimerPause}
-            onResume={handleTimerResume}
-            onReset={handleTimerReset}
-          />
-        );
-      })()}
+      {renderActiveTimer()}
     </div>
   );
 }

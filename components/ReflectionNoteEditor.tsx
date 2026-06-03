@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BookOpenText, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +27,15 @@ export default function ReflectionNoteEditor({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(note ?? "");
   const [isSaving, setIsSaving] = useState(false);
+  const mountedRef = useRef(false);
   const hasNote = Boolean(note?.trim());
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -39,14 +47,25 @@ export default function ReflectionNoteEditor({
     setIsSaving(true);
     try {
       await onSave(draft);
-      setOpen(false);
+      if (mountedRef.current) {
+        setOpen(false);
+      }
     } finally {
-      setIsSaving(false);
+      if (mountedRef.current) {
+        setIsSaving(false);
+      }
     }
   };
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (mountedRef.current) {
+          setOpen(nextOpen);
+        }
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <Button
           type="button"

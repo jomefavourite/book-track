@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "generate-icons": "node scripts/generate-icons.js",
-    "setup:convex-main-push-hook": "bash scripts/setup-convex-main-push-hook.sh"
+    "setup:convex-main-push-hook": "bash scripts/setup-convex-main-push-hook.sh",
+    "test": "vitest run"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.8.3",
@@ -47,7 +48,8 @@
     "eslint-config-next": "16.2.1",
     "sharp": "^0.34.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.8"
   },
   "overrides": {
     "@types/react": "19.2.14",

@@ -16,6 +16,12 @@ import {
   getHighestChapterRead,
   isChapterOnlyBook,
 } from "@/lib/chapterTracking";
+import {
+  computeChapterSuggestions,
+  getDisplayTargetChapterForDate,
+  getReadChapterForDate,
+  getTargetChapterForDate,
+} from "@/lib/chapterPlanning";
 import CatchUpSuggestion from "./CatchUpSuggestion";
 import { Input } from "./ui/input";
 import { Timer } from "lucide-react";
@@ -332,29 +338,17 @@ export default function DaysView({
     return distributeChaptersAcrossDays(chapterDropdownMax, startDate, endDate);
   }, [chapterOnlyMode, chapterDropdownMax, startDate, endDate]);
 
-  const chapterSuggestions = useMemo(() => {
-    const suggestions = new Map<string, number>();
-    let lastKnownChapter = 1;
-
-    days.forEach(({ dateKey }) => {
-      const sessionChapter = sessionsMap.get(dateKey)?.chapterNumber;
-      if (
-        sessionChapter !== undefined &&
-        sessionChapter !== null &&
-        sessionChapter >= 1
-      ) {
-        lastKnownChapter = sessionChapter;
-      }
-
-      if (chapterDropdownMax !== null) {
-        lastKnownChapter = Math.min(lastKnownChapter, chapterDropdownMax);
-      }
-
-      suggestions.set(dateKey, Math.max(1, lastKnownChapter));
-    });
-
-    return suggestions;
-  }, [days, sessionsMap, chapterDropdownMax]);
+  const chapterSuggestions = useMemo(
+    () =>
+      computeChapterSuggestions(
+        days.map(({ date }) => date),
+        (dateKey) => sessionsMap.get(dateKey),
+        chapterDropdownMax,
+        chapterDistribution,
+        chapterOnlyMode
+      ),
+    [days, sessionsMap, chapterDropdownMax, chapterDistribution, chapterOnlyMode]
+  );
 
   const normalizeChapterValue = (value: number) => {
     const normalized = Math.max(1, Math.floor(value));
@@ -370,16 +364,15 @@ export default function DaysView({
       if (sessionChapter !== undefined && sessionChapter !== null) {
         return normalizeChapterValue(sessionChapter);
       }
-      if (chapterOnlyMode) {
-        return chapterDistribution.get(dateKey) ?? 1;
-      }
-      return chapterSuggestions.get(dateKey) ?? 1;
+      return normalizeChapterValue(
+        getTargetChapterForDate(dateKey, chapterSuggestions, chapterDistribution)
+      );
     }
     const n = Number(raw);
     if (isNaN(n) || n < 1) {
-      return chapterOnlyMode
-        ? chapterDistribution.get(dateKey) ?? 1
-        : chapterSuggestions.get(dateKey) ?? 1;
+      return normalizeChapterValue(
+        getTargetChapterForDate(dateKey, chapterSuggestions, chapterDistribution)
+      );
     }
     return normalizeChapterValue(n);
   };
@@ -891,8 +884,22 @@ export default function DaysView({
             const session = sessionsMap.get(dateKey);
             const isRead = session?.isRead || false;
             const isMissed = session?.isMissed || false;
-            const plannedChapter = chapterOnlyMode
-              ? chapterDistribution.get(dateKey) ?? defaultChapterForDate(dateKey)
+            const targetChapter = chapterOnlyMode
+              ? getDisplayTargetChapterForDate(
+                  dateKey,
+                  session,
+                  chapterSuggestions,
+                  chapterDistribution
+                )
+              : undefined;
+            const readChapter = chapterOnlyMode
+              ? getReadChapterForDate(
+                  dateKey,
+                  session,
+                  chapterSuggestions,
+                  chapterDistribution,
+                  normalizeChapterValue
+                )
               : undefined;
 
             return (
@@ -1044,8 +1051,13 @@ export default function DaysView({
                 {!isMissed && (
                   <div className="mb-2 text-xs">
                     {chapterOnlyMode
-                      ? `Target: Chapter ${plannedChapter}`
+                      ? `Target: Chapter ${targetChapter}`
                       : `Plan: ${session?.plannedPages ?? pagesPerDay} pages`}
+                  </div>
+                )}
+                {isRead && chapterOnlyMode && (
+                  <div className="mb-2 text-xs">
+                    {`Read: Chapter ${readChapter}`}
                   </div>
                 )}
                 {session?.timerDurationSec && !isMissed && (
@@ -1156,11 +1168,6 @@ export default function DaysView({
                           handleReflectionNoteSave(dateKey, note)
                         }
                       />
-                    )}
-                    {session?.reflectionNote?.trim() && (
-                      <p className="line-clamp-3 whitespace-pre-wrap rounded border border-green-700/30 bg-white/40 p-2 text-xs text-green-950 dark:bg-black/20 dark:text-green-50">
-                        {session.reflectionNote}
-                      </p>
                     )}
                   </div>
                 )}

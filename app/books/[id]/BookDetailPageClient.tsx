@@ -327,7 +327,7 @@ export default function BookDetailPage() {
                   variant="outline"
                   size="sm"
                   onClick={handleShare}
-                  className="h-8 gap-2"
+                  className="h-9 min-h-9 gap-2"
                 >
                   {copied ? (
                     <>
@@ -346,10 +346,10 @@ export default function BookDetailPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1.5"
+                  className="h-9 min-h-9 gap-1.5"
                   onClick={() => setMarkCompleteOpen(true)}
                 >
-                  <CheckCircle2 className="h-4 w-4" />
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
                   <span className="hidden sm:inline">Mark completed</span>
                 </Button>
               )}
@@ -357,7 +357,7 @@ export default function BookDetailPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1.5"
+                  className="h-9 min-h-9 gap-1.5"
                   onClick={() => setClearMarkCompleteOpen(true)}
                 >
                   <span className="hidden sm:inline">Remove marked complete</span>
@@ -368,6 +368,7 @@ export default function BookDetailPage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="h-9 min-h-9"
                   asChild
                 >
                   <Link href={`/books/${bookId}/edit`}>Edit</Link>
