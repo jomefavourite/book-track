@@ -18,7 +18,14 @@ import DaysView from "@/components/DaysView";
 import Navigation from "@/components/Navigation";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Share2, Check, ChevronDown, CheckCircle2 } from "lucide-react";
+import {
+  BookOpenText,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Copy,
+  Share2,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +47,7 @@ export default function BookDetailPage() {
   const { user } = useUser();
   const bookId = params.id as Id<"books">;
   const [copied, setCopied] = useState(false);
+  const [copiedReflections, setCopiedReflections] = useState(false);
   const [markCompleteOpen, setMarkCompleteOpen] = useState(false);
   const [clearMarkCompleteOpen, setClearMarkCompleteOpen] = useState(false);
   const {
@@ -66,6 +74,18 @@ export default function BookDetailPage() {
   const isOwner = user?.id && book?.userId === user.id;
   const isPublicBook = book?.isPublic;
   const canEdit = Boolean(isOwner);
+
+  const { data: reflections = [] } = useQuery({
+    ...convexQuery(api.readingSessions.getReflectionsForBook, {
+      bookId,
+      userId: user?.id,
+    }),
+    enabled: Boolean(
+      book &&
+        (isOwner || (book.isPublic && book.shareMergedReflection))
+    ),
+    retry: false,
+  });
 
   // Check if this is a private book access error
   // Handle both Error objects and Convex error responses
@@ -167,6 +187,38 @@ export default function BookDetailPage() {
       mutationFn: clearMarkedCompleteMutation,
       onSuccess: invalidateBookProgressQueries,
     });
+
+  const setMergedReflectionSharingMutation = useConvexMutation(
+    api.books.setMergedReflectionSharing
+  );
+  const {
+    mutateAsync: setMergedReflectionSharing,
+    isPending: shareReflectionPending,
+  } = useMutation({
+    mutationFn: setMergedReflectionSharingMutation,
+    onSuccess: invalidateBookProgressQueries,
+  });
+
+  const mergedReflectionText = useMemo(
+    () =>
+      reflections
+        .map((reflection) => {
+          const dateLabel = format(
+            parseDateFromStorage(reflection.date),
+            "MMMM d, yyyy"
+          );
+          return `${dateLabel}\n${reflection.reflectionNote}`;
+        })
+        .join("\n\n"),
+    [reflections]
+  );
+
+  const handleCopyReflections = async () => {
+    if (!mergedReflectionText) return;
+    await navigator.clipboard.writeText(mergedReflectionText);
+    setCopiedReflections(true);
+    setTimeout(() => setCopiedReflections(false), 2000);
+  };
 
   const showMarkCompleteButton =
     Boolean(canEdit && book && !book.markedCompleteAt && sessionProgressPercent < 100);
@@ -534,6 +586,111 @@ export default function BookDetailPage() {
             </Card>
           )}
         </div>
+
+        {(canEdit || isPublicBook) && (
+          <Card className="mb-4 p-4 sm:mb-6">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                  <BookOpenText className="h-5 w-5" />
+                  Reflections
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {canEdit
+                    ? "Your daily notes are private. You can share the merged reflection publicly for this book."
+                    : "Shared merged reflection from this reading journey."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {canEdit && (
+                  <Button
+                    type="button"
+                    variant={book.shareMergedReflection ? "secondary" : "outline"}
+                    size="sm"
+                    disabled={shareReflectionPending || !book.isPublic}
+                    onClick={() => {
+                      if (!user?.id) return;
+                      void setMergedReflectionSharing({
+                        bookId,
+                        userId: user.id,
+                        shareMergedReflection: !book.shareMergedReflection,
+                      });
+                    }}
+                    title={
+                      book.isPublic
+                        ? undefined
+                        : "Make the book public before sharing merged reflections"
+                    }
+                  >
+                    {book.shareMergedReflection
+                      ? "Public reflection on"
+                      : "Share merged note"}
+                  </Button>
+                )}
+                {reflections.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyReflections}
+                    className="gap-1.5"
+                  >
+                    {copiedReflections ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                    {copiedReflections ? "Copied" : "Copy"}
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {reflections.length > 0 ? (
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                {canEdit && (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-foreground">
+                      Daily Notes
+                    </h4>
+                    <div className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-3">
+                      {reflections.map((reflection) => (
+                        <article
+                          key={reflection._id}
+                          className="border-b border-border pb-3 last:border-0 last:pb-0"
+                        >
+                          <div className="mb-1 text-xs font-medium text-muted-foreground">
+                            {format(
+                              parseDateFromStorage(reflection.date),
+                              "MMMM d, yyyy"
+                            )}
+                          </div>
+                          <p className="whitespace-pre-wrap text-sm text-foreground">
+                            {reflection.reflectionNote}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-foreground">
+                    Merged Note
+                  </h4>
+                  <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-muted p-3 font-sans text-sm leading-6 text-foreground">
+                    {mergedReflectionText}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+                {canEdit
+                  ? "No reflection notes yet. Mark a day as read, then add a note from that day."
+                  : "No shared reflection is available for this book."}
+              </div>
+            )}
+          </Card>
+        )}
 
         {book.readingMode === "calendar" ? (
           <CalendarView

@@ -92,6 +92,7 @@ export const createBook = mutation({
       creatorName?: string;
       creatorEmail?: string;
       isArchived: boolean;
+      shareMergedReflection: boolean;
     } = {
       userId,
       name: args.name,
@@ -113,6 +114,7 @@ export const createBook = mutation({
       creatorName: args.creatorName,
       creatorEmail: args.creatorEmail,
       isArchived: false,
+      shareMergedReflection: false,
     };
 
     // Only include author if it's provided (not undefined)
@@ -132,6 +134,31 @@ export const createBook = mutation({
     const bookId = await ctx.db.insert("books", bookData);
 
     return bookId;
+  },
+});
+
+export const setMergedReflectionSharing = mutation({
+  args: {
+    bookId: v.id("books"),
+    userId: v.string(),
+    shareMergedReflection: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    if (!args.userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const book = await ctx.db.get(args.bookId);
+    if (!book) {
+      throw new Error("Book not found");
+    }
+    if (book.userId !== args.userId) {
+      throw new Error("Unauthorized");
+    }
+
+    await ctx.db.patch(args.bookId, {
+      shareMergedReflection: args.shareMergedReflection,
+    });
   },
 });
 

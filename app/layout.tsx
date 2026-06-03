@@ -8,6 +8,9 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { Analytics } from "@vercel/analytics/next";
 import {
   DEFAULT_DESCRIPTION,
+  DEFAULT_OG_IMAGE_ALT,
+  DEFAULT_OG_IMAGE_HEIGHT,
+  DEFAULT_OG_IMAGE_WIDTH,
   DEFAULT_OG_IMAGE,
   SITE_NAME,
   absoluteUrl,
@@ -45,6 +48,9 @@ export const metadata: Metadata = {
     images: [
       {
         url: absoluteUrl(DEFAULT_OG_IMAGE),
+        width: DEFAULT_OG_IMAGE_WIDTH,
+        height: DEFAULT_OG_IMAGE_HEIGHT,
+        alt: DEFAULT_OG_IMAGE_ALT,
       },
     ],
   },
@@ -52,7 +58,12 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: SITE_NAME,
     description: DEFAULT_DESCRIPTION,
-    images: [absoluteUrl(DEFAULT_OG_IMAGE)],
+    images: [
+      {
+        url: absoluteUrl(DEFAULT_OG_IMAGE),
+        alt: DEFAULT_OG_IMAGE_ALT,
+      },
+    ],
   },
   icons: {
     icon: [

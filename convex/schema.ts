@@ -61,6 +61,8 @@ export default defineSchema({
     isArchived: v.optional(v.boolean()),
     /** Set when the user marks the book complete without day-by-day tracking */
     markedCompleteAt: v.optional(v.number()),
+    /** Allows the public book page to show the generated merged reflection */
+    shareMergedReflection: v.optional(v.boolean()),
   })
     .index("by_user", ["userId"])
     .index("by_user_and_order", ["userId", "bookOrder"])
@@ -74,6 +76,8 @@ export default defineSchema({
     actualPages: v.optional(v.number()),
     /** Chapter read that day when book uses chapter-based reading; null clears */
     chapterNumber: v.optional(v.union(v.number(), v.null())),
+    /** Owner-private note for a read day */
+    reflectionNote: v.optional(v.string()),
     isRead: v.boolean(),
     isMissed: v.optional(v.boolean()),
     createdAt: v.number(),

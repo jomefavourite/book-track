@@ -25,6 +25,7 @@ import {
 } from "@/lib/dateUtils";
 import { Timer } from "lucide-react";
 import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
+import ReflectionNoteEditor from "./ReflectionNoteEditor";
 import { playTimerEndSound } from "@/lib/timerSound";
 import {
   distributePagesAcrossDays,
@@ -126,6 +127,10 @@ export default function CalendarView({
                     : session.chapterNumber,
                 timerDurationSec:
                   variables.timerDurationSec ?? session.timerDurationSec,
+                reflectionNote:
+                  variables.reflectionNote !== undefined
+                    ? variables.reflectionNote.trim() || undefined
+                    : session.reflectionNote,
               };
             }
             return session;
@@ -179,6 +184,7 @@ export default function CalendarView({
         plannedPages: variables.plannedPages,
         actualPages: variables.actualPages,
         chapterNumber: variables.chapterNumber,
+        reflectionNote: variables.reflectionNote?.trim() || undefined,
         isRead: variables.isRead,
         isMissed: variables.isMissed ?? false,
         createdAt: Date.now(),
@@ -929,6 +935,18 @@ export default function CalendarView({
     });
   };
 
+  const handleReflectionNoteSave = async (dateKey: string, note: string) => {
+    if (!canEdit || !user?.id) return;
+    const session = sessionsMap.get(dateKey);
+    if (!session?.isRead) return;
+
+    await updateSession({
+      sessionId: session._id,
+      userId: user.id,
+      reflectionNote: note,
+    });
+  };
+
   const handlePagesUpdate = async (date: Date, pages: number) => {
     if (chapterOnlyMode) return;
     if (!canEdit || !user?.id) return;
@@ -1451,6 +1469,22 @@ export default function CalendarView({
                             className="h-6 w-full px-1 text-foreground dark:text-foreground text-[10px] sm:h-7 sm:text-xs"
                           />
                         )}
+                        {canEdit && (
+                          <ReflectionNoteEditor
+                            dayLabel={format(day, "MMMM d, yyyy")}
+                            note={session?.reflectionNote}
+                            canEdit={canEdit}
+                            compact
+                            onSave={(note) =>
+                              handleReflectionNoteSave(dateKey, note)
+                            }
+                          />
+                        )}
+                        {session?.reflectionNote?.trim() && (
+                          <p className="line-clamp-2 text-[10px] text-green-900 dark:text-green-50">
+                            {session.reflectionNote}
+                          </p>
+                        )}
                       </div>
                     )}
                     {isMissed && (
@@ -1629,6 +1663,13 @@ export default function CalendarView({
                 handleInputChange(formatDateForStorage(selectedDay), value)
               }
               onInputBlur={() => handleInputBlur(selectedDay)}
+              reflectionNote={
+                sessionsMap.get(formatDateForStorage(selectedDay))
+                  ?.reflectionNote
+              }
+              onReflectionNoteSave={(note) =>
+                handleReflectionNoteSave(formatDateForStorage(selectedDay), note)
+              }
               onTimerOpen={() => {
                 setOpenTimerDateKey(formatDateForStorage(selectedDay));
                 setSelectedDay(null);
@@ -1710,6 +1751,8 @@ interface DayDetailModalProps {
   inputValue: string;
   onInputChange: (value: string) => void;
   onInputBlur: () => void;
+  reflectionNote?: string;
+  onReflectionNoteSave: (note: string) => Promise<void>;
   onTimerOpen?: () => void;
   savedTimerDurationSec?: number;
 }
@@ -1735,6 +1778,8 @@ function DayDetailModal({
   inputValue,
   onInputChange,
   onInputBlur,
+  reflectionNote,
+  onReflectionNoteSave,
   onTimerOpen,
   savedTimerDurationSec,
 }: DayDetailModalProps) {
@@ -1951,6 +1996,22 @@ function DayDetailModal({
                   />
                 </div>
               )}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-foreground">
+                  Reflection Note
+                </label>
+                <ReflectionNoteEditor
+                  dayLabel={format(day, "MMMM d, yyyy")}
+                  note={reflectionNote}
+                  canEdit={canEdit}
+                  onSave={onReflectionNoteSave}
+                />
+                {reflectionNote?.trim() && (
+                  <p className="mt-2 whitespace-pre-wrap rounded-md border border-input bg-muted p-3 text-sm text-foreground">
+                    {reflectionNote}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 

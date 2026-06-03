@@ -1,10 +1,25 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
-  formatDateForStorage,
   parseDateFromStorage,
   distributePagesAcrossDays,
 } from "./dateUtils";
+import type { Doc } from "./_generated/dataModel";
+
+const redactReflectionNote = (
+  session: Doc<"readingSessions">
+): Doc<"readingSessions"> => ({
+  ...session,
+  reflectionNote: undefined,
+});
+
+const normalizeReflectionNote = (note: string | undefined) => {
+  if (note === undefined) {
+    return undefined;
+  }
+  const trimmed = note.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
 
 export const createSession = mutation({
   args: {
@@ -14,6 +29,7 @@ export const createSession = mutation({
     plannedPages: v.number(),
     actualPages: v.optional(v.number()),
     chapterNumber: v.optional(v.number()),
+    reflectionNote: v.optional(v.string()),
     isRead: v.boolean(),
     isMissed: v.optional(v.boolean()),
   },
@@ -43,6 +59,7 @@ export const createSession = mutation({
       plannedPages: args.plannedPages,
       actualPages: args.actualPages,
       chapterNumber: args.chapterNumber,
+      reflectionNote: normalizeReflectionNote(args.reflectionNote),
       isRead,
       isMissed,
       createdAt: Date.now(),
@@ -102,6 +119,7 @@ export const updateSession = mutation({
     actualPages: v.optional(v.number()),
     plannedPages: v.optional(v.number()),
     chapterNumber: v.optional(v.union(v.number(), v.null())),
+    reflectionNote: v.optional(v.string()),
     isRead: v.optional(v.boolean()),
     isMissed: v.optional(v.boolean()),
     timerDurationSec: v.optional(v.number()),
@@ -126,6 +144,7 @@ export const updateSession = mutation({
       actualPages?: number;
       plannedPages?: number;
       chapterNumber?: number | null;
+      reflectionNote?: string;
       isRead?: boolean;
       isMissed?: boolean;
       timerDurationSec?: number;
@@ -141,6 +160,10 @@ export const updateSession = mutation({
 
     if (args.chapterNumber !== undefined) {
       updateData.chapterNumber = args.chapterNumber;
+    }
+
+    if (args.reflectionNote !== undefined) {
+      updateData.reflectionNote = normalizeReflectionNote(args.reflectionNote);
     }
 
     // Handle isRead and isMissed - ensure they're mutually exclusive
@@ -193,11 +216,12 @@ export const getSessionsForBook = query({
 
     // If book is public, allow read-only access (even without auth)
     if (book.isPublic) {
-    return await ctx.db
-      .query("readingSessions")
-      .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
-      .order("asc")
-      .collect();
+      const sessions = await ctx.db
+        .query("readingSessions")
+        .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
+        .order("asc")
+        .collect();
+      return sessions.map(redactReflectionNote);
     }
 
     // If not owner and not public, unauthorized
@@ -205,6 +229,49 @@ export const getSessionsForBook = query({
       throw new Error("Unauthorized");
     }
     throw new Error("Not authenticated");
+  },
+});
+
+export const getReflectionsForBook = query({
+  args: {
+    bookId: v.id("books"),
+    userId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const book = await ctx.db.get(args.bookId);
+    if (!book) {
+      throw new Error("Book not found");
+    }
+
+    const isOwner = args.userId && book.userId === args.userId;
+    const canReadPublicMerged = book.isPublic && book.shareMergedReflection;
+
+    if (!isOwner && !canReadPublicMerged) {
+      if (args.userId) {
+        throw new Error("Unauthorized");
+      }
+      throw new Error("Not authenticated");
+    }
+
+    const sessions = await ctx.db
+      .query("readingSessions")
+      .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
+      .order("asc")
+      .collect();
+
+    return sessions
+      .filter(
+        (session) =>
+          session.isRead &&
+          !session.isMissed &&
+          typeof session.reflectionNote === "string" &&
+          session.reflectionNote.trim().length > 0
+      )
+      .map((session) => ({
+        _id: session._id,
+        date: session.date,
+        reflectionNote: session.reflectionNote!.trim(),
+      }));
   },
 });
 

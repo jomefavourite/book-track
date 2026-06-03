@@ -6,7 +6,11 @@ import type { Id } from "@/convex/_generated/dataModel";
 export const SITE_NAME = "Book-Trackr";
 export const DEFAULT_DESCRIPTION =
   "Track your reading progress, plan your schedule, and share your reading journey.";
-export const DEFAULT_OG_IMAGE = "/icon-512.png";
+export const DEFAULT_OG_IMAGE = "/og-image.png";
+export const DEFAULT_OG_IMAGE_WIDTH = 1200;
+export const DEFAULT_OG_IMAGE_HEIGHT = 630;
+export const DEFAULT_OG_IMAGE_ALT =
+  "Book-Trackr reading progress tracker preview";
 const DEFAULT_SITE_URL = "https://booktrackr.app";
 
 export function getSiteUrl(): string {
@@ -43,6 +47,16 @@ export function createPageMetadata({
   openGraphType = "website",
 }: MetadataInput): Metadata {
   const resolvedImage = image ?? absoluteUrl(DEFAULT_OG_IMAGE);
+  const resolvedImageMetadata = resolvedImage
+    ? [
+        {
+          url: resolvedImage,
+          width: DEFAULT_OG_IMAGE_WIDTH,
+          height: DEFAULT_OG_IMAGE_HEIGHT,
+          alt: DEFAULT_OG_IMAGE_ALT,
+        },
+      ]
+    : undefined;
 
   return {
     title,
@@ -62,19 +76,20 @@ export function createPageMetadata({
       url: path,
       siteName: SITE_NAME,
       type: openGraphType,
-      images: resolvedImage
-        ? [
-            {
-              url: resolvedImage,
-            },
-          ]
-        : undefined,
+      images: resolvedImageMetadata,
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: resolvedImage ? [resolvedImage] : undefined,
+      images: resolvedImage
+        ? [
+            {
+              url: resolvedImage,
+              alt: DEFAULT_OG_IMAGE_ALT,
+            },
+          ]
+        : undefined,
     },
   };
 }

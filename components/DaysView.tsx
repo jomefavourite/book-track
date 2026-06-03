@@ -20,6 +20,7 @@ import CatchUpSuggestion from "./CatchUpSuggestion";
 import { Input } from "./ui/input";
 import { Timer } from "lucide-react";
 import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
+import ReflectionNoteEditor from "./ReflectionNoteEditor";
 import { playTimerEndSound } from "@/lib/timerSound";
 
 interface DaysViewProps {
@@ -99,6 +100,10 @@ export default function DaysView({
                     : session.chapterNumber,
                 timerDurationSec:
                   variables.timerDurationSec ?? session.timerDurationSec,
+                reflectionNote:
+                  variables.reflectionNote !== undefined
+                    ? variables.reflectionNote.trim() || undefined
+                    : session.reflectionNote,
               };
             }
             return session;
@@ -152,6 +157,7 @@ export default function DaysView({
         plannedPages: variables.plannedPages,
         actualPages: variables.actualPages,
         chapterNumber: variables.chapterNumber,
+        reflectionNote: variables.reflectionNote?.trim() || undefined,
         isRead: variables.isRead,
         isMissed: variables.isMissed ?? false,
         createdAt: Date.now(),
@@ -712,6 +718,18 @@ export default function DaysView({
     });
   };
 
+  const handleReflectionNoteSave = async (dateKey: string, note: string) => {
+    if (!canEdit || !user?.id) return;
+    const session = sessionsMap.get(dateKey);
+    if (!session?.isRead) return;
+
+    await updateSession({
+      sessionId: session._id,
+      userId: user.id,
+      reflectionNote: note,
+    });
+  };
+
   const handlePagesUpdate = async (dateKey: string, pages: number) => {
     if (chapterOnlyMode) return;
     if (!canEdit || !user?.id) return;
@@ -1128,6 +1146,21 @@ export default function DaysView({
                           }`}
                         />
                       </div>
+                    )}
+                    {canEdit && (
+                      <ReflectionNoteEditor
+                        dayLabel={`Day ${dayNumber} - ${format(date, "MMM d, yyyy")}`}
+                        note={session?.reflectionNote}
+                        canEdit={canEdit}
+                        onSave={(note) =>
+                          handleReflectionNoteSave(dateKey, note)
+                        }
+                      />
+                    )}
+                    {session?.reflectionNote?.trim() && (
+                      <p className="line-clamp-3 whitespace-pre-wrap rounded border border-green-700/30 bg-white/40 p-2 text-xs text-green-950 dark:bg-black/20 dark:text-green-50">
+                        {session.reflectionNote}
+                      </p>
                     )}
                   </div>
                 )}
