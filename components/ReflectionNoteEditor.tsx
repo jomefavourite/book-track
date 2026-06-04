@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BookOpenText, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -73,11 +74,12 @@ export default function ReflectionNoteEditor({
           size="sm"
           disabled={!canEdit}
           onClick={(event) => event.stopPropagation()}
-          className={
+          className={cn(
+            "text-foreground hover:text-accent-foreground",
             compact
               ? "h-6 w-full justify-start gap-1 px-1.5 text-[10px]"
               : "h-8 w-full justify-start gap-1.5 text-xs"
-          }
+          )}
         >
           <BookOpenText className={compact ? "h-3 w-3" : "h-4 w-4"} />
           <span className="truncate">{hasNote ? "Edit note" : "Add note"}</span>
