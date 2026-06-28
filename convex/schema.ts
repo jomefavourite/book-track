@@ -74,6 +74,8 @@ export default defineSchema({
     date: v.string(),
     plannedPages: v.number(),
     actualPages: v.optional(v.number()),
+    /** Page number the reader stopped on for this day; actualPages remains the daily delta */
+    stopPage: v.optional(v.number()),
     /** Chapter read that day when book uses chapter-based reading; null clears */
     chapterNumber: v.optional(v.union(v.number(), v.null())),
     /** Owner-private note for a read day */

@@ -22,6 +22,14 @@ import {
   getReadChapterForDate,
   getTargetChapterForDate,
 } from "@/lib/chapterPlanning";
+import {
+  calculatePagesCoveredFromStopPage,
+  clampStopPageInputValue,
+  getDefaultStopPageForDate,
+  getInferredStopPageByDate,
+  getPreviousStopPage,
+  isUnsupportedStopPageError,
+} from "@/lib/pageTracking";
 import CatchUpSuggestion from "./CatchUpSuggestion";
 import { Input } from "./ui/input";
 import { Timer } from "lucide-react";
@@ -78,7 +86,7 @@ export default function DaysView({
   const updateSessionMutation = useConvexMutation(
     api.readingSessions.updateSession
   );
-  const { mutateAsync: updateSession } = useMutation({
+  const { mutateAsync: updateSessionBase } = useMutation({
     mutationFn: updateSessionMutation,
     onMutate: async (variables) => {
       // Cancel any outgoing refetches to avoid overwriting optimistic update
@@ -99,6 +107,7 @@ export default function DaysView({
                 isRead: variables.isRead ?? session.isRead,
                 isMissed: variables.isMissed ?? session.isMissed,
                 actualPages: variables.actualPages ?? session.actualPages,
+                stopPage: variables.stopPage ?? session.stopPage,
                 plannedPages: variables.plannedPages ?? session.plannedPages,
                 chapterNumber:
                   variables.chapterNumber !== undefined
@@ -137,11 +146,25 @@ export default function DaysView({
       }
     },
   });
+  const updateSession = async (
+    variables: Parameters<typeof updateSessionMutation>[0]
+  ) => {
+    try {
+      return await updateSessionBase(variables);
+    } catch (error) {
+      if ("stopPage" in variables && isUnsupportedStopPageError(error)) {
+        const fallbackVariables = { ...variables };
+        delete fallbackVariables.stopPage;
+        return updateSessionBase(fallbackVariables);
+      }
+      throw error;
+    }
+  };
 
   const createSessionMutationFn = useConvexMutation(
     api.readingSessions.createSession
   );
-  const { mutateAsync: createSession } = useMutation({
+  const { mutateAsync: createSessionBase } = useMutation({
     mutationFn: createSessionMutationFn,
     onMutate: async (
       variables: Parameters<typeof createSessionMutationFn>[0]
@@ -162,6 +185,7 @@ export default function DaysView({
         date: variables.date,
         plannedPages: variables.plannedPages,
         actualPages: variables.actualPages,
+        stopPage: variables.stopPage,
         chapterNumber: variables.chapterNumber,
         reflectionNote: variables.reflectionNote?.trim() || undefined,
         isRead: variables.isRead,
@@ -210,6 +234,20 @@ export default function DaysView({
       }
     },
   });
+  const createSession = async (
+    variables: Parameters<typeof createSessionMutationFn>[0]
+  ) => {
+    try {
+      return await createSessionBase(variables);
+    } catch (error) {
+      if ("stopPage" in variables && isUnsupportedStopPageError(error)) {
+        const fallbackVariables = { ...variables };
+        delete fallbackVariables.stopPage;
+        return createSessionBase(fallbackVariables);
+      }
+      throw error;
+    }
+  };
 
   // Use empty array as default to ensure hooks are always called
   const sessions = useMemo(() => sessionsQuery ?? [], [sessionsQuery]);
@@ -273,16 +311,18 @@ export default function DaysView({
     setTimerDisplaySec(0);
   }
 
+  const stopPageByDate = useMemo(
+    () => getInferredStopPageByDate(sessions, book.totalPages),
+    [sessions, book.totalPages]
+  );
+
   // Sync input values with sessions when they change
   useEffect(() => {
     const newInputValues = new Map<string, string>();
     const newChapterValues = new Map<string, string>();
     sessions.forEach((session) => {
       if (session.isRead) {
-        const value =
-          session.actualPages?.toString() ||
-          session.plannedPages?.toString() ||
-          "";
+        const value = stopPageByDate.get(session.date)?.toString() || "";
         newInputValues.set(session.date, value);
         if (chapterMode) {
           const ch =
@@ -295,7 +335,7 @@ export default function DaysView({
     });
     setInputValues(newInputValues);
     setChapterInputValues(newChapterValues);
-  }, [sessions, chapterMode]);
+  }, [sessions, chapterMode, stopPageByDate]);
 
   const startDate = parseDateFromStorage(book.startDate);
   const endDate = parseDateFromStorage(book.endDate);
@@ -413,18 +453,20 @@ export default function DaysView({
         }
       } else {
         // Not read - mark as read
-        const markActual =
-          chapterOnlyMode
-            ? 0
-            : existingSession.actualPages ??
-              existingSession.plannedPages ??
-              pagesPerDay;
+        const markPages = chapterOnlyMode
+          ? { actualPages: 0, stopPage: undefined }
+          : getDefaultStopPageForDate({
+              sessions,
+              dateKey,
+              plannedPages: existingSession.plannedPages ?? pagesPerDay,
+              totalPages: book.totalPages,
+            });
         updateSession({
           sessionId: existingSession._id,
           userId: user.id,
           isRead: true,
           isMissed: false,
-          ...(chapterOnlyMode ? {} : { actualPages: markActual }),
+          ...(chapterOnlyMode ? {} : markPages),
           ...(chapterMode
             ? { chapterNumber: defaultChapterForDate(dateKey) }
             : {}),
@@ -432,19 +474,27 @@ export default function DaysView({
         if (!chapterOnlyMode) {
           // Redistribute after marking as read (non-blocking)
           setTimeout(() => {
-            redistributePages(dateKey, markActual, new Set([dateKey])).catch(
+            redistributePages(dateKey, markPages.actualPages, new Set([dateKey])).catch(
               console.error
             );
           }, 0);
         }
       }
     } else {
+      const markPages = chapterOnlyMode
+        ? { actualPages: 0, stopPage: undefined }
+        : getDefaultStopPageForDate({
+            sessions,
+            dateKey,
+            plannedPages: defaultPlannedPages,
+            totalPages: book.totalPages,
+          });
       createSession({
         bookId,
         userId: user.id,
         date: dateKey,
         plannedPages: defaultPlannedPages,
-        ...(chapterOnlyMode ? {} : { actualPages: defaultPlannedPages }),
+        ...(chapterOnlyMode ? {} : markPages),
         isRead: true,
         isMissed: false,
         ...(chapterMode
@@ -455,7 +505,7 @@ export default function DaysView({
       if (!chapterOnlyMode) {
         // Redistribute after marking as read (non-blocking)
         setTimeout(() => {
-          redistributePages(dateKey, defaultPlannedPages, new Set([dateKey])).catch(
+          redistributePages(dateKey, markPages.actualPages, new Set([dateKey])).catch(
             console.error
           );
         }, 0);
@@ -695,10 +745,11 @@ export default function DaysView({
   };
 
   const handleInputChange = (dateKey: string, value: string) => {
+    const clampedValue = clampStopPageInputValue(value, book.totalPages);
     // Update local state immediately for smooth typing
     setInputValues((prev) => {
       const newMap = new Map(prev);
-      newMap.set(dateKey, value);
+      newMap.set(dateKey, clampedValue);
       return newMap;
     });
   };
@@ -723,12 +774,59 @@ export default function DaysView({
     });
   };
 
-  const handlePagesUpdate = async (dateKey: string, pages: number) => {
+  const updateFollowingExplicitStopPages = async (
+    updatedDateKey: string,
+    updatedStopPage: number
+  ) => {
+    if (chapterOnlyMode || !user?.id) return;
+
+    let previousStopPage = updatedStopPage;
+    const updatePromises: Array<Promise<unknown>> = [];
+
+    days
+      .filter(({ dateKey }) => dateKey > updatedDateKey)
+      .forEach(({ dateKey }) => {
+        const session = sessionsMap.get(dateKey);
+        if (!session?.isRead || session.isMissed) {
+          return;
+        }
+
+        if (typeof session.stopPage === "number") {
+          const next = calculatePagesCoveredFromStopPage({
+            stopPage: session.stopPage,
+            previousStopPage,
+            totalPages: book.totalPages,
+          });
+          previousStopPage = next.stopPage;
+          updatePromises.push(
+            updateSession({
+              sessionId: session._id,
+              userId: user.id,
+              actualPages: next.actualPages,
+              stopPage: next.stopPage,
+            })
+          );
+          return;
+        }
+
+        previousStopPage += session.actualPages ?? session.plannedPages ?? 0;
+      });
+
+    await Promise.all(updatePromises);
+  };
+
+  const handlePagesUpdate = async (dateKey: string, stopPageInput: number) => {
     if (chapterOnlyMode) return;
     if (!canEdit || !user?.id) return;
     const existingSession = sessionsMap.get(dateKey);
 
     if (existingSession && existingSession.isRead) {
+      const priorStopPage = getPreviousStopPage(sessions, dateKey, book.totalPages);
+      const pageUpdate = calculatePagesCoveredFromStopPage({
+        stopPage: stopPageInput,
+        previousStopPage: priorStopPage,
+        totalPages: book.totalPages,
+      });
       const chapterNumber = chapterMode
         ? defaultChapterForDate(dateKey)
         : undefined;
@@ -736,12 +834,14 @@ export default function DaysView({
         sessionId: existingSession._id,
         userId: user.id,
         isRead: existingSession.isRead,
-        actualPages: pages,
+        actualPages: pageUpdate.actualPages,
+        stopPage: pageUpdate.stopPage,
         ...(chapterMode ? { chapterNumber } : {}),
       });
+      await updateFollowingExplicitStopPages(dateKey, pageUpdate.stopPage);
 
       // Redistribute pages across unread days
-      await redistributePages(dateKey, pages);
+      await redistributePages(dateKey, pageUpdate.actualPages);
     }
   };
 
@@ -750,8 +850,8 @@ export default function DaysView({
 
     if (inputValue === undefined || inputValue === "") return;
 
-    const pages = Number(inputValue);
-    if (isNaN(pages) || pages < 0) {
+    const stopPage = Number(inputValue);
+    if (isNaN(stopPage) || stopPage < 0) {
       // Reset to original value if invalid
       const session = sessionsMap.get(dateKey);
       if (session) {
@@ -759,7 +859,7 @@ export default function DaysView({
           const newMap = new Map(prev);
           newMap.set(
             dateKey,
-            (session.actualPages || session.plannedPages || 0).toString()
+            (stopPageByDate.get(dateKey) || 0).toString()
           );
           return newMap;
         });
@@ -779,7 +879,7 @@ export default function DaysView({
       return;
     }
 
-    await handlePagesUpdate(dateKey, pages);
+    await handlePagesUpdate(dateKey, stopPage);
   };
 
   const handleChapterInputBlur = async (dateKey: string) => {
@@ -841,6 +941,36 @@ export default function DaysView({
     : book.totalPages
       ? (totalPagesRead / book.totalPages) * 100
       : 0;
+
+  const getStopPageInputValue = (dateKey: string, plannedPages: number) =>
+    (
+      stopPageByDate.get(dateKey) ??
+      getDefaultStopPageForDate({
+        sessions,
+        dateKey,
+        plannedPages,
+        totalPages: book.totalPages,
+      }).stopPage
+    ).toString();
+
+  const getPagesReadForDate = (
+    dateKey: string,
+    plannedPages: number,
+    session?: ReadingSessionDoc
+  ) => {
+    const inputValue = inputValues.get(dateKey);
+    const stopPageInput = inputValue === undefined ? NaN : Number(inputValue);
+
+    if (!Number.isNaN(stopPageInput) && stopPageInput >= 0) {
+      return calculatePagesCoveredFromStopPage({
+        stopPage: stopPageInput,
+        previousStopPage: getPreviousStopPage(sessions, dateKey, book.totalPages),
+        totalPages: book.totalPages,
+      }).actualPages;
+    }
+
+    return session?.actualPages ?? session?.plannedPages ?? plannedPages;
+  };
 
   if (isPending && sessionsQuery === undefined) {
     return (
@@ -1060,6 +1190,15 @@ export default function DaysView({
                     {`Read: Chapter ${readChapter}`}
                   </div>
                 )}
+                {isRead && !chapterOnlyMode && (
+                  <div className="mb-2 text-xs">
+                    {`Read: ${getPagesReadForDate(
+                      dateKey,
+                      session?.plannedPages ?? pagesPerDay,
+                      session
+                    )} pages`}
+                  </div>
+                )}
                 {session?.timerDurationSec && !isMissed && (
                   <div className="mb-1 flex items-center gap-0.5 text-xs text-muted-foreground">
                     <Timer className="h-3 w-3" />
@@ -1126,18 +1265,17 @@ export default function DaysView({
                         </div>
                         <div className="w-20 shrink-0 sm:w-24">
                           <label className="block text-xs font-medium text-white">
-                            Pages
+                            Stop Page
                           </label>
                           <Input
                             type="number"
                             id="actualPages"
                             value={
                               inputValues.get(dateKey) ??
-                              (
-                                session?.actualPages ||
-                                session?.plannedPages ||
-                                pagesPerDay
-                              ).toString()
+                              getStopPageInputValue(
+                                dateKey,
+                                session?.plannedPages ?? pagesPerDay
+                              )
                             }
                             onChange={(e) =>
                               handleInputChange(dateKey, e.target.value)
@@ -1150,6 +1288,7 @@ export default function DaysView({
                             }}
                             disabled={!canEdit}
                             min="0"
+                            max={book.totalPages}
                             className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
                               canEdit
                                 ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
@@ -1219,18 +1358,17 @@ export default function DaysView({
                         {!chapterOnlyMode && (
                           <div>
                             <label className="block text-xs font-medium text-white">
-                              Pages Covered
+                              Stopped at Page
                             </label>
                             <Input
                               type="number"
                               id="actualPages"
                               value={
                                 inputValues.get(dateKey) ??
-                                (
-                                  session?.actualPages ||
-                                  session?.plannedPages ||
-                                  pagesPerDay
-                                ).toString()
+                                getStopPageInputValue(
+                                  dateKey,
+                                  session?.plannedPages ?? pagesPerDay
+                                )
                               }
                               onChange={(e) =>
                                 handleInputChange(dateKey, e.target.value)
@@ -1243,6 +1381,7 @@ export default function DaysView({
                               }}
                               disabled={!canEdit}
                               min="0"
+                              max={book.totalPages}
                               className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
                                 canEdit
                                   ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
