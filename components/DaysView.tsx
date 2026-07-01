@@ -1208,6 +1208,7 @@ export default function DaysView({
                 {isRead && (
                   <div className="space-y-2">
                     {chapterMode && !chapterOnlyMode ? (
+                      <>
                       <div className="flex gap-2">
                         <div className="min-w-0 flex-1">
                           <label className="block text-xs font-medium text-white">
@@ -1297,6 +1298,17 @@ export default function DaysView({
                           />
                         </div>
                       </div>
+                      {canEdit && (
+                        <ReflectionNoteEditor
+                          dayLabel={`Day ${dayNumber} - ${format(date, "MMM d, yyyy")}`}
+                          note={session?.reflectionNote}
+                          canEdit={canEdit}
+                          onSave={(note) =>
+                            handleReflectionNoteSave(dateKey, note)
+                          }
+                        />
+                      )}
+                      </>
                     ) : (
                       <>
                         {chapterMode && (
@@ -1355,52 +1367,56 @@ export default function DaysView({
                             )}
                           </div>
                         )}
-                        {!chapterOnlyMode && (
-                          <div>
-                            <label className="block text-xs font-medium text-white">
-                              Stopped at Page
-                            </label>
-                            <Input
-                              type="number"
-                              id="actualPages"
-                              value={
-                                inputValues.get(dateKey) ??
-                                getStopPageInputValue(
-                                  dateKey,
-                                  session?.plannedPages ?? pagesPerDay
-                                )
-                              }
-                              onChange={(e) =>
-                                handleInputChange(dateKey, e.target.value)
-                              }
-                              onBlur={() => handleInputBlur(dateKey)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.currentTarget.blur();
+                        <div className="flex items-end gap-2">
+                          {!chapterOnlyMode && (
+                            <div className="flex-1 min-w-0">
+                              <label className="block text-xs font-medium text-white">
+                                Stopped at Page
+                              </label>
+                              <Input
+                                type="number"
+                                id="actualPages"
+                                value={
+                                  inputValues.get(dateKey) ??
+                                  getStopPageInputValue(
+                                    dateKey,
+                                    session?.plannedPages ?? pagesPerDay
+                                  )
                                 }
-                              }}
-                              disabled={!canEdit}
-                              min="0"
-                              max={book.totalPages}
-                              className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
-                                canEdit
-                                  ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
-                                  : "cursor-not-allowed opacity-50"
-                              }`}
-                            />
-                          </div>
-                        )}
+                                onChange={(e) =>
+                                  handleInputChange(dateKey, e.target.value)
+                                }
+                                onBlur={() => handleInputBlur(dateKey)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.currentTarget.blur();
+                                  }
+                                }}
+                                disabled={!canEdit}
+                                min="0"
+                                max={book.totalPages}
+                                className={`mt-1 h-6 sm:h-7 w-full rounded border border-input bg-background px-1.5 py-1 text-xs text-foreground dark:text-foreground ${
+                                  canEdit
+                                    ? "focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:border-blue-400"
+                                    : "cursor-not-allowed opacity-50"
+                                }`}
+                              />
+                            </div>
+                          )}
+                          {canEdit && (
+                            <div className={chapterOnlyMode ? "w-full" : "flex-1 min-w-0"}>
+                              <ReflectionNoteEditor
+                                dayLabel={`Day ${dayNumber} - ${format(date, "MMM d, yyyy")}`}
+                                note={session?.reflectionNote}
+                                canEdit={canEdit}
+                                onSave={(note) =>
+                                  handleReflectionNoteSave(dateKey, note)
+                                }
+                              />
+                            </div>
+                          )}
+                        </div>
                       </>
-                    )}
-                    {canEdit && (
-                      <ReflectionNoteEditor
-                        dayLabel={`Day ${dayNumber} - ${format(date, "MMM d, yyyy")}`}
-                        note={session?.reflectionNote}
-                        canEdit={canEdit}
-                        onSave={(note) =>
-                          handleReflectionNoteSave(dateKey, note)
-                        }
-                      />
                     )}
                   </div>
                 )}
