@@ -63,10 +63,118 @@ export default defineSchema({
     markedCompleteAt: v.optional(v.number()),
     /** Allows the public book page to show the generated merged reflection */
     shareMergedReflection: v.optional(v.boolean()),
+    /** Set when this personal book was created by tracking a community book */
+    communityBookId: v.optional(v.id("communityBooks")),
   })
     .index("by_user", ["userId"])
     .index("by_user_and_order", ["userId", "bookOrder"])
-    .index("by_public", ["isPublic"]),
+    .index("by_public", ["isPublic"])
+    .index("by_community_book_id", ["communityBookId"]),
+
+  communities: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    description: v.optional(v.string()),
+    visibility: v.union(v.literal("public"), v.literal("private")),
+    joinPolicy: v.union(v.literal("invite_only")),
+    /** Legacy current-read fields from the first community version. New books live in communityBooks. */
+    currentBookTitle: v.optional(v.string()),
+    currentBookAuthor: v.optional(v.string()),
+    totalChapters: v.optional(v.number()),
+    ownerClerkId: v.string(),
+    ownerName: v.optional(v.string()),
+    brandColor: v.optional(v.string()),
+    isArchived: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_visibility", ["visibility"]),
+
+  communityBooks: defineTable({
+    communityId: v.id("communities"),
+    name: v.string(),
+    author: v.optional(v.string()),
+    totalPages: v.optional(v.number()),
+    totalChapters: v.optional(v.number()),
+    progressStyle: v.optional(
+      v.union(v.literal("pages"), v.literal("chapters"))
+    ),
+    ignorePages: v.optional(v.boolean()),
+    readingMode: v.union(v.literal("calendar"), v.literal("fixed-days")),
+    startMonth: v.optional(v.string()),
+    endMonth: v.optional(v.string()),
+    startYear: v.optional(v.number()),
+    endYear: v.optional(v.number()),
+    daysToRead: v.optional(v.number()),
+    startDate: v.string(),
+    endDate: v.string(),
+    createdByClerkId: v.string(),
+    creatorName: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    isArchived: v.optional(v.boolean()),
+  })
+    .index("by_community", ["communityId"])
+    .index("by_community_and_created", ["communityId", "createdAt"]),
+
+  communityMembers: defineTable({
+    communityId: v.id("communities"),
+    clerkId: v.string(),
+    role: v.union(
+      v.literal("owner"),
+      v.literal("admin"),
+      v.literal("moderator"),
+      v.literal("member")
+    ),
+    status: v.union(v.literal("active"), v.literal("removed")),
+    joinedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_community", ["communityId"])
+    .index("by_clerk", ["clerkId"])
+    .index("by_community_and_clerk", ["communityId", "clerkId"]),
+
+  communityInvites: defineTable({
+    communityId: v.id("communities"),
+    token: v.string(),
+    createdByClerkId: v.string(),
+    roleToGrant: v.union(
+      v.literal("admin"),
+      v.literal("moderator"),
+      v.literal("member")
+    ),
+    expiresAt: v.optional(v.number()),
+    maxUses: v.optional(v.number()),
+    usedCount: v.number(),
+    disabledAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_community", ["communityId"]),
+
+  communityCreatorGrants: defineTable({
+    clerkId: v.string(),
+    grantedBy: v.optional(v.string()),
+    createdAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  }).index("by_clerk_id", ["clerkId"]),
+
+  communityCreatorRequests: defineTable({
+    clerkId: v.string(),
+    name: v.optional(v.string()),
+    email: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected")
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_clerk_id", ["clerkId"])
+    .index("by_status", ["status"]),
 
   readingSessions: defineTable({
     bookId: v.id("books"),
@@ -74,6 +182,8 @@ export default defineSchema({
     date: v.string(),
     plannedPages: v.number(),
     actualPages: v.optional(v.number()),
+    /** Page number the reader stopped on for this day; actualPages remains the daily delta */
+    stopPage: v.optional(v.number()),
     /** Chapter read that day when book uses chapter-based reading; null clears */
     chapterNumber: v.optional(v.union(v.number(), v.null())),
     /** Owner-private note for a read day */

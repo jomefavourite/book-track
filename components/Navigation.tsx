@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useUser, SignInButton, SignOutButton } from "@clerk/nextjs";
 import { useTheme } from "next-themes";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
-import { Bell, User } from "lucide-react";
+import { Bell, User, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
 import AuthButton from "@/components/AuthButton";
@@ -29,13 +29,10 @@ interface NavigationProps {
 export default function Navigation({
   showAuth = true,
   isLandingPage = false,
-  isDashboard = false,
 }: NavigationProps) {
-  const [copied, setCopied] = useState<string | null>(null);
   const { user, isLoaded, isSignedIn } = useUser();
   const { setTheme, theme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { data: convexUser } = useQuery({
     ...convexQuery(api.users.getUserByClerkId, {
@@ -49,50 +46,12 @@ export default function Navigation({
     : "#";
 
   useEffect(() => {
-    setMounted(true);
+    const frameId = requestAnimationFrame(() => setMounted(true));
 
-    // Cleanup timeout on unmount
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      cancelAnimationFrame(frameId);
     };
   }, []);
-
-  const copyToClipboard = async (text: string, type: string) => {
-    // Clear any existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(type);
-      timeoutRef.current = setTimeout(() => {
-        setCopied(null);
-        timeoutRef.current = null;
-      }, 2000);
-    } catch (err) {
-      // Fallback for browsers that don't support clipboard API
-      const textArea = document.createElement("textarea");
-      textArea.value = text;
-      textArea.style.position = "fixed";
-      textArea.style.left = "-999999px";
-      document.body.appendChild(textArea);
-      textArea.select();
-      try {
-        document.execCommand("copy");
-        setCopied(type);
-        timeoutRef.current = setTimeout(() => {
-          setCopied(null);
-          timeoutRef.current = null;
-        }, 2000);
-      } catch (err) {
-        alert(`Failed to copy. Please copy manually: ${text}`);
-      }
-      document.body.removeChild(textArea);
-    }
-  };
 
   const toggleTheme = () => {
     const currentTheme = resolvedTheme || theme;
@@ -241,6 +200,12 @@ export default function Navigation({
                   <>
                     <Button variant="ghost" size="sm" asChild className="gap-2">
                       <Link href="/dashboard/settings">Settings</Link>
+                    </Button>
+                    <Button variant="ghost" size="sm" asChild className="gap-2">
+                      <Link href="/communities">
+                        <Users className="h-4 w-4" />
+                        Communities
+                      </Link>
                     </Button>
                     {profileHref !== "#" && (
                       <Button variant="ghost" size="sm" asChild className="gap-2">
@@ -457,6 +422,15 @@ export default function Navigation({
                             className="flex cursor-pointer items-center gap-2 py-3"
                           >
                             <span>Settings</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link
+                            href="/communities"
+                            className="flex cursor-pointer items-center gap-2 py-3"
+                          >
+                            <Users className="h-4 w-4 shrink-0" />
+                            <span>Communities</span>
                           </Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>

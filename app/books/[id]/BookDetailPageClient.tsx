@@ -25,6 +25,7 @@ import {
   ChevronDown,
   Copy,
   Share2,
+  Users,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -76,6 +77,13 @@ export default function BookDetailPage() {
   const isOwner = user?.id && book?.userId === user.id;
   const isPublicBook = book?.isPublic;
   const canEdit = Boolean(isOwner);
+
+  const { data: communityInfo } = useQuery({
+    ...convexQuery(api.communities.getCommunityForBook, {
+      communityBookId: book?.communityBookId!,
+    }),
+    enabled: !!book?.communityBookId,
+  });
 
   const { data: reflections = [] } = useQuery({
     ...convexQuery(api.readingSessions.getReflectionsForBook, {
@@ -222,11 +230,13 @@ export default function BookDetailPage() {
     setTimeout(() => setCopiedReflections(false), 2000);
   };
 
+  const isCommunityBook = !!book?.communityBookId;
+
   const showMarkCompleteButton =
-    Boolean(canEdit && book && !book.markedCompleteAt && sessionProgressPercent < 100);
+    Boolean(canEdit && !isCommunityBook && book && !book.markedCompleteAt && sessionProgressPercent < 100);
 
   const showClearMarkedCompleteButton =
-    Boolean(canEdit && book && book.markedCompleteAt != null);
+    Boolean(canEdit && !isCommunityBook && book && book.markedCompleteAt != null);
 
   // Show private book message first (even if still pending, if we have the error)
   if (isPrivateBookError) {
@@ -364,7 +374,7 @@ export default function BookDetailPage() {
                   <span className="sm:hidden">Undo complete</span>
                 </Button>
               )}
-              {canEdit && (
+              {canEdit && !isCommunityBook && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -388,6 +398,15 @@ export default function BookDetailPage() {
               )}
             </div>
             <div className="flex items-center gap-2">
+              {book.communityBookId && communityInfo && (
+                <Link
+                  href={`/communities/${communityInfo.slug}`}
+                  className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                >
+                  <Users className="h-3 w-3" />
+                  {communityInfo.name}
+                </Link>
+              )}
               {isPublicBook && (
                 <>
                   <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">

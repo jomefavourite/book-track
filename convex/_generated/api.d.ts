@@ -10,6 +10,9 @@
 
 import type * as bookProgress from "../bookProgress.js";
 import type * as books from "../books.js";
+import type * as communities from "../communities.js";
+import type * as communityBookRules from "../communityBookRules.js";
+import type * as communityRules from "../communityRules.js";
 import type * as crons from "../crons.js";
 import type * as dateUtils from "../dateUtils.js";
 import type * as readingSessions from "../readingSessions.js";
@@ -26,6 +29,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   bookProgress: typeof bookProgress;
   books: typeof books;
+  communities: typeof communities;
+  communityBookRules: typeof communityBookRules;
+  communityRules: typeof communityRules;
   crons: typeof crons;
   dateUtils: typeof dateUtils;
   readingSessions: typeof readingSessions;

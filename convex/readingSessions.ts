@@ -28,6 +28,7 @@ export const createSession = mutation({
     date: v.string(),
     plannedPages: v.number(),
     actualPages: v.optional(v.number()),
+    stopPage: v.optional(v.number()),
     chapterNumber: v.optional(v.number()),
     reflectionNote: v.optional(v.string()),
     isRead: v.boolean(),
@@ -58,6 +59,7 @@ export const createSession = mutation({
       date: args.date,
       plannedPages: args.plannedPages,
       actualPages: args.actualPages,
+      stopPage: args.stopPage,
       chapterNumber: args.chapterNumber,
       reflectionNote: normalizeReflectionNote(args.reflectionNote),
       isRead,
@@ -117,6 +119,7 @@ export const updateSession = mutation({
     sessionId: v.id("readingSessions"),
     userId: v.string(),
     actualPages: v.optional(v.number()),
+    stopPage: v.optional(v.number()),
     plannedPages: v.optional(v.number()),
     chapterNumber: v.optional(v.union(v.number(), v.null())),
     reflectionNote: v.optional(v.string()),
@@ -142,6 +145,7 @@ export const updateSession = mutation({
 
     const updateData: {
       actualPages?: number;
+      stopPage?: number;
       plannedPages?: number;
       chapterNumber?: number | null;
       reflectionNote?: string;
@@ -152,6 +156,10 @@ export const updateSession = mutation({
 
     if (args.actualPages !== undefined) {
       updateData.actualPages = args.actualPages;
+    }
+
+    if (args.stopPage !== undefined) {
+      updateData.stopPage = args.stopPage;
     }
 
     if (args.plannedPages !== undefined) {
