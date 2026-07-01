@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import {
   ArrowLeft,
+  BarChart2,
   BookOpen,
   CalendarDays,
   Lock,
@@ -134,6 +135,12 @@ export default function CommunityDetailPageClient() {
                       <Link href={`/communities/${detail.slug}/books/new`}>
                         <Plus className="h-4 w-4" />
                         Add Community Book
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline">
+                      <Link href={`/communities/${detail.slug}/analytics`}>
+                        <BarChart2 className="h-4 w-4" />
+                        Analytics
                       </Link>
                     </Button>
                     <Button asChild variant="outline">
