@@ -1,0 +1,885 @@
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import {
+  canChangeMemberRole,
+  canManageCommunity,
+  canManageInvites,
+  canRemoveMember,
+  type CommunityRole,
+} from "./communityRules";
+import {
+  canAccessCommunityBooks,
+  validateCommunityBookInput,
+} from "./communityBookRules";
+
+const communityRoleValidator = v.union(
+  v.literal("owner"),
+  v.literal("admin"),
+  v.literal("moderator"),
+  v.literal("member")
+);
+
+const inviteRoleValidator = v.union(
+  v.literal("admin"),
+  v.literal("moderator"),
+  v.literal("member")
+);
+
+const progressStyleValidator = v.union(v.literal("pages"), v.literal("chapters"));
+
+const readingModeValidator = v.union(
+  v.literal("calendar"),
+  v.literal("fixed-days")
+);
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function normalizeOptionalText(value: string | undefined) {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeBrandColor(value: string | undefined) {
+  const color = normalizeOptionalText(value);
+  if (!color) return undefined;
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : undefined;
+}
+
+function generateInviteToken() {
+  if (globalThis.crypto && "randomUUID" in globalThis.crypto) {
+    return globalThis.crypto.randomUUID().replace(/-/g, "");
+  }
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 14)}`;
+}
+
+async function requireClerkId(ctx: QueryCtx | MutationCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  const clerkId = identity?.subject;
+  if (!clerkId) {
+    throw new Error("Not authenticated");
+  }
+  return {
+    clerkId,
+    name: identity.name,
+    email: identity.email,
+  };
+}
+
+async function getActiveCreatorGrant(ctx: QueryCtx | MutationCtx, clerkId: string) {
+  const grants = await ctx.db
+    .query("communityCreatorGrants")
+    .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
+    .collect();
+  return grants.find((grant) => grant.revokedAt === undefined);
+}
+
+async function getCreatorRequest(ctx: QueryCtx | MutationCtx, clerkId: string) {
+  return await ctx.db
+    .query("communityCreatorRequests")
+    .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
+    .first();
+}
+
+async function hasCreatorAccess(ctx: QueryCtx | MutationCtx, clerkId: string) {
+  const grant = await getActiveCreatorGrant(ctx, clerkId);
+  if (grant) return true;
+  const request = await getCreatorRequest(ctx, clerkId);
+  return request?.status === "approved";
+}
+
+async function makeUniqueCommunitySlug(ctx: MutationCtx, name: string) {
+  const baseSlug = slugify(name) || "community";
+  let candidate = baseSlug;
+  let suffix = 0;
+  while (true) {
+    const existing = await ctx.db
+      .query("communities")
+      .withIndex("by_slug", (q) => q.eq("slug", candidate))
+      .unique();
+    if (!existing) {
+      return candidate;
+    }
+    suffix += 1;
+    candidate = `${baseSlug}-${suffix}`;
+  }
+}
+
+async function getActiveMembership(
+  ctx: QueryCtx | MutationCtx,
+  communityId: Id<"communities">,
+  clerkId: string
+) {
+  const membership = await ctx.db
+    .query("communityMembers")
+    .withIndex("by_community_and_clerk", (q) =>
+      q.eq("communityId", communityId).eq("clerkId", clerkId)
+    )
+    .unique();
+
+  return membership?.status === "active" ? membership : null;
+}
+
+async function getViewerRole(
+  ctx: QueryCtx | MutationCtx,
+  communityId: Id<"communities">,
+  clerkId: string | undefined
+): Promise<CommunityRole | undefined> {
+  if (!clerkId) return undefined;
+  const membership = await getActiveMembership(ctx, communityId, clerkId);
+  return membership?.role;
+}
+
+async function getMemberCount(ctx: QueryCtx | MutationCtx, communityId: Id<"communities">) {
+  const members = await ctx.db
+    .query("communityMembers")
+    .withIndex("by_community", (q) => q.eq("communityId", communityId))
+    .collect();
+  return members.filter((member) => member.status === "active").length;
+}
+
+function buildCommunityPreview(
+  community: Doc<"communities">,
+  memberCount: number,
+  viewerRole?: CommunityRole
+) {
+  return {
+    _id: community._id,
+    name: community.name,
+    slug: community.slug,
+    description: community.description,
+    visibility: community.visibility,
+    joinPolicy: community.joinPolicy,
+    currentBookTitle: community.currentBookTitle,
+    currentBookAuthor: community.currentBookAuthor,
+    totalChapters: community.totalChapters,
+    ownerName: community.ownerName,
+    brandColor: community.brandColor,
+    memberCount,
+    viewerRole,
+    isMember: viewerRole !== undefined,
+    isLocked: community.visibility === "private" && viewerRole === undefined,
+    createdAt: community.createdAt,
+  };
+}
+
+export const getCreatorStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const grant = await getActiveCreatorGrant(ctx, clerkId);
+    const request = await getCreatorRequest(ctx, clerkId);
+
+    return {
+      canCreate: grant !== undefined || request?.status === "approved",
+      requestStatus: request?.status,
+    };
+  },
+});
+
+export const requestCreatorAccess = mutation({
+  args: {
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId, name, email } = await requireClerkId(ctx);
+    const grant = await getActiveCreatorGrant(ctx, clerkId);
+    if (grant) {
+      return { status: "approved" as const };
+    }
+
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("communityCreatorRequests")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
+      .first();
+
+    const reason = normalizeOptionalText(args.reason);
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        reason,
+        name,
+        email,
+        status: existing.status === "approved" ? "approved" : "pending",
+        updatedAt: now,
+      });
+      return { status: existing.status === "approved" ? "approved" as const : "pending" as const };
+    }
+
+    await ctx.db.insert("communityCreatorRequests", {
+      clerkId,
+      name,
+      email,
+      reason,
+      status: "pending",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return { status: "pending" as const };
+  },
+});
+
+export const createCommunity = mutation({
+  args: {
+    name: v.string(),
+    description: v.optional(v.string()),
+    visibility: v.union(v.literal("public"), v.literal("private")),
+    brandColor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId, name } = await requireClerkId(ctx);
+    const canCreate = await hasCreatorAccess(ctx, clerkId);
+    if (!canCreate) {
+      throw new Error("Community creator access is required");
+    }
+
+    const communityName = args.name.trim();
+    if (communityName.length < 2) {
+      throw new Error("Community name is required");
+    }
+
+    const now = Date.now();
+    const communityId = await ctx.db.insert("communities", {
+      name: communityName,
+      slug: await makeUniqueCommunitySlug(ctx, communityName),
+      description: normalizeOptionalText(args.description),
+      visibility: args.visibility,
+      joinPolicy: "invite_only",
+      ownerClerkId: clerkId,
+      ownerName: name,
+      brandColor: normalizeBrandColor(args.brandColor),
+      isArchived: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await ctx.db.insert("communityMembers", {
+      communityId,
+      clerkId,
+      role: "owner",
+      status: "active",
+      joinedAt: now,
+      updatedAt: now,
+    });
+
+    const community = await ctx.db.get(communityId);
+    return community;
+  },
+});
+
+export const discoverCommunities = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const viewerClerkId = identity?.subject;
+    const communities = await ctx.db.query("communities").order("desc").collect();
+    const activeCommunities = communities.filter(
+      (community) => community.isArchived !== true
+    );
+
+    return await Promise.all(
+      activeCommunities.map(async (community) =>
+        buildCommunityPreview(
+          community,
+          await getMemberCount(ctx, community._id),
+          await getViewerRole(ctx, community._id, viewerClerkId)
+        )
+      )
+    );
+  },
+});
+
+export const getMyCommunities = query({
+  args: {},
+  handler: async (ctx) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const memberships = await ctx.db
+      .query("communityMembers")
+      .withIndex("by_clerk", (q) => q.eq("clerkId", clerkId))
+      .collect();
+
+    const activeMemberships = memberships.filter(
+      (membership) => membership.status === "active"
+    );
+
+    const communities = await Promise.all(
+      activeMemberships.map(async (membership) => {
+        const community = await ctx.db.get(membership.communityId);
+        if (!community || community.isArchived === true) return null;
+        return buildCommunityPreview(
+          community,
+          await getMemberCount(ctx, community._id),
+          membership.role
+        );
+      })
+    );
+
+    return communities.filter((community) => community !== null);
+  },
+});
+
+export const getCommunityBySlug = query({
+  args: {
+    slug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const viewerClerkId = identity?.subject;
+    const community = await ctx.db
+      .query("communities")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+
+    if (!community || community.isArchived === true) {
+      return null;
+    }
+
+    const viewerRole = await getViewerRole(ctx, community._id, viewerClerkId);
+    const memberCount = await getMemberCount(ctx, community._id);
+    const preview = buildCommunityPreview(community, memberCount, viewerRole);
+
+    if (community.visibility === "private" && viewerRole === undefined) {
+      return {
+        ...preview,
+        access: "locked" as const,
+      };
+    }
+
+    return {
+      ...preview,
+      access: viewerRole ? "member" as const : "public" as const,
+      updatedAt: community.updatedAt,
+    };
+  },
+});
+
+export const updateCommunity = mutation({
+  args: {
+    communityId: v.id("communities"),
+    name: v.optional(v.string()),
+    description: v.optional(v.string()),
+    visibility: v.optional(v.union(v.literal("public"), v.literal("private"))),
+    brandColor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const community = await ctx.db.get(args.communityId);
+    if (!community) {
+      throw new Error("Community not found");
+    }
+    const role = await getViewerRole(ctx, args.communityId, clerkId);
+    if (!canManageCommunity(role)) {
+      throw new Error("Unauthorized");
+    }
+
+    const updates: Partial<Doc<"communities">> = {
+      updatedAt: Date.now(),
+    };
+
+    if (args.name !== undefined) {
+      const name = args.name.trim();
+      if (name.length < 2) throw new Error("Community name is required");
+      updates.name = name;
+    }
+    if (args.description !== undefined) {
+      updates.description = normalizeOptionalText(args.description);
+    }
+    if (args.visibility !== undefined) {
+      updates.visibility = args.visibility;
+    }
+    if (args.brandColor !== undefined) {
+      updates.brandColor = normalizeBrandColor(args.brandColor);
+    }
+
+    await ctx.db.patch(args.communityId, updates);
+  },
+});
+
+function buildCommunityBookPayload(
+  args: {
+    name: string;
+    author?: string;
+    totalPages?: number;
+    totalChapters?: number;
+    progressStyle?: "pages" | "chapters";
+    ignorePages?: boolean;
+    readingMode: "calendar" | "fixed-days";
+    startMonth?: string;
+    endMonth?: string;
+    startYear?: number;
+    endYear?: number;
+    daysToRead?: number;
+    startDate: string;
+    endDate: string;
+  }
+) {
+  const progressStyle = args.progressStyle ?? "pages";
+  const ignorePages =
+    progressStyle === "chapters" ? args.ignorePages ?? false : false;
+
+  validateCommunityBookInput({
+    name: args.name,
+    totalPages: args.totalPages,
+    totalChapters: args.totalChapters,
+    progressStyle,
+    ignorePages,
+  });
+
+  return {
+    name: args.name.trim(),
+    author: normalizeOptionalText(args.author),
+    totalPages: args.totalPages,
+    totalChapters:
+      progressStyle === "chapters" ? args.totalChapters : undefined,
+    progressStyle,
+    ignorePages,
+    readingMode: args.readingMode,
+    startMonth: normalizeOptionalText(args.startMonth),
+    endMonth: normalizeOptionalText(args.endMonth),
+    startYear: args.startYear,
+    endYear: args.endYear,
+    daysToRead: args.daysToRead,
+    startDate: args.startDate,
+    endDate: args.endDate,
+    updatedAt: Date.now(),
+  };
+}
+
+export const createCommunityBook = mutation({
+  args: {
+    communityId: v.id("communities"),
+    name: v.string(),
+    author: v.optional(v.string()),
+    totalPages: v.optional(v.number()),
+    totalChapters: v.optional(v.number()),
+    progressStyle: v.optional(progressStyleValidator),
+    ignorePages: v.optional(v.boolean()),
+    readingMode: readingModeValidator,
+    startMonth: v.optional(v.string()),
+    endMonth: v.optional(v.string()),
+    startYear: v.optional(v.number()),
+    endYear: v.optional(v.number()),
+    daysToRead: v.optional(v.number()),
+    startDate: v.string(),
+    endDate: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId, name } = await requireClerkId(ctx);
+    const community = await ctx.db.get(args.communityId);
+    if (!community || community.isArchived === true) {
+      throw new Error("Community not found");
+    }
+
+    const role = await getViewerRole(ctx, args.communityId, clerkId);
+    if (!canManageCommunity(role)) {
+      throw new Error("Unauthorized");
+    }
+
+    const payload = buildCommunityBookPayload(args);
+    return await ctx.db.insert("communityBooks", {
+      communityId: args.communityId,
+      ...payload,
+      createdByClerkId: clerkId,
+      creatorName: name,
+      createdAt: Date.now(),
+      isArchived: false,
+    });
+  },
+});
+
+export const updateCommunityBook = mutation({
+  args: {
+    communityBookId: v.id("communityBooks"),
+    name: v.string(),
+    author: v.optional(v.string()),
+    totalPages: v.optional(v.number()),
+    totalChapters: v.optional(v.number()),
+    progressStyle: v.optional(progressStyleValidator),
+    ignorePages: v.optional(v.boolean()),
+    readingMode: readingModeValidator,
+    startMonth: v.optional(v.string()),
+    endMonth: v.optional(v.string()),
+    startYear: v.optional(v.number()),
+    endYear: v.optional(v.number()),
+    daysToRead: v.optional(v.number()),
+    startDate: v.string(),
+    endDate: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const existing = await ctx.db.get(args.communityBookId);
+    if (!existing) {
+      throw new Error("Community book not found");
+    }
+
+    const role = await getViewerRole(ctx, existing.communityId, clerkId);
+    if (!canManageCommunity(role)) {
+      throw new Error("Unauthorized");
+    }
+
+    const payload = buildCommunityBookPayload(args);
+    await ctx.db.patch(args.communityBookId, payload);
+  },
+});
+
+export const archiveCommunityBook = mutation({
+  args: {
+    communityBookId: v.id("communityBooks"),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const book = await ctx.db.get(args.communityBookId);
+    if (!book) {
+      throw new Error("Community book not found");
+    }
+
+    const role = await getViewerRole(ctx, book.communityId, clerkId);
+    if (!canManageCommunity(role)) {
+      throw new Error("Unauthorized");
+    }
+
+    await ctx.db.patch(args.communityBookId, {
+      isArchived: true,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const getCommunityBooks = query({
+  args: {
+    communityId: v.id("communities"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const viewerClerkId = identity?.subject;
+    const community = await ctx.db.get(args.communityId);
+    if (!community || community.isArchived === true) {
+      throw new Error("Community not found");
+    }
+
+    const viewerRole = await getViewerRole(ctx, args.communityId, viewerClerkId);
+    if (
+      !canAccessCommunityBooks({
+        visibility: community.visibility,
+        isMember: viewerRole !== undefined,
+      })
+    ) {
+      throw new Error("Unauthorized");
+    }
+
+    const books = await ctx.db
+      .query("communityBooks")
+      .withIndex("by_community", (q) => q.eq("communityId", args.communityId))
+      .order("desc")
+      .collect();
+
+    return books.filter((book) => book.isArchived !== true);
+  },
+});
+
+export const getCommunityBook = query({
+  args: {
+    communityBookId: v.id("communityBooks"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const viewerClerkId = identity?.subject;
+    const book = await ctx.db.get(args.communityBookId);
+    if (!book || book.isArchived === true) {
+      return null;
+    }
+
+    const community = await ctx.db.get(book.communityId);
+    if (!community || community.isArchived === true) {
+      return null;
+    }
+
+    const viewerRole = await getViewerRole(ctx, book.communityId, viewerClerkId);
+    if (
+      !canAccessCommunityBooks({
+        visibility: community.visibility,
+        isMember: viewerRole !== undefined,
+      })
+    ) {
+      throw new Error("Unauthorized");
+    }
+
+    return book;
+  },
+});
+
+export const listCommunityMembers = query({
+  args: {
+    communityId: v.id("communities"),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const role = await getViewerRole(ctx, args.communityId, clerkId);
+    if (!canManageCommunity(role)) {
+      throw new Error("Unauthorized");
+    }
+
+    const members = await ctx.db
+      .query("communityMembers")
+      .withIndex("by_community", (q) => q.eq("communityId", args.communityId))
+      .collect();
+
+    return await Promise.all(
+      members
+        .filter((member) => member.status === "active")
+        .map(async (member) => {
+          const user = await ctx.db
+            .query("users")
+            .withIndex("by_clerk_id", (q) => q.eq("clerkId", member.clerkId))
+            .unique();
+
+          return {
+            _id: member._id,
+            clerkId: member.clerkId,
+            role: member.role,
+            joinedAt: member.joinedAt,
+            name: user?.name,
+            email: user?.email,
+            imageUrl: user?.imageUrl,
+          };
+        })
+    );
+  },
+});
+
+export const listInvites = query({
+  args: {
+    communityId: v.id("communities"),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const role = await getViewerRole(ctx, args.communityId, clerkId);
+    if (!canManageInvites(role)) {
+      throw new Error("Unauthorized");
+    }
+
+    return await ctx.db
+      .query("communityInvites")
+      .withIndex("by_community", (q) => q.eq("communityId", args.communityId))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const createInvite = mutation({
+  args: {
+    communityId: v.id("communities"),
+    roleToGrant: inviteRoleValidator,
+    expiresInDays: v.optional(v.number()),
+    maxUses: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const role = await getViewerRole(ctx, args.communityId, clerkId);
+    if (!canManageInvites(role)) {
+      throw new Error("Unauthorized");
+    }
+
+    const expiresInDays =
+      args.expiresInDays !== undefined && args.expiresInDays > 0
+        ? Math.floor(args.expiresInDays)
+        : undefined;
+    const maxUses =
+      args.maxUses !== undefined && args.maxUses > 0
+        ? Math.floor(args.maxUses)
+        : undefined;
+    const now = Date.now();
+    const token = generateInviteToken();
+
+    await ctx.db.insert("communityInvites", {
+      communityId: args.communityId,
+      token,
+      createdByClerkId: clerkId,
+      roleToGrant: args.roleToGrant,
+      expiresAt: expiresInDays
+        ? now + expiresInDays * 24 * 60 * 60 * 1000
+        : undefined,
+      maxUses,
+      usedCount: 0,
+      createdAt: now,
+    });
+
+    return { token };
+  },
+});
+
+export const disableInvite = mutation({
+  args: {
+    inviteId: v.id("communityInvites"),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const invite = await ctx.db.get(args.inviteId);
+    if (!invite) {
+      throw new Error("Invite not found");
+    }
+    const role = await getViewerRole(ctx, invite.communityId, clerkId);
+    if (!canManageInvites(role)) {
+      throw new Error("Unauthorized");
+    }
+
+    await ctx.db.patch(args.inviteId, { disabledAt: Date.now() });
+  },
+});
+
+export const getInvitePreview = query({
+  args: {
+    token: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const invite = await ctx.db
+      .query("communityInvites")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+
+    if (!invite) {
+      return null;
+    }
+
+    const community = await ctx.db.get(invite.communityId);
+    if (!community || community.isArchived === true) {
+      return null;
+    }
+
+    const now = Date.now();
+    const isExpired = invite.expiresAt !== undefined && invite.expiresAt < now;
+    const isUsedUp =
+      invite.maxUses !== undefined && invite.usedCount >= invite.maxUses;
+    const isActive =
+      invite.disabledAt === undefined && !isExpired && !isUsedUp;
+
+    return {
+      community: buildCommunityPreview(
+        community,
+        await getMemberCount(ctx, community._id)
+      ),
+      roleToGrant: invite.roleToGrant,
+      isActive,
+      isExpired,
+      isUsedUp,
+    };
+  },
+});
+
+export const acceptInvite = mutation({
+  args: {
+    token: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const invite = await ctx.db
+      .query("communityInvites")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+
+    if (!invite) {
+      throw new Error("Invite not found");
+    }
+    const community = await ctx.db.get(invite.communityId);
+    if (!community || community.isArchived === true) {
+      throw new Error("Community not found");
+    }
+
+    const now = Date.now();
+    if (invite.disabledAt !== undefined) {
+      throw new Error("Invite has been disabled");
+    }
+    if (invite.expiresAt !== undefined && invite.expiresAt < now) {
+      throw new Error("Invite has expired");
+    }
+    if (invite.maxUses !== undefined && invite.usedCount >= invite.maxUses) {
+      throw new Error("Invite has already been used");
+    }
+
+    const existing = await ctx.db
+      .query("communityMembers")
+      .withIndex("by_community_and_clerk", (q) =>
+        q.eq("communityId", invite.communityId).eq("clerkId", clerkId)
+      )
+      .unique();
+
+    if (existing?.status === "active") {
+      return { slug: community.slug, alreadyMember: true };
+    }
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        role: invite.roleToGrant,
+        status: "active",
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("communityMembers", {
+        communityId: invite.communityId,
+        clerkId,
+        role: invite.roleToGrant,
+        status: "active",
+        joinedAt: now,
+        updatedAt: now,
+      });
+    }
+
+    await ctx.db.patch(invite._id, {
+      usedCount: invite.usedCount + 1,
+    });
+
+    return { slug: community.slug, alreadyMember: false };
+  },
+});
+
+export const updateMemberRole = mutation({
+  args: {
+    memberId: v.id("communityMembers"),
+    role: communityRoleValidator,
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const member = await ctx.db.get(args.memberId);
+    if (!member) {
+      throw new Error("Member not found");
+    }
+    const actorRole = await getViewerRole(ctx, member.communityId, clerkId);
+    if (!canChangeMemberRole(actorRole, member.role, args.role)) {
+      throw new Error("Unauthorized");
+    }
+    await ctx.db.patch(args.memberId, {
+      role: args.role,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const removeMember = mutation({
+  args: {
+    memberId: v.id("communityMembers"),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const member = await ctx.db.get(args.memberId);
+    if (!member) {
+      throw new Error("Member not found");
+    }
+    const actorRole = await getViewerRole(ctx, member.communityId, clerkId);
+    if (!canRemoveMember(actorRole, member.role)) {
+      throw new Error("Unauthorized");
+    }
+    await ctx.db.patch(args.memberId, {
+      status: "removed",
+      updatedAt: Date.now(),
+    });
+  },
+});

@@ -5,6 +5,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { ConvexClientProvider } from "@/lib/convex";
 import SyncUser from "@/components/SyncUser";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { Toaster } from "@/components/ui/toaster";
 import { Analytics } from "@vercel/analytics/next";
 import {
   DEFAULT_DESCRIPTION,
@@ -114,6 +115,7 @@ export default function RootLayout({
             <ConvexClientProvider>
             <SyncUser />
             {children}
+            <Toaster />
           </ConvexClientProvider>
           </ThemeProvider>
         </ClerkProvider>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import BookCard from "@/components/BookCard";
@@ -12,16 +13,88 @@ import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Lock, Search, ShieldCheck, Users } from "lucide-react";
 
 type TabType = "active" | "archived";
+
+type DashboardBook = {
+  _id: Id<"books">;
+  name: string;
+  author?: string;
+  totalPages?: number;
+  totalChapters?: number;
+  readingMode: "calendar" | "fixed-days";
+  startDate: string;
+  endDate: string;
+  startMonth?: string;
+  endMonth?: string;
+  startYear?: number;
+  endYear?: number;
+  daysToRead?: number;
+  isPublic?: boolean;
+  progressStyle?: "pages" | "chapters";
+  ignorePages?: boolean;
+  progress?: number;
+};
+
+type CommunityPreview = {
+  _id: string;
+  name: string;
+  slug: string;
+  visibility: "public" | "private";
+  memberCount: number;
+  viewerRole?: "owner" | "admin" | "moderator" | "member";
+  brandColor?: string;
+};
+
+function CommunityDashboardCard({ community }: { community: CommunityPreview }) {
+  return (
+    <Card className="flex h-full flex-col p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              className="h-3 w-3 rounded-full border border-border"
+              style={{ backgroundColor: community.brandColor ?? "transparent" }}
+              aria-hidden="true"
+            />
+            <h3 className="truncate text-base font-semibold text-card-foreground sm:text-lg">
+              {community.name}
+            </h3>
+          </div>
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium capitalize text-muted-foreground">
+          {community.visibility === "private" ? (
+            <Lock className="h-3 w-3" />
+          ) : (
+            <Search className="h-3 w-3" />
+          )}
+          {community.visibility}
+        </span>
+      </div>
+
+      <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <Users className="h-4 w-4" />
+          <span>
+            {community.memberCount.toLocaleString()}{" "}
+            {community.memberCount === 1 ? "member" : "members"}
+          </span>
+        </div>
+        {community.viewerRole && (
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4" />
+            <span className="capitalize">Your role: {community.viewerRole}</span>
+          </div>
+        )}
+      </div>
+
+      <Button asChild size="sm" className="mt-5 w-full">
+        <Link href={`/communities/${community.slug}`}>Open</Link>
+      </Button>
+    </Card>
+  );
+}
 
 export default function Dashboard() {
   const { user, isLoaded } = useUser();
@@ -37,6 +110,11 @@ export default function Dashboard() {
     enabled: isLoaded && !!user?.id && activeTab === "archived",
   });
 
+  const { data: communities } = useQuery({
+    ...convexQuery(api.communities.getMyCommunities, {}),
+    enabled: isLoaded && !!user?.id,
+  });
+
   const { data: convexUser } = useQuery({
     ...convexQuery(api.users.getUserByClerkId, {
       clerkId: user?.id ?? "",
@@ -47,8 +125,10 @@ export default function Dashboard() {
   const profileHref = user?.id ? `/user/${convexUser?.slug ?? user.id}` : "#";
 
   const isPending = activeTab === "active" ? booksPending : archivedPending;
-  const booksWithProgress =
-    activeTab === "active" ? books || [] : archivedBooks || [];
+  const booksWithProgress = (
+    activeTab === "active" ? books || [] : archivedBooks || []
+  ) as DashboardBook[];
+  const myCommunities = (communities as CommunityPreview[] | undefined) ?? [];
 
   let content = null;
   if (isPending && books === undefined) {
@@ -77,7 +157,7 @@ export default function Dashboard() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {booksWithProgress.map((book: any) =>
+            {booksWithProgress.map((book) =>
               activeTab === "archived" ? (
                 <ArchivedBookCard
                   key={book._id}
@@ -102,6 +182,32 @@ export default function Dashboard() {
     <>
       <Navigation />
       <div className="mx-auto max-w-6xl p-3 sm:p-6">
+        {myCommunities.length > 0 && (
+          <section className="mb-8 sm:mb-10">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-foreground sm:text-3xl">
+                  My Communities
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Open the reading communities you belong to.
+                </p>
+              </div>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/communities">View all communities</Link>
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {myCommunities.map((community) => (
+                <CommunityDashboardCard
+                  key={community._id}
+                  community={community}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
         <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground sm:text-4xl">
