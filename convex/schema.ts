@@ -63,10 +63,13 @@ export default defineSchema({
     markedCompleteAt: v.optional(v.number()),
     /** Allows the public book page to show the generated merged reflection */
     shareMergedReflection: v.optional(v.boolean()),
+    /** Set when this personal book was created by tracking a community book */
+    communityBookId: v.optional(v.id("communityBooks")),
   })
     .index("by_user", ["userId"])
     .index("by_user_and_order", ["userId", "bookOrder"])
-    .index("by_public", ["isPublic"]),
+    .index("by_public", ["isPublic"])
+    .index("by_community_book_id", ["communityBookId"]),
 
   communities: defineTable({
     name: v.string(),

@@ -212,9 +212,10 @@ export default function CommunityDetailPageClient() {
                               book.progressStyle === "chapters" &&
                               book.ignorePages === true;
                             return (
-                              <div
+                              <Link
                                 key={book._id}
-                                className="rounded-md border border-border p-4"
+                                href={`/communities/${detail.slug}/books/${book._id}`}
+                                className="block rounded-md border border-border p-4 transition-colors hover:bg-muted/50"
                               >
                                 <div className="flex items-start gap-3">
                                   <div className="rounded-md bg-primary/10 p-3">
@@ -237,7 +238,7 @@ export default function CommunityDetailPageClient() {
                                     </p>
                                   </div>
                                 </div>
-                              </div>
+                              </Link>
                             );
                           })}
                         </div>

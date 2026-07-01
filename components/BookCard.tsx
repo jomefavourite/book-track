@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import DeleteConfirmDialog from "./DeleteConfirmDialog";
+import { Users } from "lucide-react";
 
 interface BookCardProps {
   book: {
@@ -34,6 +35,7 @@ interface BookCardProps {
     isPublic?: boolean;
     progressStyle?: "pages" | "chapters";
     ignorePages?: boolean;
+    communityBookId?: Id<"communityBooks">;
   };
   progress?: number;
 }
@@ -108,7 +110,12 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
     <>
       <Card className="relative p-3 transition-shadow hover:shadow-lg sm:p-4">
         <div className="absolute right-1.5 top-1.5 flex items-center gap-1 sm:right-2 sm:top-2 sm:gap-2">
-          {book.isPublic ? (
+          {book.communityBookId ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground sm:px-2 sm:py-1 sm:text-xs">
+              <Users className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+              Community
+            </span>
+          ) : book.isPublic ? (
             <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900 dark:text-green-200 sm:px-2 sm:py-1 sm:text-xs">
               Public
             </span>
@@ -117,32 +124,34 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
               Private
             </span>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            asChild
-            className="h-8 w-8 text-muted-foreground hover:text-green-600 dark:hover:text-green-500"
-          >
-            <Link
-              href={`/books/${book._id}/edit`}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                router.push(`/books/${book._id}/edit`);
-              }}
-              aria-label="Edit book"
-              title="Edit book"
+          {!book.communityBookId && (
+            <Button
+              variant="ghost"
+              size="icon"
+              asChild
+              className="h-8 w-8 text-muted-foreground hover:text-green-600 dark:hover:text-green-500"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 sm:h-5 sm:w-5"
-                viewBox="0 0 20 20"
-                fill="currentColor"
+              <Link
+                href={`/books/${book._id}/edit`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  router.push(`/books/${book._id}/edit`);
+                }}
+                aria-label="Edit book"
+                title="Edit book"
               >
-                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-              </svg>
-            </Link>
-          </Button>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 sm:h-5 sm:w-5"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                </svg>
+              </Link>
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"

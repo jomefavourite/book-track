@@ -13,6 +13,7 @@ import {
   canAccessCommunityBooks,
   validateCommunityBookInput,
 } from "./communityBookRules";
+import { getBookProgressPercent } from "./bookProgress";
 
 const communityRoleValidator = v.union(
   v.literal("owner"),
@@ -881,5 +882,199 @@ export const removeMember = mutation({
       status: "removed",
       updatedAt: Date.now(),
     });
+  },
+});
+
+export const getCommunityForBook = query({
+  args: {
+    communityBookId: v.id("communityBooks"),
+  },
+  handler: async (ctx, args) => {
+    const communityBook = await ctx.db.get(args.communityBookId);
+    if (!communityBook) return null;
+    const community = await ctx.db.get(communityBook.communityId);
+    if (!community || community.isArchived === true) return null;
+    return { _id: community._id, name: community.name, slug: community.slug };
+  },
+});
+
+export const getMyTrackingForCommunityBook = query({
+  args: {
+    communityBookId: v.id("communityBooks"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    const clerkId = identity.subject;
+    const personalBook = await ctx.db
+      .query("books")
+      .withIndex("by_community_book_id", (q) =>
+        q.eq("communityBookId", args.communityBookId)
+      )
+      .filter((q) => q.eq(q.field("userId"), clerkId))
+      .first();
+    return personalBook ? personalBook._id : null;
+  },
+});
+
+export const trackCommunityBook = mutation({
+  args: {
+    communityBookId: v.id("communityBooks"),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+
+    const communityBook = await ctx.db.get(args.communityBookId);
+    if (!communityBook || communityBook.isArchived === true) {
+      throw new Error("Community book not found");
+    }
+
+    const membership = await getActiveMembership(ctx, communityBook.communityId, clerkId);
+    if (!membership) {
+      throw new Error("You must be a member of this community to track its books");
+    }
+
+    const existing = await ctx.db
+      .query("books")
+      .withIndex("by_community_book_id", (q) =>
+        q.eq("communityBookId", args.communityBookId)
+      )
+      .filter((q) => q.eq(q.field("userId"), clerkId))
+      .first();
+    if (existing) {
+      return existing._id;
+    }
+
+    const bookId = await ctx.db.insert("books", {
+      userId: clerkId,
+      name: communityBook.name,
+      author: communityBook.author,
+      totalPages: communityBook.totalPages,
+      totalChapters: communityBook.totalChapters,
+      progressStyle: communityBook.progressStyle,
+      ignorePages: communityBook.ignorePages,
+      readingMode: communityBook.readingMode,
+      startMonth: communityBook.startMonth,
+      endMonth: communityBook.endMonth,
+      startYear: communityBook.startYear,
+      endYear: communityBook.endYear,
+      daysToRead: communityBook.daysToRead,
+      startDate: communityBook.startDate,
+      endDate: communityBook.endDate,
+      isPublic: false,
+      communityBookId: args.communityBookId,
+      createdAt: Date.now(),
+    });
+
+    return bookId;
+  },
+});
+
+export const getCommunityMemberProgress = query({
+  args: {
+    communityId: v.id("communities"),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const role = await getViewerRole(ctx, args.communityId, clerkId);
+    if (!canManageCommunity(role)) {
+      throw new Error("Unauthorized");
+    }
+
+    const communityBooks = await ctx.db
+      .query("communityBooks")
+      .withIndex("by_community", (q) => q.eq("communityId", args.communityId))
+      .collect();
+    const activeBooks = communityBooks.filter((b) => b.isArchived !== true);
+
+    const memberDocs = await ctx.db
+      .query("communityMembers")
+      .withIndex("by_community", (q) => q.eq("communityId", args.communityId))
+      .filter((q) => q.eq(q.field("status"), "active"))
+      .collect();
+
+    const members = await Promise.all(
+      memberDocs.map(async (m) => {
+        const user = await ctx.db
+          .query("users")
+          .withIndex("by_clerk_id", (q) => q.eq("clerkId", m.clerkId))
+          .unique();
+        return {
+          _id: m._id,
+          clerkId: m.clerkId,
+          role: m.role,
+          name: user?.name,
+          email: user?.email,
+        };
+      })
+    );
+
+    const result = await Promise.all(
+      activeBooks.map(async (communityBook) => {
+        const memberProgress = await Promise.all(
+          members.map(async (member) => {
+            const personalBook = await ctx.db
+              .query("books")
+              .withIndex("by_community_book_id", (q) =>
+                q.eq("communityBookId", communityBook._id)
+              )
+              .filter((q) => q.eq(q.field("userId"), member.clerkId))
+              .first();
+
+            if (!personalBook) {
+              return {
+                clerkId: member.clerkId,
+                name: member.name,
+                email: member.email,
+                role: member.role,
+                isTracking: false as const,
+                progress: 0,
+                lastReadDate: undefined as string | undefined,
+              };
+            }
+
+            const sessions = await ctx.db
+              .query("readingSessions")
+              .withIndex("by_book", (q) => q.eq("bookId", personalBook._id))
+              .collect();
+
+            const progress = getBookProgressPercent(personalBook, sessions);
+
+            const lastRead = sessions
+              .filter((s) => s.isRead && !s.isMissed)
+              .sort((a, b) => b.date.localeCompare(a.date))[0];
+
+            return {
+              clerkId: member.clerkId,
+              name: member.name,
+              email: member.email,
+              role: member.role,
+              isTracking: true as const,
+              progress,
+              lastReadDate: lastRead?.date as string | undefined,
+            };
+          })
+        );
+
+        return {
+          communityBook: {
+            _id: communityBook._id,
+            name: communityBook.name,
+            author: communityBook.author,
+            totalPages: communityBook.totalPages,
+            totalChapters: communityBook.totalChapters,
+            progressStyle: communityBook.progressStyle,
+            ignorePages: communityBook.ignorePages,
+            startDate: communityBook.startDate,
+            endDate: communityBook.endDate,
+            readingMode: communityBook.readingMode,
+            daysToRead: communityBook.daysToRead,
+          },
+          members: memberProgress.sort((a, b) => b.progress - a.progress),
+        };
+      })
+    );
+
+    return result;
   },
 });
