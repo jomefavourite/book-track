@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
@@ -226,6 +226,45 @@ export const requestCreatorAccess = mutation({
     });
 
     return { status: "pending" as const };
+  },
+});
+
+export const approveCreatorRequest = internalMutation({
+  args: {
+    clerkId: v.string(),
+    name: v.optional(v.string()),
+    email: v.optional(v.string()),
+  },
+  returns: v.object({
+    requestId: v.id("communityCreatorRequests"),
+    status: v.literal("approved"),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("communityCreatorRequests")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        status: "approved",
+        name: args.name ?? existing.name,
+        email: args.email ?? existing.email,
+        updatedAt: now,
+      });
+      return { requestId: existing._id, status: "approved" as const };
+    }
+
+    const requestId = await ctx.db.insert("communityCreatorRequests", {
+      clerkId: args.clerkId,
+      name: args.name,
+      email: args.email,
+      status: "approved",
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { requestId, status: "approved" as const };
   },
 });
 
