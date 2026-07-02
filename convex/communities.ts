@@ -2,8 +2,10 @@ import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import {
   canChangeMemberRole,
+  canManageBooks,
   canManageCommunity,
   canManageInvites,
   canRemoveMember,
@@ -13,6 +15,10 @@ import {
   canAccessCommunityBooks,
   validateCommunityBookInput,
 } from "./communityBookRules";
+import {
+  buildSessionsFromSchedule,
+  getScheduleEntries,
+} from "./communitySchedule";
 import { getBookProgressPercent } from "./bookProgress";
 
 const communityRoleValidator = v.union(
@@ -146,6 +152,12 @@ async function getMemberCount(ctx: QueryCtx | MutationCtx, communityId: Id<"comm
     .collect();
   return members.filter((member) => member.status === "active").length;
 }
+
+const communityBookStatusValidator = v.union(
+  v.literal("upcoming"),
+  v.literal("active"),
+  v.literal("completed")
+);
 
 function buildCommunityPreview(
   community: Doc<"communities">,
@@ -385,7 +397,13 @@ export const getCommunityBySlug = query({
 
     const viewerRole = await getViewerRole(ctx, community._id, viewerClerkId);
     const memberCount = await getMemberCount(ctx, community._id);
-    const preview = buildCommunityPreview(community, memberCount, viewerRole);
+    const logoUrl = community.logoStorageId
+      ? await ctx.storage.getUrl(community.logoStorageId)
+      : null;
+    const preview = {
+      ...buildCommunityPreview(community, memberCount, viewerRole),
+      logoUrl,
+    };
 
     if (community.visibility === "private" && viewerRole === undefined) {
       return {
@@ -399,6 +417,58 @@ export const getCommunityBySlug = query({
       access: viewerRole ? "member" as const : "public" as const,
       updatedAt: community.updatedAt,
     };
+  },
+});
+
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireClerkId(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const saveCommunityLogo = mutation({
+  args: {
+    communityId: v.id("communities"),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const community = await ctx.db.get(args.communityId);
+    if (!community || community.isArchived === true) {
+      throw new Error("Community not found");
+    }
+    const role = await getViewerRole(ctx, args.communityId, clerkId);
+    if (!canManageCommunity(role)) {
+      throw new Error("Unauthorized");
+    }
+    await ctx.db.patch(args.communityId, {
+      logoStorageId: args.storageId,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const saveCommunityBookCover = mutation({
+  args: {
+    communityBookId: v.id("communityBooks"),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const book = await ctx.db.get(args.communityBookId);
+    if (!book) {
+      throw new Error("Community book not found");
+    }
+    const role = await getViewerRole(ctx, book.communityId, clerkId);
+    if (!canManageBooks(role)) {
+      throw new Error("Unauthorized");
+    }
+    await ctx.db.patch(args.communityBookId, {
+      coverImageStorageId: args.storageId,
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -511,6 +581,7 @@ export const createCommunityBook = mutation({
     daysToRead: v.optional(v.number()),
     startDate: v.string(),
     endDate: v.string(),
+    coverImageStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
     const { clerkId, name } = await requireClerkId(ctx);
@@ -520,7 +591,7 @@ export const createCommunityBook = mutation({
     }
 
     const role = await getViewerRole(ctx, args.communityId, clerkId);
-    if (!canManageCommunity(role)) {
+    if (!canManageBooks(role)) {
       throw new Error("Unauthorized");
     }
 
@@ -528,6 +599,8 @@ export const createCommunityBook = mutation({
     return await ctx.db.insert("communityBooks", {
       communityId: args.communityId,
       ...payload,
+      coverImageStorageId: args.coverImageStorageId,
+      status: "upcoming",
       createdByClerkId: clerkId,
       creatorName: name,
       createdAt: Date.now(),
@@ -553,6 +626,7 @@ export const updateCommunityBook = mutation({
     daysToRead: v.optional(v.number()),
     startDate: v.string(),
     endDate: v.string(),
+    coverImageStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
     const { clerkId } = await requireClerkId(ctx);
@@ -562,12 +636,73 @@ export const updateCommunityBook = mutation({
     }
 
     const role = await getViewerRole(ctx, existing.communityId, clerkId);
-    if (!canManageCommunity(role)) {
+    if (!canManageBooks(role)) {
       throw new Error("Unauthorized");
     }
 
     const payload = buildCommunityBookPayload(args);
-    await ctx.db.patch(args.communityBookId, payload);
+    await ctx.db.patch(args.communityBookId, {
+      ...payload,
+      ...(args.coverImageStorageId !== undefined
+        ? { coverImageStorageId: args.coverImageStorageId }
+        : {}),
+    });
+  },
+});
+
+export const setCommunityBookStatus = mutation({
+  args: {
+    communityBookId: v.id("communityBooks"),
+    status: communityBookStatusValidator,
+    /** Demote the current active book to "completed" instead of failing */
+    demoteCurrentActive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const book = await ctx.db.get(args.communityBookId);
+    if (!book || book.isArchived === true) {
+      throw new Error("Community book not found");
+    }
+
+    const role = await getViewerRole(ctx, book.communityId, clerkId);
+    if (!canManageBooks(role)) {
+      throw new Error("Unauthorized");
+    }
+
+    const now = Date.now();
+
+    if (args.status === "active") {
+      const currentActive = await ctx.db
+        .query("communityBooks")
+        .withIndex("by_community_and_status", (q) =>
+          q.eq("communityId", book.communityId).eq("status", "active")
+        )
+        .collect();
+      for (const other of currentActive) {
+        if (other._id === args.communityBookId || other.isArchived === true) {
+          continue;
+        }
+        if (!args.demoteCurrentActive) {
+          throw new Error(`ACTIVE_CONFLICT:${other.name}`);
+        }
+        await ctx.db.patch(other._id, {
+          status: "completed",
+          completedAt: other.completedAt ?? now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    await ctx.db.patch(args.communityBookId, {
+      status: args.status,
+      ...(args.status === "active" && book.startedAt === undefined
+        ? { startedAt: now }
+        : {}),
+      ...(args.status === "completed" && book.completedAt === undefined
+        ? { completedAt: now }
+        : {}),
+      updatedAt: now,
+    });
   },
 });
 
@@ -583,7 +718,7 @@ export const archiveCommunityBook = mutation({
     }
 
     const role = await getViewerRole(ctx, book.communityId, clerkId);
-    if (!canManageCommunity(role)) {
+    if (!canManageBooks(role)) {
       throw new Error("Unauthorized");
     }
 
@@ -622,7 +757,16 @@ export const getCommunityBooks = query({
       .order("desc")
       .collect();
 
-    return books.filter((book) => book.isArchived !== true);
+    return await Promise.all(
+      books
+        .filter((book) => book.isArchived !== true)
+        .map(async (book) => ({
+          ...book,
+          coverImageUrl: book.coverImageStorageId
+            ? await ctx.storage.getUrl(book.coverImageStorageId)
+            : null,
+        }))
+    );
   },
 });
 
@@ -653,7 +797,13 @@ export const getCommunityBook = query({
       throw new Error("Unauthorized");
     }
 
-    return book;
+    return {
+      ...book,
+      coverImageUrl: book.coverImageStorageId
+        ? await ctx.storage.getUrl(book.coverImageStorageId)
+        : null,
+      viewerRole,
+    };
   },
 });
 
@@ -803,10 +953,15 @@ export const getInvitePreview = query({
       invite.disabledAt === undefined && !isExpired && !isUsedUp;
 
     return {
-      community: buildCommunityPreview(
-        community,
-        await getMemberCount(ctx, community._id)
-      ),
+      community: {
+        ...buildCommunityPreview(
+          community,
+          await getMemberCount(ctx, community._id)
+        ),
+        logoUrl: community.logoStorageId
+          ? await ctx.storage.getUrl(community.logoStorageId)
+          : null,
+      },
       roleToGrant: invite.roleToGrant,
       isActive,
       isExpired,
@@ -876,6 +1031,19 @@ export const acceptInvite = mutation({
     await ctx.db.patch(invite._id, {
       usedCount: invite.usedCount + 1,
     });
+
+    const identity = await ctx.auth.getUserIdentity();
+    await ctx.scheduler.runAfter(
+      0,
+      internal.communityNotifications.notifyAdminsOfNewMember,
+      {
+        communityId: invite.communityId,
+        newMemberClerkId: clerkId,
+        newMemberName: identity?.name ?? "Someone",
+        communityName: community.name,
+        communitySlug: community.slug,
+      }
+    );
 
     return { slug: community.slug, alreadyMember: false };
   },
@@ -1005,7 +1173,99 @@ export const trackCommunityBook = mutation({
       createdAt: Date.now(),
     });
 
+    // Seed sessions from the community reading schedule (if one exists) so
+    // rest/reflection/catch-up days and chapter assignments carry over.
+    const schedule = await getScheduleEntries(ctx, args.communityBookId);
+    if (schedule.length > 0) {
+      const book = await ctx.db.get(bookId);
+      if (book) {
+        const planned = buildSessionsFromSchedule(book, schedule);
+        await Promise.all(
+          planned.map((day) =>
+            ctx.db.insert("readingSessions", {
+              bookId,
+              userId: clerkId,
+              date: day.date,
+              plannedPages: day.plannedPages,
+              chapterNumber: day.chapterNumber,
+              isRead: false,
+              createdAt: Date.now(),
+            })
+          )
+        );
+      }
+    }
+
     return bookId;
+  },
+});
+
+export const getCommunityBookReflections = query({
+  args: {
+    communityBookId: v.id("communityBooks"),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+
+    const communityBook = await ctx.db.get(args.communityBookId);
+    if (!communityBook || communityBook.isArchived === true) {
+      throw new Error("Community book not found");
+    }
+
+    const membership = await getActiveMembership(
+      ctx,
+      communityBook.communityId,
+      clerkId
+    );
+    if (!membership) {
+      throw new Error("Unauthorized");
+    }
+
+    const personalBooks = await ctx.db
+      .query("books")
+      .withIndex("by_community_book_id", (q) =>
+        q.eq("communityBookId", args.communityBookId)
+      )
+      .collect();
+
+    const results = await Promise.all(
+      personalBooks.map(async (personalBook) => {
+        const sessions = await ctx.db
+          .query("readingSessions")
+          .withIndex("by_book", (q) => q.eq("bookId", personalBook._id))
+          .collect();
+
+        const reflectionSessions = sessions.filter(
+          (session) =>
+            session.isRead &&
+            session.isMissed !== true &&
+            typeof session.reflectionNote === "string" &&
+            session.reflectionNote.trim().length > 0
+        );
+
+        if (reflectionSessions.length === 0) return [];
+
+        const user = await ctx.db
+          .query("users")
+          .withIndex("by_clerk_id", (q) => q.eq("clerkId", personalBook.userId))
+          .unique();
+
+        return reflectionSessions.map((session) => ({
+          sessionId: session._id,
+          userId: personalBook.userId,
+          userName: user?.name,
+          userImageUrl: user?.imageUrl,
+          date: session.date,
+          chapterNumber:
+            typeof session.chapterNumber === "number"
+              ? session.chapterNumber
+              : undefined,
+          reflectionNote: session.reflectionNote!.trim(),
+        }));
+      })
+    );
+
+    return results.flat().sort((a, b) => b.date.localeCompare(a.date));
   },
 });
 

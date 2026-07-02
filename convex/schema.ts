@@ -84,6 +84,7 @@ export default defineSchema({
     ownerClerkId: v.string(),
     ownerName: v.optional(v.string()),
     brandColor: v.optional(v.string()),
+    logoStorageId: v.optional(v.id("_storage")),
     isArchived: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -114,9 +115,38 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
     isArchived: v.optional(v.boolean()),
+    /** Library status; legacy rows without it are treated as "upcoming" */
+    status: v.optional(
+      v.union(
+        v.literal("upcoming"),
+        v.literal("active"),
+        v.literal("completed")
+      )
+    ),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    coverImageStorageId: v.optional(v.id("_storage")),
   })
     .index("by_community", ["communityId"])
-    .index("by_community_and_created", ["communityId", "createdAt"]),
+    .index("by_community_and_created", ["communityId", "createdAt"])
+    .index("by_community_and_status", ["communityId", "status"]),
+
+  communityBookSchedule: defineTable({
+    communityBookId: v.id("communityBooks"),
+    date: v.string(),
+    dayType: v.union(
+      v.literal("reading"),
+      v.literal("rest"),
+      v.literal("reflection"),
+      v.literal("catchup")
+    ),
+    /** Chapter assigned for reading days on chapter-based books */
+    chapterNumber: v.optional(v.number()),
+    /** Short admin label shown to members, e.g. "Discuss ch. 1-2" */
+    notes: v.optional(v.string()),
+  })
+    .index("by_community_book", ["communityBookId"])
+    .index("by_community_book_and_date", ["communityBookId", "date"]),
 
   communityMembers: defineTable({
     communityId: v.id("communities"),

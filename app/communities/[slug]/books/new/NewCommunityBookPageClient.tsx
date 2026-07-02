@@ -1,11 +1,11 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ImagePlus, X } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -30,7 +30,7 @@ type CommunityDetail = {
 };
 
 function canManage(role?: Role) {
-  return role === "owner" || role === "admin";
+  return role === "owner" || role === "admin" || role === "moderator";
 }
 
 function todayKey() {
@@ -65,6 +65,11 @@ export default function NewCommunityBookPageClient() {
   const [endDate, setEndDate] = useState("");
   const [daysToRead, setDaysToRead] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | null>(null);
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+
+  const generateUploadUrl = useConvexMutation(api.communities.generateUploadUrl);
 
   const { data: community, isPending } = useQuery({
     ...convexQuery(api.communities.getCommunityBySlug, { slug }),
@@ -149,7 +154,22 @@ export default function NewCommunityBookPageClient() {
     const end = parseDateFromStorage(endDateValue);
 
     try {
+      let coverImageStorageId: string | undefined;
+      if (coverFile) {
+        const uploadUrl = await generateUploadUrl({});
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": coverFile.type },
+          body: coverFile,
+        });
+        if (!response.ok) throw new Error("Cover image upload failed.");
+        const uploaded = await response.json();
+        coverImageStorageId = uploaded.storageId;
+      }
+
       await createCommunityBook({
+        coverImageStorageId:
+          coverImageStorageId as Id<"_storage"> | undefined,
         communityId: detail._id,
         name,
         author: author.trim() || undefined,
@@ -204,10 +224,11 @@ export default function NewCommunityBookPageClient() {
         ) : !canEdit ? (
           <Card className="p-6 text-center sm:p-10">
             <h1 className="text-2xl font-bold text-foreground">
-              Admin access required
+              Admin or moderator access required
             </h1>
             <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-              Only owners and admins can add shared books to this community.
+              Only owners, admins, and moderators can add shared books to this
+              community.
             </p>
           </Card>
         ) : (
@@ -246,6 +267,72 @@ export default function NewCommunityBookPageClient() {
                       placeholder="e.g., Octavia Butler"
                     />
                   </label>
+
+                  <div className="space-y-2 sm:col-span-2">
+                    <span className="text-sm font-medium text-foreground">
+                      Cover image{" "}
+                      <span className="text-muted-foreground">(optional)</span>
+                    </span>
+                    <div className="flex items-center gap-4">
+                      {coverPreviewUrl ? (
+                        <div className="relative">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={coverPreviewUrl}
+                            alt="Cover preview"
+                            className="h-28 w-20 rounded-md border border-border object-cover"
+                          />
+                          <button
+                            type="button"
+                            aria-label="Remove cover image"
+                            className="absolute -right-2 -top-2 rounded-full border border-border bg-background p-1 text-muted-foreground shadow-sm hover:text-foreground"
+                            onClick={() => {
+                              setCoverFile(null);
+                              if (coverPreviewUrl)
+                                URL.revokeObjectURL(coverPreviewUrl);
+                              setCoverPreviewUrl(null);
+                              if (coverInputRef.current)
+                                coverInputRef.current.value = "";
+                            }}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex h-28 w-20 items-center justify-center rounded-md border border-dashed border-border bg-muted/40">
+                          <ImagePlus className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => coverInputRef.current?.click()}
+                        >
+                          {coverFile ? "Change image" : "Choose image"}
+                        </Button>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Shown in the community library.
+                        </p>
+                      </div>
+                      <input
+                        ref={coverInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] ?? null;
+                          if (coverPreviewUrl)
+                            URL.revokeObjectURL(coverPreviewUrl);
+                          setCoverFile(file);
+                          setCoverPreviewUrl(
+                            file ? URL.createObjectURL(file) : null
+                          );
+                        }}
+                      />
+                    </div>
+                  </div>
 
                   <div className="space-y-2 sm:col-span-2">
                     <span className="text-sm font-medium text-foreground">

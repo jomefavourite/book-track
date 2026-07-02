@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +10,7 @@ import {
   BookOpen,
   CalendarClock,
   Copy,
+  ImagePlus,
   Infinity,
   LinkIcon,
   Settings,
@@ -50,6 +51,7 @@ type CommunityDetail = {
   description?: string;
   visibility: "public" | "private";
   brandColor?: string;
+  logoUrl?: string | null;
   viewerRole?: Role;
 };
 
@@ -123,6 +125,87 @@ function getInviteUsageText(invite: Invite) {
     return `${invite.usedCount.toLocaleString()} used · Unlimited uses`;
   }
   return `${invite.usedCount.toLocaleString()}/${invite.maxUses.toLocaleString()} used`;
+}
+
+function LogoUploader({
+  communityId,
+  logoUrl,
+  communityName,
+  onUploaded,
+}: {
+  communityId: Id<"communities">;
+  logoUrl?: string | null;
+  communityName: string;
+  onUploaded: () => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const generateUploadUrl = useConvexMutation(api.communities.generateUploadUrl);
+  const saveCommunityLogo = useConvexMutation(api.communities.saveCommunityLogo);
+
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const uploadUrl = await generateUploadUrl({});
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("Upload failed");
+      const { storageId } = await response.json();
+      await saveCommunityLogo({ communityId, storageId });
+      onUploaded();
+      toast({
+        title: "Logo updated",
+        description: "Your community logo has been saved.",
+      });
+    } catch {
+      toast({ title: "Logo upload failed", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-4">
+      {logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logoUrl}
+          alt={`${communityName} logo`}
+          className="h-16 w-16 rounded-lg border border-border object-cover"
+        />
+      ) : (
+        <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-dashed border-border bg-muted/40">
+          <ImagePlus className="h-6 w-6 text-muted-foreground" />
+        </div>
+      )}
+      <div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+        >
+          {uploading ? "Uploading..." : logoUrl ? "Change logo" : "Upload logo"}
+        </Button>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Square images look best. Shown on the community and invite pages.
+        </p>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => handleFile(event.target.files?.[0])}
+        />
+      </div>
+    </div>
+  );
 }
 
 function BrandColorInput({ defaultColor }: { defaultColor?: string }) {
@@ -313,6 +396,17 @@ export default function CommunitySettingsPageClient() {
                 <Card className="p-5 sm:p-6">
                   <form onSubmit={handleSave} className="space-y-5">
                     <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2 sm:col-span-2">
+                        <span className="text-sm font-medium text-foreground">
+                          Community logo
+                        </span>
+                        <LogoUploader
+                          communityId={detail._id}
+                          logoUrl={detail.logoUrl}
+                          communityName={detail.name}
+                          onUploaded={invalidateCommunity}
+                        />
+                      </div>
                       <label className="space-y-2 sm:col-span-2">
                         <span className="text-sm font-medium text-foreground">
                           Community name
