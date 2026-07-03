@@ -36,6 +36,7 @@ import { Timer } from "lucide-react";
 import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
 import ReflectionNoteEditor from "./ReflectionNoteEditor";
 import { playTimerEndSound } from "@/lib/timerSound";
+import { DAY_TYPE_META, type ScheduleDayType } from "@/lib/scheduleDayType";
 
 interface DaysViewProps {
   bookId: Id<"books">;
@@ -49,6 +50,7 @@ interface DaysViewProps {
     | "progressStyle"
     | "ignorePages"
     | "markedCompleteAt"
+    | "communityBookId"
   > &
     Record<string, unknown>;
   canEdit?: boolean;
@@ -78,6 +80,20 @@ export default function DaysView({
     }),
     enabled: true, // Allow querying even without auth (for public books)
   });
+  const communityBookId = book.communityBookId;
+  const { data: scheduleQuery } = useQuery({
+    ...convexQuery(api.communitySchedule.getScheduleForBook, {
+      communityBookId: communityBookId as Id<"communityBooks">,
+    }),
+    enabled: Boolean(communityBookId),
+  });
+  const dayTypeByDate = useMemo(() => {
+    const map = new Map<string, ScheduleDayType>();
+    (scheduleQuery ?? []).forEach((entry) => {
+      map.set(entry.date, entry.dayType as ScheduleDayType);
+    });
+    return map;
+  }, [scheduleQuery]);
   type ReadingSessionDoc = Doc<"readingSessions">;
   const sessionsQueryKey = convexQuery(api.readingSessions.getSessionsForBook, {
     bookId,
@@ -1014,6 +1030,11 @@ export default function DaysView({
             const session = sessionsMap.get(dateKey);
             const isRead = session?.isRead || false;
             const isMissed = session?.isMissed || false;
+            const scheduledDayType = dayTypeByDate.get(dateKey) ?? "reading";
+            const isNonReadingDay =
+              scheduledDayType !== "reading" && !isRead && !isMissed;
+            const dayTypeMeta = DAY_TYPE_META[scheduledDayType];
+            const DayTypeIcon = dayTypeMeta.icon;
             const targetChapter = chapterOnlyMode
               ? getDisplayTargetChapterForDate(
                   dateKey,
@@ -1048,7 +1069,7 @@ export default function DaysView({
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm font-medium">Day {dayNumber}</span>
                       {/* Timer — only for unread, non-missed days */}
-                      {canEdit && !isRead && !isMissed && (
+                      {canEdit && !isRead && !isMissed && !isNonReadingDay && (
                         <button
                           onClick={() => setOpenTimerDateKey(dateKey)}
                           className="flex items-center gap-0.5 rounded text-muted-foreground transition-colors hover:text-foreground"
@@ -1080,8 +1101,8 @@ export default function DaysView({
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
-                    {/* Read Checkbox - only show if not missed */}
-                    {!isMissed && (
+                    {/* Read Checkbox - only show if not missed and not a non-reading scheduled day */}
+                    {!isMissed && !isNonReadingDay && (
                       <button
                         onClick={() => handleDayToggle(dateKey)}
                         disabled={!canEdit}
@@ -1127,8 +1148,8 @@ export default function DaysView({
                         )}
                       </button>
                     )}
-                    {/* Missed Checkbox - only show if not read */}
-                    {!isRead && (
+                    {/* Missed Checkbox - only show if not read and not a non-reading scheduled day */}
+                    {!isRead && !isNonReadingDay && (
                       <button
                         onClick={() => handleMissedToggle(dateKey)}
                         disabled={!canEdit}
@@ -1178,12 +1199,19 @@ export default function DaysView({
                     )}
                   </div>
                 </div>
-                {!isMissed && (
-                  <div className="mb-2 text-xs">
-                    {chapterOnlyMode
-                      ? `Target: Chapter ${targetChapter}`
-                      : `Plan: ${session?.plannedPages ?? pagesPerDay} pages`}
+                {isNonReadingDay ? (
+                  <div className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
+                    <DayTypeIcon className="h-3.5 w-3.5 shrink-0" />
+                    {dayTypeMeta.label}
                   </div>
+                ) : (
+                  !isMissed && (
+                    <div className="mb-2 text-xs">
+                      {chapterOnlyMode
+                        ? `Target: Chapter ${targetChapter}`
+                        : `Plan: ${session?.plannedPages ?? pagesPerDay} pages`}
+                    </div>
+                  )
                 )}
                 {isRead && chapterOnlyMode && (
                   <div className="mb-2 text-xs">

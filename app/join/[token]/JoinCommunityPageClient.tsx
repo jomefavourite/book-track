@@ -8,6 +8,7 @@ import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { Lock, Users } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import Navigation from "@/components/Navigation";
+import CommunityThemeProvider from "@/components/CommunityThemeProvider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -18,6 +19,7 @@ type InvitePreview = {
     visibility: "public" | "private";
     memberCount: number;
     brandColor?: string;
+    logoUrl?: string | null;
   };
   roleToGrant: "admin" | "moderator" | "member";
   isActive: boolean;
@@ -54,7 +56,7 @@ export default function JoinCommunityPageClient() {
   });
 
   return (
-    <>
+    <CommunityThemeProvider brandColor={preview?.community.brandColor}>
       <Navigation />
       <main className="mx-auto flex min-h-[70vh] max-w-2xl items-center p-3 sm:p-6">
         {isPending || !isLoaded ? (
@@ -80,13 +82,17 @@ export default function JoinCommunityPageClient() {
             </p>
           </Card>
         ) : (
-          <Card className="w-full p-6 sm:p-8">
+          <Card className="w-full overflow-hidden p-6 sm:p-8">
             <div className="flex items-center gap-3">
-              <span
-                className="h-4 w-4 rounded-full border border-border"
-                style={{ backgroundColor: preview.community.brandColor ?? "transparent" }}
-                aria-hidden="true"
-              />
+              {preview.community.logoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={preview.community.logoUrl}
+                  alt={`${preview.community.name} logo`}
+                  className="h-14 w-14 rounded-lg border-2 object-cover"
+                  style={{ borderColor: "var(--brand)" }}
+                />
+              )}
               <span className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium capitalize text-muted-foreground">
                 {preview.community.visibility === "private" && <Lock className="h-3 w-3" />}
                 {preview.community.visibility}
@@ -119,14 +125,31 @@ export default function JoinCommunityPageClient() {
             )}
 
             {!user ? (
-              <SignInButton mode="modal">
-                <Button className="mt-6 w-full">Sign In to Accept Invite</Button>
+              <SignInButton
+                mode="modal"
+                forceRedirectUrl={`/join/${token}`}
+                signUpForceRedirectUrl={`/join/${token}`}
+              >
+                <Button
+                  className="mt-6 w-full"
+                  style={{
+                    backgroundColor: "var(--brand)",
+                    color: "var(--brand-foreground)",
+                  }}
+                >
+                  Sign In to Accept Invite
+                </Button>
               </SignInButton>
             ) : (
               <Button
                 className="mt-6 w-full"
+                style={{
+                  backgroundColor: "var(--brand)",
+                  color: "var(--brand-foreground)",
+                }}
                 disabled={acceptPending}
                 onClick={async () => {
+                  if (acceptPending) return;
                   setError(null);
                   try {
                     await acceptInvite({ token });
@@ -145,6 +168,6 @@ export default function JoinCommunityPageClient() {
           </Card>
         )}
       </main>
-    </>
+    </CommunityThemeProvider>
   );
 }

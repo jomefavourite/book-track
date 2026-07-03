@@ -4,7 +4,27 @@ import {
   parseDateFromStorage,
   distributePagesAcrossDays,
 } from "./dateUtils";
+import { getScheduleDayTypeForDate } from "./communitySchedule";
 import type { Doc } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
+
+async function assertLoggableDay(
+  ctx: MutationCtx,
+  book: Doc<"books">,
+  date: string
+) {
+  if (!book.communityBookId) return;
+  const dayType = await getScheduleDayTypeForDate(
+    ctx,
+    book.communityBookId,
+    date
+  );
+  if (dayType && dayType !== "reading") {
+    throw new Error(
+      `This day is set to ${dayType} and can't be marked read or missed.`
+    );
+  }
+}
 
 const redactReflectionNote = (
   session: Doc<"readingSessions">
@@ -52,6 +72,10 @@ export const createSession = mutation({
     // Ensure isRead and isMissed are mutually exclusive
     const isRead = args.isMissed ? false : args.isRead;
     const isMissed = args.isRead ? false : (args.isMissed ?? false);
+
+    if (isRead || isMissed) {
+      await assertLoggableDay(ctx, book, args.date);
+    }
 
     const sessionId = await ctx.db.insert("readingSessions", {
       bookId: args.bookId,
@@ -141,6 +165,13 @@ export const updateSession = mutation({
     // Verify the session belongs to the user
     if (session.userId !== userId) {
       throw new Error("Unauthorized");
+    }
+
+    if (args.isRead || args.isMissed) {
+      const book = await ctx.db.get(session.bookId);
+      if (book) {
+        await assertLoggableDay(ctx, book, session.date);
+      }
     }
 
     const updateData: {

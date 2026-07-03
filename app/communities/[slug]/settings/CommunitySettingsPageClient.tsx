@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +10,7 @@ import {
   BookOpen,
   CalendarClock,
   Copy,
+  ImagePlus,
   Infinity,
   LinkIcon,
   Settings,
@@ -50,6 +51,7 @@ type CommunityDetail = {
   description?: string;
   visibility: "public" | "private";
   brandColor?: string;
+  logoUrl?: string | null;
   viewerRole?: Role;
 };
 
@@ -125,6 +127,87 @@ function getInviteUsageText(invite: Invite) {
   return `${invite.usedCount.toLocaleString()}/${invite.maxUses.toLocaleString()} used`;
 }
 
+function LogoUploader({
+  communityId,
+  logoUrl,
+  communityName,
+  onUploaded,
+}: {
+  communityId: Id<"communities">;
+  logoUrl?: string | null;
+  communityName: string;
+  onUploaded: () => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const generateUploadUrl = useConvexMutation(api.communities.generateUploadUrl);
+  const saveCommunityLogo = useConvexMutation(api.communities.saveCommunityLogo);
+
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const uploadUrl = await generateUploadUrl({});
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("Upload failed");
+      const { storageId } = await response.json();
+      await saveCommunityLogo({ communityId, storageId });
+      onUploaded();
+      toast({
+        title: "Logo updated",
+        description: "Your community logo has been saved.",
+      });
+    } catch {
+      toast({ title: "Logo upload failed", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-4">
+      {logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logoUrl}
+          alt={`${communityName} logo`}
+          className="h-16 w-16 rounded-lg border border-border object-cover"
+        />
+      ) : (
+        <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-dashed border-border bg-muted/40">
+          <ImagePlus className="h-6 w-6 text-muted-foreground" />
+        </div>
+      )}
+      <div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+        >
+          {uploading ? "Uploading..." : logoUrl ? "Change logo" : "Upload logo"}
+        </Button>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Square images look best. Shown on the community and invite pages.
+        </p>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => handleFile(event.target.files?.[0])}
+        />
+      </div>
+    </div>
+  );
+}
+
 function BrandColorInput({ defaultColor }: { defaultColor?: string }) {
   const [color, setColor] = useState(safeBrandColor(defaultColor ?? "#2460e0"));
 
@@ -170,22 +253,22 @@ export default function CommunitySettingsPageClient() {
 
   const detail = community as CommunityDetail | null | undefined;
   const canEdit = canManage(detail?.viewerRole);
-  const settingsCommunityId =
-    detail?._id ?? ("placeholder" as Id<"communities">);
+  const settingsCommunityId = detail?._id;
+  const canLoadSettingsData = !!settingsCommunityId && canEdit;
 
-  const memberQuery = useQuery({
-    ...convexQuery(api.communities.listCommunityMembers, {
-      communityId: settingsCommunityId,
-    }),
-    enabled: !!detail?._id && canEdit,
-  });
+  const memberQuery = useQuery(
+    convexQuery(
+      api.communities.listCommunityMembers,
+      canLoadSettingsData ? { communityId: settingsCommunityId } : "skip"
+    )
+  );
 
-  const inviteQuery = useQuery({
-    ...convexQuery(api.communities.listInvites, {
-      communityId: settingsCommunityId,
-    }),
-    enabled: !!detail?._id && canEdit,
-  });
+  const inviteQuery = useQuery(
+    convexQuery(
+      api.communities.listInvites,
+      canLoadSettingsData ? { communityId: settingsCommunityId } : "skip"
+    )
+  );
 
   const invalidateCommunity = () => {
     queryClient.invalidateQueries({
@@ -221,7 +304,7 @@ export default function CommunitySettingsPageClient() {
     onSuccess: invalidateCommunity,
   });
 
-  const { mutateAsync: disableInvite } = useMutation({
+  const { mutateAsync: disableInvite, isPending: disableInvitePending } = useMutation({
     mutationFn: useConvexMutation(api.communities.disableInvite),
     onSuccess: invalidateCommunity,
   });
@@ -231,7 +314,7 @@ export default function CommunitySettingsPageClient() {
     onSuccess: invalidateCommunity,
   });
 
-  const { mutateAsync: removeMember } = useMutation({
+  const { mutateAsync: removeMember, isPending: removeMemberPending } = useMutation({
     mutationFn: useConvexMutation(api.communities.removeMember),
     onSuccess: invalidateCommunity,
   });
@@ -241,9 +324,13 @@ export default function CommunitySettingsPageClient() {
     [inviteQuery.data]
   );
 
+  const [isSaving, setIsSaving] = useState(false);
+  const [isCreatingInvite, setIsCreatingInvite] = useState(false);
+
   const handleSave = async (event: FormEvent) => {
     event.preventDefault();
-    if (!detail) return;
+    if (!detail || isSaving) return;
+    setIsSaving(true);
     setError(null);
     const formData = new FormData(event.currentTarget as HTMLFormElement);
     const name = String(formData.get("name") ?? "");
@@ -266,6 +353,8 @@ export default function CommunitySettingsPageClient() {
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to save changes.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -313,6 +402,17 @@ export default function CommunitySettingsPageClient() {
                 <Card className="p-5 sm:p-6">
                   <form onSubmit={handleSave} className="space-y-5">
                     <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2 sm:col-span-2">
+                        <span className="text-sm font-medium text-foreground">
+                          Community logo
+                        </span>
+                        <LogoUploader
+                          communityId={detail._id}
+                          logoUrl={detail.logoUrl}
+                          communityName={detail.name}
+                          onUploaded={invalidateCommunity}
+                        />
+                      </div>
                       <label className="space-y-2 sm:col-span-2">
                         <span className="text-sm font-medium text-foreground">
                           Community name
@@ -366,8 +466,8 @@ export default function CommunitySettingsPageClient() {
                       </p>
                     )}
                     <div className="flex justify-end">
-                      <Button type="submit" disabled={updatePending}>
-                        {updatePending ? "Saving..." : "Save changes"}
+                      <Button type="submit" disabled={isSaving}>
+                        {isSaving ? "Saving..." : "Save changes"}
                       </Button>
                     </div>
                   </form>
@@ -475,23 +575,28 @@ export default function CommunitySettingsPageClient() {
                     className="mt-4 space-y-3"
                     onSubmit={async (event) => {
                       event.preventDefault();
-                      if (!detail) return;
-                      await createInvite({
-                        communityId: detail._id,
-                        roleToGrant,
-                        expiresInDays:
-                          expirationMode === "limited"
-                            ? Number(expiresInDays) || undefined
-                            : undefined,
-                        maxUses:
-                          usageMode === "limited"
-                            ? Number(maxUses) || undefined
-                            : undefined,
-                      });
-                      toast({
-                        title: "Invite link created",
-                        description: "The invite is ready to copy and share.",
-                      });
+                      if (!detail || isCreatingInvite) return;
+                      setIsCreatingInvite(true);
+                      try {
+                        await createInvite({
+                          communityId: detail._id,
+                          roleToGrant,
+                          expiresInDays:
+                            expirationMode === "limited"
+                              ? Number(expiresInDays) || undefined
+                              : undefined,
+                          maxUses:
+                            usageMode === "limited"
+                              ? Number(maxUses) || undefined
+                              : undefined,
+                        });
+                        toast({
+                          title: "Invite link created",
+                          description: "The invite is ready to copy and share.",
+                        });
+                      } finally {
+                        setIsCreatingInvite(false);
+                      }
                     }}
                   >
                     <label className="flex flex-col gap-2">
@@ -592,8 +697,8 @@ export default function CommunitySettingsPageClient() {
                         </span>
                       </label>
                     </div>
-                    <Button type="submit" disabled={invitePending} className="w-full">
-                      {invitePending ? "Creating..." : "Create invite"}
+                    <Button type="submit" disabled={isCreatingInvite} className="w-full">
+                      {isCreatingInvite ? "Creating..." : "Create invite"}
                     </Button>
                   </form>
                 </Card>
@@ -710,8 +815,9 @@ export default function CommunitySettingsPageClient() {
             </Button>
             <Button
               variant="destructive"
+              disabled={removeMemberPending}
               onClick={async () => {
-                if (!memberToRemove) return;
+                if (!memberToRemove || removeMemberPending) return;
                 await removeMember({ memberId: memberToRemove._id });
                 toast({
                   title: "Member removed",
@@ -720,7 +826,7 @@ export default function CommunitySettingsPageClient() {
                 setMemberToRemove(null);
               }}
             >
-              Remove member
+              {removeMemberPending ? "Removing..." : "Remove member"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -745,8 +851,9 @@ export default function CommunitySettingsPageClient() {
             </Button>
             <Button
               variant="destructive"
+              disabled={disableInvitePending}
               onClick={async () => {
-                if (!inviteToRevoke) return;
+                if (!inviteToRevoke || disableInvitePending) return;
                 await disableInvite({ inviteId: inviteToRevoke._id });
                 toast({
                   title: "Invite link revoked",
@@ -755,7 +862,7 @@ export default function CommunitySettingsPageClient() {
                 setInviteToRevoke(null);
               }}
             >
-              Revoke link
+              {disableInvitePending ? "Revoking..." : "Revoke link"}
             </Button>
           </DialogFooter>
         </DialogContent>
