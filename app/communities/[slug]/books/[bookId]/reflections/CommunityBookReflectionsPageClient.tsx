@@ -74,7 +74,11 @@ export default function CommunityBookReflectionsPageClient() {
             <p className="text-sm text-muted-foreground">
               Sign in to read community reflections.
             </p>
-            <SignInButton mode="modal">
+            <SignInButton
+              mode="modal"
+              forceRedirectUrl={`/communities/${slug}/books/${communityBookId}/reflections`}
+              signUpForceRedirectUrl={`/communities/${slug}/books/${communityBookId}/reflections`}
+            >
               <Button className="mt-4">Sign in</Button>
             </SignInButton>
           </Card>

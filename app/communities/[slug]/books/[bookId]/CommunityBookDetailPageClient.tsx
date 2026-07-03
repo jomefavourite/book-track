@@ -314,7 +314,11 @@ export default function CommunityBookDetailPageClient() {
                   <p className="text-sm text-muted-foreground">
                     Sign in to track your reading for this community book.
                   </p>
-                  <SignInButton mode="modal">
+                  <SignInButton
+                    mode="modal"
+                    forceRedirectUrl={`/communities/${slug}/books/${communityBookId}`}
+                    signUpForceRedirectUrl={`/communities/${slug}/books/${communityBookId}`}
+                  >
                     <Button className="mt-3">Sign in</Button>
                   </SignInButton>
                 </div>

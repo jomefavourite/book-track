@@ -125,7 +125,11 @@ export default function JoinCommunityPageClient() {
             )}
 
             {!user ? (
-              <SignInButton mode="modal">
+              <SignInButton
+                mode="modal"
+                forceRedirectUrl={`/join/${token}`}
+                signUpForceRedirectUrl={`/join/${token}`}
+              >
                 <Button
                   className="mt-6 w-full"
                   style={{

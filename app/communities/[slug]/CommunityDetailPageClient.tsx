@@ -290,7 +290,11 @@ export default function CommunityDetailPageClient() {
                           only after joining by invite.
                         </p>
                         {!user && (
-                          <SignInButton mode="modal">
+                          <SignInButton
+                            mode="modal"
+                            forceRedirectUrl={`/communities/${slug}`}
+                            signUpForceRedirectUrl={`/communities/${slug}`}
+                          >
                             <Button className="mt-4">Sign In</Button>
                           </SignInButton>
                         )}
