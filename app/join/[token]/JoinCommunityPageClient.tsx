@@ -149,6 +149,7 @@ export default function JoinCommunityPageClient() {
                 }}
                 disabled={acceptPending}
                 onClick={async () => {
+                  if (acceptPending) return;
                   setError(null);
                   try {
                     await acceptInvite({ token });

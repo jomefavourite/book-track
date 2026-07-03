@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -22,21 +22,8 @@ import { calculateDailyPages } from "@/lib/readingCalculator";
 
 type Role = "owner" | "admin" | "moderator" | "member";
 
-type CommunityDetail = {
-  _id: Id<"communities">;
-  name: string;
-  slug: string;
-  viewerRole?: Role;
-};
-
 function canManage(role?: Role) {
   return role === "owner" || role === "admin" || role === "moderator";
-}
-
-function todayKey() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return formatDateForStorage(today);
 }
 
 function addDays(date: Date, days: number) {
@@ -45,59 +32,88 @@ function addDays(date: Date, days: number) {
   return result;
 }
 
-export default function NewCommunityBookPageClient() {
-  const params = useParams<{ slug: string }>();
+export default function EditCommunityBookPageClient() {
+  const params = useParams<{ slug: string; bookId: string }>();
   const slug = params.slug;
+  const communityBookId = params.bookId as Id<"communityBooks">;
   const router = useRouter();
   const queryClient = useQueryClient();
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+
   const [name, setName] = useState("");
   const [author, setAuthor] = useState("");
   const [totalPages, setTotalPages] = useState("");
   const [totalChapters, setTotalChapters] = useState("");
-  const [progressStyle, setProgressStyle] = useState<"pages" | "chapters">(
-    "pages"
-  );
+  const [progressStyle, setProgressStyle] = useState<"pages" | "chapters">("pages");
   const [ignorePages, setIgnorePages] = useState(false);
-  const [readingMode, setReadingMode] = useState<"calendar" | "fixed-days">(
-    "calendar"
-  );
-  const [startDate, setStartDate] = useState(todayKey());
+  const [readingMode, setReadingMode] = useState<"calendar" | "fixed-days">("calendar");
+  const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [daysToRead, setDaysToRead] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | null>(null);
-  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const [initialized, setInitialized] = useState(false);
 
-  const generateUploadUrl = useConvexMutation(api.communities.generateUploadUrl);
-
-  const { data: community, isPending } = useQuery({
+  const { data: community } = useQuery({
     ...convexQuery(api.communities.getCommunityBySlug, { slug }),
     enabled: !!slug,
   });
 
-  const detail = community as CommunityDetail | null | undefined;
-  const canEdit = canManage(detail?.viewerRole);
-  const chapterOnlyMode = progressStyle === "chapters" && ignorePages;
+  const { data: book, isPending: bookPending } = useQuery({
+    ...convexQuery(api.communities.getCommunityBook, { communityBookId }),
+    retry: false,
+  });
 
-  const { mutateAsync: createCommunityBook, isPending: createPending } =
+  const viewerRole = book?.viewerRole as Role | undefined;
+  const canEdit = canManage(viewerRole);
+
+  useEffect(() => {
+    if (!book || initialized) return;
+    setName(book.name ?? "");
+    setAuthor(book.author ?? "");
+    setTotalPages(book.totalPages?.toString() ?? "");
+    setTotalChapters(book.totalChapters?.toString() ?? "");
+    setProgressStyle(book.progressStyle ?? "pages");
+    setIgnorePages(book.ignorePages ?? false);
+    setReadingMode(book.readingMode ?? "calendar");
+    setStartDate(book.startDate ?? "");
+    setEndDate(book.endDate ?? "");
+    setDaysToRead(book.daysToRead?.toString() ?? "");
+    if (book.coverImageUrl) {
+      setCoverPreviewUrl(book.coverImageUrl);
+    }
+    setInitialized(true);
+  }, [book, initialized]);
+
+  const generateUploadUrl = useConvexMutation(api.communities.generateUploadUrl);
+
+  const { mutateAsync: updateCommunityBook, isPending: updatePending } =
     useMutation({
-      mutationFn: useConvexMutation(api.communities.createCommunityBook),
+      mutationFn: useConvexMutation(api.communities.updateCommunityBook),
       onSuccess: () => {
-        if (!detail) return;
         queryClient.invalidateQueries({
-          queryKey: convexQuery(api.communities.getCommunityBooks, {
-            communityId: detail._id,
+          queryKey: convexQuery(api.communities.getCommunityBook, {
+            communityBookId,
           }).queryKey,
         });
-        router.push(`/communities/${detail.slug}`);
+        if (community) {
+          queryClient.invalidateQueries({
+            queryKey: convexQuery(api.communities.getCommunityBooks, {
+              communityId: (community as { _id: Id<"communities"> })._id,
+            }).queryKey,
+          });
+        }
+        router.push(`/communities/${slug}/books/${communityBookId}`);
       },
     });
 
+  const chapterOnlyMode = progressStyle === "chapters" && ignorePages;
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!detail || isSubmitting) return;
+    if (isSubmitting) return;
     setIsSubmitting(true);
     setError(null);
 
@@ -136,8 +152,10 @@ export default function NewCommunityBookPageClient() {
         return;
       }
       daysToReadValue =
-        differenceInDays(parseDateFromStorage(endDate), parseDateFromStorage(startDate)) +
-        1;
+        differenceInDays(
+          parseDateFromStorage(endDate),
+          parseDateFromStorage(startDate)
+        ) + 1;
     } else {
       const days = Number(daysToRead);
       if (!Number.isInteger(days) || days < 1) {
@@ -156,7 +174,7 @@ export default function NewCommunityBookPageClient() {
     const end = parseDateFromStorage(endDateValue);
 
     try {
-      let coverImageStorageId: string | undefined;
+      let coverImageStorageId: Id<"_storage"> | undefined;
       if (coverFile) {
         const uploadUrl = await generateUploadUrl({});
         const response = await fetch(uploadUrl, {
@@ -166,13 +184,12 @@ export default function NewCommunityBookPageClient() {
         });
         if (!response.ok) throw new Error("Cover image upload failed.");
         const uploaded = await response.json();
-        coverImageStorageId = uploaded.storageId;
+        coverImageStorageId = uploaded.storageId as Id<"_storage">;
       }
 
-      await createCommunityBook({
-        coverImageStorageId:
-          coverImageStorageId as Id<"_storage"> | undefined,
-        communityId: detail._id,
+      await updateCommunityBook({
+        communityBookId,
+        coverImageStorageId,
         name,
         author: author.trim() || undefined,
         totalPages:
@@ -193,14 +210,19 @@ export default function NewCommunityBookPageClient() {
     } catch (caught) {
       setIsSubmitting(false);
       setError(
-        caught instanceof Error ? caught.message : "Unable to add community book."
+        caught instanceof Error ? caught.message : "Unable to update community book."
       );
     }
   };
 
   const totalDays =
-    startDate && endDate && parseDateFromStorage(endDate) >= parseDateFromStorage(startDate)
-      ? differenceInDays(parseDateFromStorage(endDate), parseDateFromStorage(startDate)) + 1
+    startDate &&
+    endDate &&
+    parseDateFromStorage(endDate) >= parseDateFromStorage(startDate)
+      ? differenceInDays(
+          parseDateFromStorage(endDate),
+          parseDateFromStorage(startDate)
+        ) + 1
       : null;
   const pagesPerDay =
     totalDays && totalPages && !chapterOnlyMode
@@ -212,17 +234,17 @@ export default function NewCommunityBookPageClient() {
       <Navigation />
       <main className="mx-auto max-w-3xl p-3 sm:p-6">
         <Button variant="ghost" asChild className="mb-4 px-0">
-          <Link href={detail ? `/communities/${detail.slug}` : "/communities"}>
+          <Link href={`/communities/${slug}/books/${communityBookId}`}>
             <ArrowLeft className="h-4 w-4" />
-            Community
+            Back
           </Link>
         </Button>
 
-        {isPending ? (
-          <Card className="p-6 text-muted-foreground">Loading community...</Card>
-        ) : !detail ? (
+        {bookPending ? (
+          <Card className="p-6 text-muted-foreground">Loading...</Card>
+        ) : !book ? (
           <Card className="p-6 text-center text-muted-foreground">
-            Community not found.
+            Book not found.
           </Card>
         ) : !canEdit ? (
           <Card className="p-6 text-center sm:p-10">
@@ -230,19 +252,17 @@ export default function NewCommunityBookPageClient() {
               Admin or moderator access required
             </h1>
             <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-              Only owners, admins, and moderators can add shared books to this
-              community.
+              Only owners, admins, and moderators can edit community books.
             </p>
           </Card>
         ) : (
           <>
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-foreground sm:text-4xl">
-                Add Community Book
+                Edit Community Book
               </h1>
               <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-                Create a shared reading plan for {detail.name}. Members will see
-                it inside the community.
+                Update the details for &quot;{book.name}&quot;.
               </p>
             </div>
 
@@ -262,7 +282,8 @@ export default function NewCommunityBookPageClient() {
 
                   <label className="space-y-2 sm:col-span-2">
                     <span className="text-sm font-medium text-foreground">
-                      Author <span className="text-muted-foreground">(optional)</span>
+                      Author{" "}
+                      <span className="text-muted-foreground">(optional)</span>
                     </span>
                     <Input
                       value={author}
@@ -291,7 +312,7 @@ export default function NewCommunityBookPageClient() {
                             className="absolute -right-2 -top-2 rounded-full border border-border bg-background p-1 text-muted-foreground shadow-sm hover:text-foreground"
                             onClick={() => {
                               setCoverFile(null);
-                              if (coverPreviewUrl)
+                              if (coverPreviewUrl && coverFile)
                                 URL.revokeObjectURL(coverPreviewUrl);
                               setCoverPreviewUrl(null);
                               if (coverInputRef.current)
@@ -313,7 +334,7 @@ export default function NewCommunityBookPageClient() {
                           size="sm"
                           onClick={() => coverInputRef.current?.click()}
                         >
-                          {coverFile ? "Change image" : "Choose image"}
+                          {coverPreviewUrl ? "Change image" : "Choose image"}
                         </Button>
                         <p className="mt-1 text-xs text-muted-foreground">
                           Shown in the community library.
@@ -326,7 +347,7 @@ export default function NewCommunityBookPageClient() {
                         className="hidden"
                         onChange={(event) => {
                           const file = event.target.files?.[0] ?? null;
-                          if (coverPreviewUrl)
+                          if (coverPreviewUrl && coverFile)
                             URL.revokeObjectURL(coverPreviewUrl);
                           setCoverFile(file);
                           setCoverPreviewUrl(
@@ -370,7 +391,9 @@ export default function NewCommunityBookPageClient() {
                       <input
                         type="checkbox"
                         checked={ignorePages}
-                        onChange={(event) => setIgnorePages(event.target.checked)}
+                        onChange={(event) =>
+                          setIgnorePages(event.target.checked)
+                        }
                       />
                       <span className="text-sm text-foreground">
                         Ignore pages completely
@@ -403,7 +426,9 @@ export default function NewCommunityBookPageClient() {
                         min={1}
                         step={1}
                         value={totalChapters}
-                        onChange={(event) => setTotalChapters(event.target.value)}
+                        onChange={(event) =>
+                          setTotalChapters(event.target.value)
+                        }
                         required
                       />
                     </label>
@@ -446,7 +471,9 @@ export default function NewCommunityBookPageClient() {
                         <Input
                           type="date"
                           value={startDate}
-                          onChange={(event) => setStartDate(event.target.value)}
+                          onChange={(event) =>
+                            setStartDate(event.target.value)
+                          }
                           required
                         />
                       </label>
@@ -496,10 +523,12 @@ export default function NewCommunityBookPageClient() {
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
                   <Button type="button" variant="outline" asChild>
-                    <Link href={`/communities/${detail.slug}`}>Cancel</Link>
+                    <Link href={`/communities/${slug}/books/${communityBookId}`}>
+                      Cancel
+                    </Link>
                   </Button>
                   <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? "Adding..." : "Add Community Book"}
+                    {isSubmitting ? "Saving..." : "Save Changes"}
                   </Button>
                 </div>
               </form>

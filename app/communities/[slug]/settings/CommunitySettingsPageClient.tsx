@@ -253,22 +253,22 @@ export default function CommunitySettingsPageClient() {
 
   const detail = community as CommunityDetail | null | undefined;
   const canEdit = canManage(detail?.viewerRole);
-  const settingsCommunityId =
-    detail?._id ?? ("placeholder" as Id<"communities">);
+  const settingsCommunityId = detail?._id;
+  const canLoadSettingsData = !!settingsCommunityId && canEdit;
 
-  const memberQuery = useQuery({
-    ...convexQuery(api.communities.listCommunityMembers, {
-      communityId: settingsCommunityId,
-    }),
-    enabled: !!detail?._id && canEdit,
-  });
+  const memberQuery = useQuery(
+    convexQuery(
+      api.communities.listCommunityMembers,
+      canLoadSettingsData ? { communityId: settingsCommunityId } : "skip"
+    )
+  );
 
-  const inviteQuery = useQuery({
-    ...convexQuery(api.communities.listInvites, {
-      communityId: settingsCommunityId,
-    }),
-    enabled: !!detail?._id && canEdit,
-  });
+  const inviteQuery = useQuery(
+    convexQuery(
+      api.communities.listInvites,
+      canLoadSettingsData ? { communityId: settingsCommunityId } : "skip"
+    )
+  );
 
   const invalidateCommunity = () => {
     queryClient.invalidateQueries({
@@ -304,7 +304,7 @@ export default function CommunitySettingsPageClient() {
     onSuccess: invalidateCommunity,
   });
 
-  const { mutateAsync: disableInvite } = useMutation({
+  const { mutateAsync: disableInvite, isPending: disableInvitePending } = useMutation({
     mutationFn: useConvexMutation(api.communities.disableInvite),
     onSuccess: invalidateCommunity,
   });
@@ -314,7 +314,7 @@ export default function CommunitySettingsPageClient() {
     onSuccess: invalidateCommunity,
   });
 
-  const { mutateAsync: removeMember } = useMutation({
+  const { mutateAsync: removeMember, isPending: removeMemberPending } = useMutation({
     mutationFn: useConvexMutation(api.communities.removeMember),
     onSuccess: invalidateCommunity,
   });
@@ -324,9 +324,13 @@ export default function CommunitySettingsPageClient() {
     [inviteQuery.data]
   );
 
+  const [isSaving, setIsSaving] = useState(false);
+  const [isCreatingInvite, setIsCreatingInvite] = useState(false);
+
   const handleSave = async (event: FormEvent) => {
     event.preventDefault();
-    if (!detail) return;
+    if (!detail || isSaving) return;
+    setIsSaving(true);
     setError(null);
     const formData = new FormData(event.currentTarget as HTMLFormElement);
     const name = String(formData.get("name") ?? "");
@@ -349,6 +353,8 @@ export default function CommunitySettingsPageClient() {
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to save changes.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -460,8 +466,8 @@ export default function CommunitySettingsPageClient() {
                       </p>
                     )}
                     <div className="flex justify-end">
-                      <Button type="submit" disabled={updatePending}>
-                        {updatePending ? "Saving..." : "Save changes"}
+                      <Button type="submit" disabled={isSaving}>
+                        {isSaving ? "Saving..." : "Save changes"}
                       </Button>
                     </div>
                   </form>
@@ -569,23 +575,28 @@ export default function CommunitySettingsPageClient() {
                     className="mt-4 space-y-3"
                     onSubmit={async (event) => {
                       event.preventDefault();
-                      if (!detail) return;
-                      await createInvite({
-                        communityId: detail._id,
-                        roleToGrant,
-                        expiresInDays:
-                          expirationMode === "limited"
-                            ? Number(expiresInDays) || undefined
-                            : undefined,
-                        maxUses:
-                          usageMode === "limited"
-                            ? Number(maxUses) || undefined
-                            : undefined,
-                      });
-                      toast({
-                        title: "Invite link created",
-                        description: "The invite is ready to copy and share.",
-                      });
+                      if (!detail || isCreatingInvite) return;
+                      setIsCreatingInvite(true);
+                      try {
+                        await createInvite({
+                          communityId: detail._id,
+                          roleToGrant,
+                          expiresInDays:
+                            expirationMode === "limited"
+                              ? Number(expiresInDays) || undefined
+                              : undefined,
+                          maxUses:
+                            usageMode === "limited"
+                              ? Number(maxUses) || undefined
+                              : undefined,
+                        });
+                        toast({
+                          title: "Invite link created",
+                          description: "The invite is ready to copy and share.",
+                        });
+                      } finally {
+                        setIsCreatingInvite(false);
+                      }
                     }}
                   >
                     <label className="flex flex-col gap-2">
@@ -686,8 +697,8 @@ export default function CommunitySettingsPageClient() {
                         </span>
                       </label>
                     </div>
-                    <Button type="submit" disabled={invitePending} className="w-full">
-                      {invitePending ? "Creating..." : "Create invite"}
+                    <Button type="submit" disabled={isCreatingInvite} className="w-full">
+                      {isCreatingInvite ? "Creating..." : "Create invite"}
                     </Button>
                   </form>
                 </Card>
@@ -804,8 +815,9 @@ export default function CommunitySettingsPageClient() {
             </Button>
             <Button
               variant="destructive"
+              disabled={removeMemberPending}
               onClick={async () => {
-                if (!memberToRemove) return;
+                if (!memberToRemove || removeMemberPending) return;
                 await removeMember({ memberId: memberToRemove._id });
                 toast({
                   title: "Member removed",
@@ -814,7 +826,7 @@ export default function CommunitySettingsPageClient() {
                 setMemberToRemove(null);
               }}
             >
-              Remove member
+              {removeMemberPending ? "Removing..." : "Remove member"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -839,8 +851,9 @@ export default function CommunitySettingsPageClient() {
             </Button>
             <Button
               variant="destructive"
+              disabled={disableInvitePending}
               onClick={async () => {
-                if (!inviteToRevoke) return;
+                if (!inviteToRevoke || disableInvitePending) return;
                 await disableInvite({ inviteId: inviteToRevoke._id });
                 toast({
                   title: "Invite link revoked",
@@ -849,7 +862,7 @@ export default function CommunitySettingsPageClient() {
                 setInviteToRevoke(null);
               }}
             >
-              Revoke link
+              {disableInvitePending ? "Revoking..." : "Revoke link"}
             </Button>
           </DialogFooter>
         </DialogContent>

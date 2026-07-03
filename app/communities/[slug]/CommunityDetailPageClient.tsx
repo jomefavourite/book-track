@@ -13,9 +13,12 @@ import {
   CalendarDays,
   CheckCircle2,
   Lock,
+  MoreVertical,
+  Pencil,
   Plus,
   Settings,
   ShieldCheck,
+  Trash2,
   Users,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
@@ -33,12 +36,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
 
 type BookStatus = "upcoming" | "active" | "completed";
@@ -102,6 +105,11 @@ export default function CommunityDetailPageClient() {
     bookName: string;
     currentActiveName: string;
   } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    bookId: Id<"communityBooks">;
+    bookName: string;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { data: community, isPending } = useQuery({
     ...convexQuery(api.communities.getCommunityBySlug, { slug }),
@@ -109,14 +117,14 @@ export default function CommunityDetailPageClient() {
   });
 
   const detail = community as CommunityDetail | null | undefined;
-  const communityId = detail?._id ?? ("placeholder" as Id<"communities">);
-  const shouldLoadBooks = !!detail?._id && detail.access !== "locked";
-  const { data: communityBooks, isPending: booksPending } = useQuery({
-    ...convexQuery(api.communities.getCommunityBooks, {
-      communityId,
-    }),
-    enabled: shouldLoadBooks,
-  });
+  const communityId = detail?._id;
+  const shouldLoadBooks = !!communityId && detail?.access !== "locked";
+  const { data: communityBooks, isPending: booksPending } = useQuery(
+    convexQuery(
+      api.communities.getCommunityBooks,
+      shouldLoadBooks ? { communityId } : "skip"
+    )
+  );
   const books = useMemo(
     () => (communityBooks as CommunityBook[] | undefined) ?? [],
     [communityBooks]
@@ -133,6 +141,7 @@ export default function CommunityDetailPageClient() {
   const { mutateAsync: setBookStatus } = useMutation({
     mutationFn: useConvexMutation(api.communities.setCommunityBookStatus),
     onSuccess: () => {
+      if (!communityId) return;
       queryClient.invalidateQueries({
         queryKey: convexQuery(api.communities.getCommunityBooks, {
           communityId,
@@ -140,6 +149,31 @@ export default function CommunityDetailPageClient() {
       });
     },
   });
+
+  const { mutateAsync: deleteBook } = useMutation({
+    mutationFn: useConvexMutation(api.communities.deleteCommunityBook),
+    onSuccess: () => {
+      if (!communityId) return;
+      queryClient.invalidateQueries({
+        queryKey: convexQuery(api.communities.getCommunityBooks, {
+          communityId,
+        }).queryKey,
+      });
+    },
+  });
+
+  const handleDeleteBook = async () => {
+    if (!pendingDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteBook({ communityBookId: pendingDelete.bookId });
+      setPendingDelete(null);
+    } catch {
+      toast({ title: "Could not delete book", variant: "destructive" });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handleStatusChange = async (
     book: CommunityBook,
@@ -175,7 +209,11 @@ export default function CommunityDetailPageClient() {
     <CommunityThemeProvider brandColor={detail?.brandColor}>
       <Navigation />
       <main className="mx-auto max-w-6xl p-3 sm:p-6">
-        <Button variant="ghost" asChild className="mb-4 px-0">
+        <Button
+          variant="ghost"
+          asChild
+          className="mb-4 px-0"
+        >
           <Link href="/communities">
             <ArrowLeft className="h-4 w-4" />
             Communities
@@ -183,7 +221,9 @@ export default function CommunityDetailPageClient() {
         </Button>
 
         {isPending ? (
-          <Card className="p-6 text-muted-foreground">Loading community...</Card>
+          <Card className="p-6 text-muted-foreground">
+            Loading community...
+          </Card>
         ) : !detail ? (
           <Card className="p-6 text-center sm:p-10">
             <h1 className="text-2xl font-bold text-foreground">
@@ -214,8 +254,8 @@ export default function CommunityDetailPageClient() {
                         <img
                           src={detail.logoUrl}
                           alt={`${detail.name} logo`}
-                          className="h-12 w-12 rounded-lg border-2 object-cover"
-                          style={{ borderColor: "var(--brand)" }}
+                          className="h-12 w-12 rounded-lg object-cover"
+                          // style={{ borderColor: "var(--brand)" }}
                         />
                       )}
                       <span className="rounded-md border border-border px-2 py-1 text-xs font-medium capitalize text-muted-foreground">
@@ -253,13 +293,19 @@ export default function CommunityDetailPageClient() {
                     )}
                     {canManageCommunity(detail.viewerRole) && (
                       <>
-                        <Button asChild variant="outline">
+                        <Button
+                          asChild
+                          variant="outline"
+                        >
                           <Link href={`/communities/${detail.slug}/analytics`}>
                             <BarChart2 className="h-4 w-4" />
                             Analytics
                           </Link>
                         </Button>
-                        <Button asChild variant="outline">
+                        <Button
+                          asChild
+                          variant="outline"
+                        >
                           <Link href={`/communities/${detail.slug}/settings`}>
                             <Settings className="h-4 w-4" />
                             Settings
@@ -340,6 +386,15 @@ export default function CommunityDetailPageClient() {
                               slug={detail.slug}
                               showStatusControls={showStatusControls}
                               onStatusChange={handleStatusChange}
+                              onDelete={
+                                showStatusControls
+                                  ? () =>
+                                      setPendingDelete({
+                                        bookId: book._id,
+                                        bookName: book.name,
+                                      })
+                                  : undefined
+                              }
                             />
                           ))}
                         </div>
@@ -360,6 +415,15 @@ export default function CommunityDetailPageClient() {
                               slug={detail.slug}
                               showStatusControls={showStatusControls}
                               onStatusChange={handleStatusChange}
+                              onDelete={
+                                showStatusControls
+                                  ? () =>
+                                      setPendingDelete({
+                                        bookId: book._id,
+                                        bookName: book.name,
+                                      })
+                                  : undefined
+                              }
                             />
                           ))}
                         </div>
@@ -380,6 +444,15 @@ export default function CommunityDetailPageClient() {
                               slug={detail.slug}
                               showStatusControls={showStatusControls}
                               onStatusChange={handleStatusChange}
+                              onDelete={
+                                showStatusControls
+                                  ? () =>
+                                      setPendingDelete({
+                                        bookId: book._id,
+                                        bookName: book.name,
+                                      })
+                                  : undefined
+                              }
                               muted
                             />
                           ))}
@@ -434,6 +507,40 @@ export default function CommunityDetailPageClient() {
         )}
 
         <Dialog
+          open={pendingDelete !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingDelete(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete community book?</DialogTitle>
+              <DialogDescription>
+                &quot;{pendingDelete?.bookName}&quot; and its reading schedule
+                will be permanently deleted. Members who are already tracking
+                this book keep their personal copy.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setPendingDelete(null)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteBook}
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
           open={activeConflict !== null}
           onOpenChange={(open) => {
             if (!open) setActiveConflict(null);
@@ -450,7 +557,10 @@ export default function CommunityDetailPageClient() {
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setActiveConflict(null)}>
+              <Button
+                variant="outline"
+                onClick={() => setActiveConflict(null)}
+              >
                 Cancel
               </Button>
               <Button
@@ -496,27 +606,72 @@ function SectionHeading({
   );
 }
 
-function StatusSelect({
+function BookMenu({
   book,
+  slug,
   onStatusChange,
+  onDelete,
 }: {
   book: CommunityBook;
+  slug: string;
   onStatusChange: (book: CommunityBook, status: BookStatus) => void;
+  onDelete: () => void;
 }) {
+  const current = bookStatus(book);
   return (
-    <Select
-      value={bookStatus(book)}
-      onValueChange={(value) => onStatusChange(book, value as BookStatus)}
-    >
-      <SelectTrigger className="h-8 w-32 text-xs">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="upcoming">Upcoming</SelectItem>
-        <SelectItem value="active">Active</SelectItem>
-        <SelectItem value="completed">Completed</SelectItem>
-      </SelectContent>
-    </Select>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 w-8 p-0 text-muted-foreground"
+          aria-label="Book options"
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+          <Link
+            href={`/communities/${slug}/books/${book._id}/edit`}
+            className="flex items-center gap-2"
+          >
+            <Pencil className="h-4 w-4" />
+            Edit book
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {current !== "upcoming" && (
+          <DropdownMenuItem
+            onClick={() => onStatusChange(book, "upcoming")}
+          >
+            Set to Upcoming
+          </DropdownMenuItem>
+        )}
+        {current !== "active" && (
+          <DropdownMenuItem
+            onClick={() => onStatusChange(book, "active")}
+          >
+            Set to Active
+          </DropdownMenuItem>
+        )}
+        {current !== "completed" && (
+          <DropdownMenuItem
+            onClick={() => onStatusChange(book, "completed")}
+          >
+            Set to Completed
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={onDelete}
+          className="text-destructive focus:text-destructive"
+        >
+          <Trash2 className="h-4 w-4" />
+          Delete book
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -534,11 +689,13 @@ function FeaturedBookCard({
   slug,
   showStatusControls,
   onStatusChange,
+  onDelete,
 }: {
   book: CommunityBook;
   slug: string;
   showStatusControls: boolean;
   onStatusChange: (book: CommunityBook, status: BookStatus) => void;
+  onDelete?: () => void;
 }) {
   return (
     <div
@@ -567,7 +724,7 @@ function FeaturedBookCard({
           )}
         </Link>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
             <span
               className="rounded-md px-2 py-0.5 text-xs font-semibold"
               style={{
@@ -577,8 +734,13 @@ function FeaturedBookCard({
             >
               Active
             </span>
-            {showStatusControls && (
-              <StatusSelect book={book} onStatusChange={onStatusChange} />
+            {showStatusControls && onDelete && (
+              <BookMenu
+                book={book}
+                slug={slug}
+                onStatusChange={onStatusChange}
+                onDelete={onDelete}
+              />
             )}
           </div>
           <Link href={`/communities/${slug}/books/${book._id}`}>
@@ -618,12 +780,14 @@ function BookCard({
   slug,
   showStatusControls,
   onStatusChange,
+  onDelete,
   muted = false,
 }: {
   book: CommunityBook;
   slug: string;
   showStatusControls: boolean;
   onStatusChange: (book: CommunityBook, status: BookStatus) => void;
+  onDelete?: () => void;
   muted?: boolean;
 }) {
   return (
@@ -651,11 +815,21 @@ function BookCard({
           )}
         </Link>
         <div className="min-w-0 flex-1">
-          <Link href={`/communities/${slug}/books/${book._id}`}>
-            <p className="font-semibold text-foreground hover:underline">
-              {book.name}
-            </p>
-          </Link>
+          <div className="flex items-start justify-between gap-1">
+            <Link href={`/communities/${slug}/books/${book._id}`}>
+              <p className="font-semibold text-foreground hover:underline">
+                {book.name}
+              </p>
+            </Link>
+            {showStatusControls && onDelete && (
+              <BookMenu
+                book={book}
+                slug={slug}
+                onStatusChange={onStatusChange}
+                onDelete={onDelete}
+              />
+            )}
+          </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {bookMetaLine(book)}
           </p>
@@ -670,11 +844,6 @@ function BookCard({
                 ? `${book.startDate} to ${book.endDate}`
                 : `${book.daysToRead ?? 0} days`}
             </p>
-          )}
-          {showStatusControls && (
-            <div className="mt-2">
-              <StatusSelect book={book} onStatusChange={onStatusChange} />
-            </div>
           )}
         </div>
       </div>

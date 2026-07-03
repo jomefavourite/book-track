@@ -60,6 +60,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import CatchUpSuggestion from "./CatchUpSuggestion";
+import { DAY_TYPE_META, type ScheduleDayType } from "@/lib/scheduleDayType";
 
 interface CalendarViewProps {
   bookId: Id<"books">;
@@ -76,6 +77,7 @@ interface CalendarViewProps {
     | "progressStyle"
     | "ignorePages"
     | "markedCompleteAt"
+    | "communityBookId"
   > &
     Record<string, unknown>;
   canEdit?: boolean;
@@ -105,6 +107,20 @@ export default function CalendarView({
     }),
     enabled: true, // Allow querying even without auth (for public books)
   });
+  const communityBookId = book.communityBookId;
+  const { data: scheduleQuery } = useQuery({
+    ...convexQuery(api.communitySchedule.getScheduleForBook, {
+      communityBookId: communityBookId as Id<"communityBooks">,
+    }),
+    enabled: Boolean(communityBookId),
+  });
+  const dayTypeByDate = useMemo(() => {
+    const map = new Map<string, ScheduleDayType>();
+    (scheduleQuery ?? []).forEach((entry) => {
+      map.set(entry.date, entry.dayType as ScheduleDayType);
+    });
+    return map;
+  }, [scheduleQuery]);
   type ReadingSessionDoc = Doc<"readingSessions">;
   const sessionsQueryKey = convexQuery(api.readingSessions.getSessionsForBook, {
     bookId,
@@ -1228,6 +1244,10 @@ export default function CalendarView({
     const selectedDateKey = formatDateForStorage(selectedDay);
     const selectedSession = sessionsMap.get(selectedDateKey);
     const selectedIsRead = selectedSession?.isRead || false;
+    const selectedIsMissed = selectedSession?.isMissed || false;
+    const selectedDayType = dayTypeByDate.get(selectedDateKey) ?? "reading";
+    const selectedIsNonReadingDay =
+      selectedDayType !== "reading" && !selectedIsRead && !selectedIsMissed;
     const selectedChapter = getDisplayTargetChapterForDate(
       selectedDateKey,
       selectedSession,
@@ -1245,7 +1265,9 @@ export default function CalendarView({
         }
         plannedChapter={selectedChapter}
         isRead={selectedIsRead}
-        isMissed={selectedSession?.isMissed || false}
+        isMissed={selectedIsMissed}
+        isNonReadingDay={selectedIsNonReadingDay}
+        dayType={selectedDayType}
         canEdit={canEdit}
         isActionPending={isMobileActionPending}
         onReadToggle={() => handleMobileReadToggle(selectedDay)}
@@ -1452,6 +1474,11 @@ export default function CalendarView({
 
             const isRead = session?.isRead || false;
             const isMissed = session?.isMissed || false;
+            const scheduledDayType = dayTypeByDate.get(dateKey) ?? "reading";
+            const isNonReadingDay =
+              scheduledDayType !== "reading" && !isRead && !isMissed;
+            const dayTypeMeta = DAY_TYPE_META[scheduledDayType];
+            const DayTypeIcon = dayTypeMeta.icon;
 
             return (
               <div
@@ -1490,8 +1517,8 @@ export default function CalendarView({
                     </span>
                     {/* Checkboxes - Stacked vertically on mobile, horizontal on desktop */}
                     <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-1">
-                      {/* Read Checkbox - only show if not missed */}
-                      {!isMissed && (
+                      {/* Read Checkbox - only show if not missed and not a non-reading scheduled day */}
+                      {!isMissed && !isNonReadingDay && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1542,8 +1569,8 @@ export default function CalendarView({
                           )}
                         </button>
                       )}
-                      {/* Missed Checkbox - only show if not read */}
-                      {!isRead && (
+                      {/* Missed Checkbox - only show if not read and not a non-reading scheduled day */}
+                      {!isRead && !isNonReadingDay && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1824,45 +1851,54 @@ export default function CalendarView({
                         Missed
                       </div>
                     )}
-                    {!isRead &&
-                      !isMissed &&
-                      (chapterOnlyMode || plannedPages > 0) && (
-                        <div className="text-[10px] text-muted-foreground sm:text-xs">
-                          {chapterOnlyMode
-                            ? `Chapter ${targetChapter}`
-                            : `${session?.plannedPages || plannedPages} `}
-                          {!chapterOnlyMode && (
-                            <span className="hidden sm:inline">pages</span>
-                          )}
-                        </div>
-                      )}
-                    {session?.timerDurationSec && !isMissed && !isRead && (
-                      <div className="hidden sm:flex items-center gap-0.5 text-[9px] text-muted-foreground">
-                        <Timer className="h-2.5 w-2.5" />
-                        {formatTimerDuration(session.timerDurationSec)}
+                    {isNonReadingDay ? (
+                      <div className="hidden items-center gap-1 text-[10px] text-muted-foreground sm:flex sm:text-xs">
+                        <DayTypeIcon className="h-3 w-3 shrink-0" />
+                        {dayTypeMeta.label}
                       </div>
-                    )}
-                    {canEdit && !isRead && !isMissed && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenTimerDateKey(dateKey);
-                        }}
-                        className="hidden sm:flex items-center gap-0.5 rounded text-muted-foreground transition-colors hover:text-foreground"
-                        aria-label="Reading timer"
-                      >
-                        {activeTimerDateKey === dateKey &&
-                        timerPhase.status !== "setup" ? (
-                          <span className="inline-flex items-center gap-0.5 font-mono text-[9px]">
+                    ) : (
+                      <>
+                        {!isRead &&
+                          !isMissed &&
+                          (chapterOnlyMode || plannedPages > 0) && (
+                            <div className="text-[10px] text-muted-foreground sm:text-xs">
+                              {chapterOnlyMode
+                                ? `Chapter ${targetChapter}`
+                                : `${session?.plannedPages || plannedPages} `}
+                              {!chapterOnlyMode && (
+                                <span className="hidden sm:inline">pages</span>
+                              )}
+                            </div>
+                          )}
+                        {session?.timerDurationSec && !isMissed && !isRead && (
+                          <div className="hidden sm:flex items-center gap-0.5 text-[9px] text-muted-foreground">
                             <Timer className="h-2.5 w-2.5" />
-                            {timerPhase.status === "finished"
-                              ? "Done!"
-                              : formatCountdown(timerDisplaySec)}
-                          </span>
-                        ) : (
-                          <Timer className="h-3 w-3" />
+                            {formatTimerDuration(session.timerDurationSec)}
+                          </div>
                         )}
-                      </button>
+                        {canEdit && !isRead && !isMissed && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenTimerDateKey(dateKey);
+                            }}
+                            className="hidden sm:flex items-center gap-0.5 rounded text-muted-foreground transition-colors hover:text-foreground"
+                            aria-label="Reading timer"
+                          >
+                            {activeTimerDateKey === dateKey &&
+                            timerPhase.status !== "setup" ? (
+                              <span className="inline-flex items-center gap-0.5 font-mono text-[9px]">
+                                <Timer className="h-2.5 w-2.5" />
+                                {timerPhase.status === "finished"
+                                  ? "Done!"
+                                  : formatCountdown(timerDisplaySec)}
+                              </span>
+                            ) : (
+                              <Timer className="h-3 w-3" />
+                            )}
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -1902,10 +1938,15 @@ export default function CalendarView({
                         Missed
                       </div>
                     )}
-                    {!isRead &&
-                    !isMissed &&
-                    activeTimerDateKey === dateKey &&
-                    timerPhase.status !== "setup" ? (
+                    {isNonReadingDay ? (
+                      <div className="flex items-center gap-1 truncate text-[9px] text-muted-foreground">
+                        <DayTypeIcon className="h-2.5 w-2.5 shrink-0" />
+                        {dayTypeMeta.label}
+                      </div>
+                    ) : !isRead &&
+                      !isMissed &&
+                      activeTimerDateKey === dateKey &&
+                      timerPhase.status !== "setup" ? (
                       <div className="flex items-center gap-0.5 font-mono text-[9px] text-muted-foreground">
                         <Timer className="h-2.5 w-2.5" />
                         {timerPhase.status === "finished"
@@ -1971,6 +2012,8 @@ interface DayDetailModalProps {
   plannedChapter: number;
   isRead: boolean;
   isMissed: boolean;
+  isNonReadingDay: boolean;
+  dayType: ScheduleDayType;
   canEdit: boolean;
   isActionPending: boolean;
   onReadToggle: () => Promise<void>;
@@ -2000,6 +2043,8 @@ function DayDetailModal({
   plannedChapter,
   isRead,
   isMissed,
+  isNonReadingDay,
+  dayType,
   canEdit,
   isActionPending,
   onReadToggle,
@@ -2033,12 +2078,25 @@ function DayDetailModal({
             ? "Marked as read"
             : isMissed
               ? "Marked as missed"
-              : "Not yet recorded"}
+              : isNonReadingDay
+                ? `${DAY_TYPE_META[dayType].label} day — nothing to log`
+                : "Not yet recorded"}
         </DialogDescription>
       </DialogHeader>
 
       <div className="space-y-4">
         {/* Status Section */}
+        {isNonReadingDay ? (
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+            {(() => {
+              const Icon = DAY_TYPE_META[dayType].icon;
+              return <Icon className="h-5 w-5 shrink-0" />;
+            })()}
+            This day is set to {DAY_TYPE_META[dayType].label.toLowerCase()} in
+            the community schedule. There is nothing to mark as read or
+            missed.
+          </div>
+        ) : (
         <div>
           <h3 className="mb-3 text-sm font-semibold text-foreground">Status</h3>
           <div className="flex gap-4">
@@ -2153,8 +2211,10 @@ function DayDetailModal({
             )}
           </div>
         </div>
+        )}
 
         {/* Pages Section */}
+        {!isNonReadingDay && (
         <div className="space-y-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-foreground">
@@ -2345,9 +2405,10 @@ function DayDetailModal({
             </div>
           )}
         </div>
+        )}
 
         {/* Timer Section */}
-        {canEdit && !isRead && !isMissed && (
+        {canEdit && !isRead && !isMissed && !isNonReadingDay && (
           <div>
             <h3 className="mb-2 text-sm font-semibold text-foreground">
               Reading Timer

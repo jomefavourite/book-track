@@ -23,6 +23,8 @@ export default function NewCommunityPageClient() {
   const [brandColor, setBrandColor] = useState("#111827");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRequesting, setIsRequesting] = useState(false);
 
   const { data: creatorStatus, isPending: statusPending } = useQuery({
     ...convexQuery(api.communities.getCreatorStatus, {}),
@@ -55,6 +57,8 @@ export default function NewCommunityPageClient() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     setError(null);
 
     try {
@@ -65,6 +69,7 @@ export default function NewCommunityPageClient() {
         brandColor,
       });
     } catch (caught) {
+      setIsSubmitting(false);
       setError(caught instanceof Error ? caught.message : "Unable to create community.");
     }
   };
@@ -134,7 +139,13 @@ export default function NewCommunityPageClient() {
               className="mt-5 space-y-4"
               onSubmit={async (event) => {
                 event.preventDefault();
-                await requestAccess({ reason });
+                if (isRequesting) return;
+                setIsRequesting(true);
+                try {
+                  await requestAccess({ reason });
+                } finally {
+                  setIsRequesting(false);
+                }
               }}
             >
               <textarea
@@ -147,8 +158,8 @@ export default function NewCommunityPageClient() {
                 <Button type="button" variant="outline" asChild>
                   <Link href="/communities">Cancel</Link>
                 </Button>
-                <Button type="submit" disabled={requestPending}>
-                  {requestPending ? "Sending..." : "Request access"}
+                <Button type="submit" disabled={isRequesting}>
+                  {isRequesting ? "Sending..." : "Request access"}
                 </Button>
               </div>
             </form>
@@ -254,8 +265,8 @@ export default function NewCommunityPageClient() {
                 <Button type="button" variant="outline" asChild>
                   <Link href="/communities">Cancel</Link>
                 </Button>
-                <Button type="submit" disabled={createPending}>
-                  {createPending ? "Creating..." : "Create Community"}
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Creating..." : "Create Community"}
                 </Button>
               </div>
             </form>

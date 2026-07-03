@@ -736,6 +736,37 @@ export const archiveCommunityBook = mutation({
   },
 });
 
+export const deleteCommunityBook = mutation({
+  args: {
+    communityBookId: v.id("communityBooks"),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const book = await ctx.db.get(args.communityBookId);
+    if (!book) {
+      throw new Error("Community book not found");
+    }
+
+    const role = await getViewerRole(ctx, book.communityId, clerkId);
+    if (!canManageBooks(role)) {
+      throw new Error("Unauthorized");
+    }
+
+    const scheduleEntries = await ctx.db
+      .query("communityBookSchedule")
+      .withIndex("by_community_book", (q) =>
+        q.eq("communityBookId", args.communityBookId)
+      )
+      .collect();
+
+    for (const entry of scheduleEntries) {
+      await ctx.db.delete(entry._id);
+    }
+
+    await ctx.db.delete(args.communityBookId);
+  },
+});
+
 export const getCommunityBooks = query({
   args: {
     communityId: v.id("communities"),

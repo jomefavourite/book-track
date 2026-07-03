@@ -9,15 +9,12 @@ import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { format } from "date-fns";
 import {
   ArrowLeft,
-  BookOpen,
   BookOpenText,
-  CalendarDays,
-  Coffee,
   ImagePlus,
   Loader2,
   MessageSquareText,
   Pencil,
-  Sparkles,
+  Trash2,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -27,10 +24,17 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { parseDateFromStorage } from "@/lib/dateUtils";
+import { DAY_TYPE_META, type ScheduleDayType } from "@/lib/scheduleDayType";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type Role = "owner" | "admin" | "moderator" | "member";
-
-type ScheduleDayType = "reading" | "rest" | "reflection" | "catchup";
 
 type ScheduleEntry = {
   _id: Id<"communityBookSchedule">;
@@ -54,16 +58,6 @@ function canManageBooks(role?: Role) {
   return role === "owner" || role === "admin" || role === "moderator";
 }
 
-const DAY_TYPE_META: Record<
-  ScheduleDayType,
-  { label: string; icon: typeof BookOpen }
-> = {
-  reading: { label: "Reading", icon: BookOpen },
-  rest: { label: "Rest", icon: Coffee },
-  reflection: { label: "Reflection", icon: Sparkles },
-  catchup: { label: "Catch-up", icon: CalendarDays },
-};
-
 const STATUS_LABELS: Record<string, string> = {
   upcoming: "Upcoming",
   active: "Active",
@@ -81,6 +75,8 @@ export default function CommunityBookDetailPageClient() {
   const [trackError, setTrackError] = useState<string | null>(null);
   const [coverUploading, setCoverUploading] = useState(false);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { data: community } = useQuery({
     ...convexQuery(api.communities.getCommunityBySlug, { slug }),
@@ -124,6 +120,21 @@ export default function CommunityBookDetailPageClient() {
 
   const generateUploadUrl = useConvexMutation(api.communities.generateUploadUrl);
   const saveCover = useConvexMutation(api.communities.saveCommunityBookCover);
+  const deleteCommunityBook = useConvexMutation(
+    api.communities.deleteCommunityBook
+  );
+
+  const handleDeleteBook = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteCommunityBook({ communityBookId });
+      router.push(`/communities/${slug}`);
+    } catch {
+      toast({ title: "Could not delete book", variant: "destructive" });
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  };
 
   const scheduleEntries = schedule as ScheduleEntry[];
   const reflectionFeed = reflections as Reflection[];
@@ -135,6 +146,7 @@ export default function CommunityBookDetailPageClient() {
   );
 
   const handleStartTracking = async () => {
+    if (trackPending) return;
     setTrackError(null);
     try {
       const bookId = await trackBook({ communityBookId });
@@ -299,6 +311,15 @@ export default function CommunityBookDetailPageClient() {
                           handleCoverSelected(event.target.files?.[0])
                         }
                       />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setShowDeleteDialog(true)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete book
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -340,6 +361,21 @@ export default function CommunityBookDetailPageClient() {
                     }}
                   >
                     <Link href={`/books/${myBookId}`}>Continue reading</Link>
+                  </Button>
+                </div>
+              ) : (book.status ?? "upcoming") !== "active" ? (
+                <div className="mt-3 rounded-md border border-border bg-muted/40 p-4">
+                  <p className="text-sm font-medium text-foreground">
+                    Tracking not open yet
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    An admin needs to set this book to{" "}
+                    <span className="font-medium text-foreground">Active</span>{" "}
+                    before members can start tracking. Check back once it goes
+                    live.
+                  </p>
+                  <Button className="mt-3" disabled size="sm">
+                    Start Tracking
                   </Button>
                 </div>
               ) : (
@@ -467,6 +503,35 @@ export default function CommunityBookDetailPageClient() {
           </div>
         )}
       </main>
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete community book?</DialogTitle>
+            <DialogDescription>
+              &quot;{book?.name}&quot; and its reading schedule will be
+              permanently deleted. Members who are already tracking this book
+              keep their personal copy.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteDialog(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteBook}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </CommunityThemeProvider>
   );
 }

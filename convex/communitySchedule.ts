@@ -94,6 +94,20 @@ export function buildSessionsFromSchedule(
   });
 }
 
+export async function getScheduleDayTypeForDate(
+  ctx: QueryCtx | MutationCtx,
+  communityBookId: Id<"communityBooks">,
+  date: string
+) {
+  const entry = await ctx.db
+    .query("communityBookSchedule")
+    .withIndex("by_community_book_and_date", (q) =>
+      q.eq("communityBookId", communityBookId).eq("date", date)
+    )
+    .unique();
+  return entry?.dayType;
+}
+
 export async function getScheduleEntries(
   ctx: QueryCtx | MutationCtx,
   communityBookId: Id<"communityBooks">

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
-import { format } from "date-fns";
+import { format, getDay } from "date-fns";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -46,6 +46,21 @@ const DAY_TYPE_OPTIONS: Array<{ value: ScheduleDayType; label: string }> = [
   { value: "reflection", label: "Reflection" },
   { value: "catchup", label: "Catch-up" },
 ];
+
+const WEEKDAY_LABELS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+// date-fns getDay() returns 0 (Sun) - 6 (Sat); reindex so Monday is 0.
+function toMondayFirstIndex(dateFnsDay: number) {
+  return (dateFnsDay + 6) % 7;
+}
 
 function canManageBooks(role?: Role) {
   return role === "owner" || role === "admin" || role === "moderator";
@@ -131,6 +146,50 @@ export default function CommunityBookSchedulePageClient() {
 
   const readingCount =
     draft?.filter((day) => day.dayType === "reading").length ?? 0;
+
+  const weekdayTemplates = useMemo(() => {
+    if (!draft) return [];
+    const byWeekday: ScheduleDayType[][] = Array.from(
+      { length: 7 },
+      () => []
+    );
+    for (const day of draft) {
+      const index = toMondayFirstIndex(getDay(parseDateFromStorage(day.date)));
+      byWeekday[index].push(day.dayType);
+    }
+    return WEEKDAY_LABELS.map((label, index) => {
+      const types = byWeekday[index];
+      const counts = new Map<ScheduleDayType, number>();
+      for (const type of types) {
+        counts.set(type, (counts.get(type) ?? 0) + 1);
+      }
+      let mode: ScheduleDayType = "reading";
+      let best = -1;
+      for (const [type, count] of counts) {
+        if (count > best) {
+          best = count;
+          mode = type;
+        }
+      }
+      return { label, index, dayType: mode, hasDays: types.length > 0 };
+    });
+  }, [draft]);
+
+  const applyWeekdayTemplate = (
+    weekdayIndex: number,
+    dayType: ScheduleDayType
+  ) => {
+    setDraftEdits((current) => {
+      const base = current ?? initialDraft;
+      if (!base) return current;
+      return base.map((day) =>
+        toMondayFirstIndex(getDay(parseDateFromStorage(day.date))) ===
+        weekdayIndex
+          ? { ...day, dayType }
+          : day
+      );
+    });
+  };
 
   const { mutateAsync: saveSchedule, isPending: savePending } = useMutation({
     mutationFn: useConvexMutation(api.communitySchedule.bulkReplaceSchedule),
@@ -245,6 +304,51 @@ export default function CommunityBookSchedulePageClient() {
                 catch-up days have nothing assigned.
               </p>
             </div>
+
+            <Card className="p-5 sm:p-6">
+              <h2 className="text-lg font-semibold text-foreground">
+                Weekly pattern
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Set what each day of the week is for. Changing a day here
+                updates every matching day in the schedule below — you can
+                still override an individual day there.
+              </p>
+              <div className="mt-4 space-y-2">
+                {weekdayTemplates.map((weekday) => (
+                  <div
+                    key={weekday.label}
+                    className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center"
+                    style={{ borderColor: "var(--border)" }}
+                  >
+                    <span className="w-32 shrink-0 text-sm font-medium text-foreground">
+                      {weekday.label}
+                    </span>
+                    <Select
+                      value={weekday.dayType}
+                      onValueChange={(value) =>
+                        applyWeekdayTemplate(
+                          weekday.index,
+                          value as ScheduleDayType
+                        )
+                      }
+                      disabled={!weekday.hasDays}
+                    >
+                      <SelectTrigger className="h-9 w-full sm:w-36">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DAY_TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+            </Card>
 
             <Card className="p-5 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
