@@ -682,8 +682,13 @@ export const setCommunityBookStatus = mutation({
         if (other._id === args.communityBookId || other.isArchived === true) {
           continue;
         }
+        // Returned (not thrown) so the client can offer demote-and-switch;
+        // thrown Error messages are redacted in production deployments.
         if (!args.demoteCurrentActive) {
-          throw new Error(`ACTIVE_CONFLICT:${other.name}`);
+          return {
+            status: "conflict" as const,
+            currentActiveName: other.name,
+          };
         }
         await ctx.db.patch(other._id, {
           status: "completed",
@@ -703,6 +708,8 @@ export const setCommunityBookStatus = mutation({
         : {}),
       updatedAt: now,
     });
+
+    return { status: "ok" as const };
   },
 });
 

@@ -147,23 +147,21 @@ export default function CommunityDetailPageClient() {
     demoteCurrentActive = false
   ) => {
     try {
-      await setBookStatus({
+      const result = await setBookStatus({
         communityBookId: book._id,
         status,
         demoteCurrentActive,
       });
-      setActiveConflict(null);
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "";
-      const conflictMatch = message.match(/ACTIVE_CONFLICT:(.*)$/);
-      if (conflictMatch && status === "active") {
+      if (result?.status === "conflict") {
         setActiveConflict({
           bookId: book._id,
           bookName: book.name,
-          currentActiveName: conflictMatch[1],
+          currentActiveName: result.currentActiveName,
         });
         return;
       }
+      setActiveConflict(null);
+    } catch {
       toast({
         title: "Could not update book status",
         variant: "destructive",
@@ -506,10 +504,7 @@ function StatusSelect({
       value={bookStatus(book)}
       onValueChange={(value) => onStatusChange(book, value as BookStatus)}
     >
-      <SelectTrigger
-        className="h-8 w-32 text-xs"
-        onClick={(event) => event.preventDefault()}
-      >
+      <SelectTrigger className="h-8 w-32 text-xs">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
