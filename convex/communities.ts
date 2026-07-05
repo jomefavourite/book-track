@@ -926,9 +926,10 @@ export const removeMember = mutation({
 
 export const getCommunityForBook = query({
   args: {
-    communityBookId: v.id("communityBooks"),
+    communityBookId: v.optional(v.id("communityBooks")),
   },
   handler: async (ctx, args) => {
+    if (!args.communityBookId) return null;
     const communityBook = await ctx.db.get(args.communityBookId);
     if (!communityBook) return null;
     const community = await ctx.db.get(communityBook.communityId);

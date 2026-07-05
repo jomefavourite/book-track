@@ -58,6 +58,8 @@ export default defineSchema({
     showCreatorEmail: v.optional(v.boolean()),
     creatorName: v.optional(v.string()),
     creatorEmail: v.optional(v.string()),
+    /** Optional link where others can buy the book */
+    buyLink: v.optional(v.string()),
     isArchived: v.optional(v.boolean()),
     /** Set when the user marks the book complete without day-by-day tracking */
     markedCompleteAt: v.optional(v.number()),
@@ -65,6 +67,10 @@ export default defineSchema({
     shareMergedReflection: v.optional(v.boolean()),
     /** Set when this personal book was created by tracking a community book */
     communityBookId: v.optional(v.id("communityBooks")),
+    /** Current reading cycle. Bumped on reset; sessions with a lower generation are stale. Absent ⇒ 0 */
+    resetGeneration: v.optional(v.number()),
+    /** Timestamp of the most recent reset */
+    lastResetAt: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_user_and_order", ["userId", "bookOrder"])
@@ -84,6 +90,8 @@ export default defineSchema({
     ownerClerkId: v.string(),
     ownerName: v.optional(v.string()),
     brandColor: v.optional(v.string()),
+    /** Legacy community logo reference; kept optional for existing documents */
+    logoStorageId: v.optional(v.id("_storage")),
     isArchived: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -114,6 +122,10 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
     isArchived: v.optional(v.boolean()),
+    /** Legacy fields from earlier community-book iterations; kept optional for existing documents */
+    coverImageStorageId: v.optional(v.id("_storage")),
+    startedAt: v.optional(v.number()),
+    status: v.optional(v.string()),
   })
     .index("by_community", ["communityId"])
     .index("by_community_and_created", ["communityId", "createdAt"]),
@@ -191,6 +203,8 @@ export default defineSchema({
     isRead: v.boolean(),
     isMissed: v.optional(v.boolean()),
     createdAt: v.number(),
+    /** Reading cycle this session belongs to. Stale when < book.resetGeneration. Absent ⇒ 0 */
+    resetGeneration: v.optional(v.number()),
     // Legacy timer fields (may exist on older documents)
     timerDurationSec: v.optional(v.number()),
     timerLastUpdatedAt: v.optional(v.number()),

@@ -9,6 +9,11 @@ export const metadata: Metadata = createPageMetadata({
   noIndex: true,
 });
 
-export default function EditBookPage() {
-  return <EditBookPageClient />;
+export default async function EditBookPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ reset?: string }>;
+}) {
+  const { reset } = await searchParams;
+  return <EditBookPageClient resetMode={reset === "1"} />;
 }

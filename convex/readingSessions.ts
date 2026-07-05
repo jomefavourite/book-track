@@ -65,6 +65,7 @@ export const createSession = mutation({
       isRead,
       isMissed,
       createdAt: Date.now(),
+      resetGeneration: book.resetGeneration ?? 0,
     });
 
     return sessionId;
@@ -107,6 +108,7 @@ export const initializeSessionsForBook = mutation({
         plannedPages,
         isRead: false,
         createdAt: Date.now(),
+        resetGeneration: book.resetGeneration ?? 0,
       })
     );
 
@@ -141,6 +143,17 @@ export const updateSession = mutation({
     // Verify the session belongs to the user
     if (session.userId !== userId) {
       throw new Error("Unauthorized");
+    }
+
+    // Reject edits to sessions from a previous (reset) cycle — they are frozen.
+    const book = await ctx.db.get(session.bookId);
+    if (
+      book &&
+      (session.resetGeneration ?? 0) !== (book.resetGeneration ?? 0)
+    ) {
+      throw new Error(
+        "This reading record has been archived and can no longer be edited."
+      );
     }
 
     const updateData: {
@@ -267,9 +280,12 @@ export const getReflectionsForBook = query({
       .order("asc")
       .collect();
 
+    const activeGeneration = book.resetGeneration ?? 0;
+
     return sessions
       .filter(
         (session) =>
+          (session.resetGeneration ?? 0) === activeGeneration &&
           session.isRead &&
           !session.isMissed &&
           typeof session.reflectionNote === "string" &&
@@ -305,6 +321,7 @@ export const getSessionsForDateRange = query({
       throw new Error("Unauthorized");
     }
 
+    const activeGeneration = book.resetGeneration ?? 0;
     const sessions = await ctx.db
       .query("readingSessions")
       .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
@@ -312,7 +329,9 @@ export const getSessionsForDateRange = query({
 
     return sessions.filter(
       (session) =>
-        session.date >= args.startDate && session.date <= args.endDate
+        (session.resetGeneration ?? 0) === activeGeneration &&
+        session.date >= args.startDate &&
+        session.date <= args.endDate
     );
   },
 });
@@ -338,11 +357,18 @@ export const getSessionByDate = query({
       throw new Error("Unauthorized");
     }
 
+    const activeGeneration = book.resetGeneration ?? 0;
     const sessions = await ctx.db
       .query("readingSessions")
       .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
       .collect();
 
-    return sessions.find((session) => session.date === args.date) || null;
+    return (
+      sessions.find(
+        (session) =>
+          session.date === args.date &&
+          (session.resetGeneration ?? 0) === activeGeneration
+      ) || null
+    );
   },
 });

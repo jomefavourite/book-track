@@ -34,6 +34,7 @@ interface DatePickerProps {
   maxDate?: Date;
   allowPastDates?: boolean;
   label?: string;
+  disabled?: boolean;
 }
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -59,6 +60,7 @@ export default function DatePicker({
   maxDate,
   allowPastDates = true,
   label,
+  disabled = false,
 }: DatePickerProps) {
   // Use selected date's month/year, or current month if no selection
   // Allow free navigation - don't auto-reset when selectedDate changes
@@ -166,9 +168,20 @@ export default function DatePicker({
       {label && (
         <label className="block text-sm font-medium text-foreground mb-2">
           {label}
+          {disabled && (
+            <span className="ml-1 font-normal text-muted-foreground">
+              (locked)
+            </span>
+          )}
         </label>
       )}
-      <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div
+        aria-disabled={disabled || undefined}
+        className={cn(
+          "rounded-lg border border-border bg-card p-4 shadow-sm",
+          disabled && "pointer-events-none select-none opacity-60"
+        )}
+      >
         {/* Month/Year Navigation */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-1">

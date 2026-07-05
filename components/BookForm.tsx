@@ -44,12 +44,18 @@ interface BookFormProps {
     showCreatorEmail?: boolean;
     creatorName?: string;
     creatorEmail?: string;
+    buyLink?: string;
     progressStyle?: "pages" | "chapters";
     ignorePages?: boolean;
   };
+  /** When true, the form was reached via "Reset": start date is locked and only the end date can move forward. */
+  resetMode?: boolean;
 }
 
-export default function BookForm({ book: initialBook }: BookFormProps = {}) {
+export default function BookForm({
+  book: initialBook,
+  resetMode = false,
+}: BookFormProps = {}) {
   const isEditMode = !!initialBook;
   const router = useRouter();
   const { user } = useUser();
@@ -93,6 +99,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
   });
   const [name, setName] = useState(initialBook?.name || "");
   const [author, setAuthor] = useState(initialBook?.author || "");
+  const [buyLink, setBuyLink] = useState(initialBook?.buyLink || "");
   const [totalPages, setTotalPages] = useState(
     initialBook?.totalPages?.toString() || ""
   );
@@ -145,9 +152,9 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
     initialBook?.daysToRead?.toString() || ""
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isPublic, setIsPublic] = useState(initialBook?.isPublic || false);
+  const [isPublic, setIsPublic] = useState(initialBook?.isPublic ?? true);
   const [showCreatorName, setShowCreatorName] = useState(
-    initialBook?.showCreatorName || false
+    initialBook?.showCreatorName ?? true
   );
   const [showCreatorEmail, setShowCreatorEmail] = useState(
     initialBook?.showCreatorEmail || false
@@ -323,6 +330,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
       }
 
       const authorValue = author.trim() || undefined;
+      const buyLinkValue = buyLink.trim() || undefined;
       const parsedTotalPages = Number(totalPages);
       const parsedTotalChapters = Number(totalChapters);
       const totalChaptersValue =
@@ -363,6 +371,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
           userId: user.id,
           name,
           author: authorValue,
+          buyLink: buyLinkValue,
           totalPages: totalPagesValue,
           readingMode,
           startDate: startDateValue,
@@ -395,6 +404,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
           userId: user.id,
           name,
           author: authorValue,
+          buyLink: buyLinkValue,
           totalPages: totalPagesValue,
           readingMode,
           startMonth: startMonthValue,
@@ -470,6 +480,22 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
             onChange={(e) => setAuthor(e.target.value)}
             className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
             placeholder="e.g., J.K. Rowling"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-foreground">
+            Buy Link <span className="text-muted-foreground">(optional)</span>
+          </label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            A link where others can buy this book
+          </p>
+          <input
+            type="url"
+            value={buyLink}
+            onChange={(e) => setBuyLink(e.target.value)}
+            className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder="https://example.com/book"
           />
         </div>
 
@@ -596,6 +622,19 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
           </div>
         </div>
 
+        {resetMode && (
+          <div className="rounded-lg border border-primary/30 bg-primary/10 p-4">
+            <p className="text-sm font-medium text-foreground">
+              This book has been reset.
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Your previous progress has been archived (kept but read-only).
+              Choose a new end date to start fresh from page 1. The start date is
+              locked to today.
+            </p>
+          </div>
+        )}
+
         {readingMode === "calendar" && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -611,6 +650,7 @@ export default function BookForm({ book: initialBook }: BookFormProps = {}) {
                 allowPastDates={true}
                 maxDate={endDate || undefined}
                 label="Start Date"
+                disabled={resetMode}
               />
               <DatePicker
                 selectedDate={endDate}

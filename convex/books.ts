@@ -44,6 +44,7 @@ export const createBook = mutation({
     showCreatorEmail: v.optional(v.boolean()),
     creatorName: v.optional(v.string()),
     creatorEmail: v.optional(v.string()),
+    buyLink: v.optional(v.string()),
     progressStyle: v.optional(
       v.union(v.literal("pages"), v.literal("chapters"))
     ),
@@ -91,6 +92,7 @@ export const createBook = mutation({
       showCreatorEmail: boolean;
       creatorName?: string;
       creatorEmail?: string;
+      buyLink?: string;
       isArchived: boolean;
       shareMergedReflection: boolean;
     } = {
@@ -120,6 +122,11 @@ export const createBook = mutation({
     // Only include author if it's provided (not undefined)
     if (args.author !== undefined) {
       bookData.author = args.author;
+    }
+
+    // Only include buy link if it's provided (not undefined)
+    if (args.buyLink !== undefined) {
+      bookData.buyLink = args.buyLink;
     }
 
     if (bookData.progressStyle === "chapters") {
@@ -261,6 +268,7 @@ export const updateBook = mutation({
     showCreatorEmail: v.optional(v.boolean()),
     creatorName: v.optional(v.string()),
     creatorEmail: v.optional(v.string()),
+    buyLink: v.optional(v.string()),
     progressStyle: v.optional(
       v.union(v.literal("pages"), v.literal("chapters"))
     ),
@@ -300,6 +308,7 @@ export const updateBook = mutation({
       showCreatorEmail?: boolean;
       creatorName?: string;
       creatorEmail?: string;
+      buyLink?: string;
       progressStyle?: "pages" | "chapters";
       ignorePages?: boolean;
     } = {};
@@ -355,6 +364,9 @@ export const updateBook = mutation({
     if (args.creatorEmail !== undefined) {
       updates.creatorEmail = args.creatorEmail;
     }
+    if (args.buyLink !== undefined) {
+      updates.buyLink = args.buyLink;
+    }
     if (args.progressStyle !== undefined) {
       updates.progressStyle = args.progressStyle;
     }
@@ -395,13 +407,17 @@ export const updateBook = mutation({
     const totalPagesChanged = args.totalPages !== undefined;
     const ignorePagesChanged = args.ignorePages !== undefined;
 
+    const currentGeneration = book.resetGeneration ?? 0;
+
     // If dates or totalPages changed, update reading sessions
     if (datesChanged || totalPagesChanged || ignorePagesChanged) {
-      // Get all existing sessions for this book
-      const existingSessions = await ctx.db
-        .query("readingSessions")
-        .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
-        .collect();
+      // Get existing sessions for the active cycle only (stale sessions are frozen)
+      const existingSessions = (
+        await ctx.db
+          .query("readingSessions")
+          .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
+          .collect()
+      ).filter((s) => (s.resetGeneration ?? 0) === currentGeneration);
 
       const newStartDate = parseDateFromStorage(finalStartDate);
       const newEndDate = parseDateFromStorage(finalEndDate);
@@ -459,6 +475,7 @@ export const updateBook = mutation({
             plannedPages: newPlannedPages,
             isRead: false,
             createdAt: Date.now(),
+            resetGeneration: currentGeneration,
           });
         }
       }
@@ -472,10 +489,12 @@ export const updateBook = mutation({
       finalProgressStyle === "chapters" &&
       isValidPositiveInteger(finalTotalChapters)
     ) {
-      const existingSessions = await ctx.db
-        .query("readingSessions")
-        .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
-        .collect();
+      const existingSessions = (
+        await ctx.db
+          .query("readingSessions")
+          .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
+          .collect()
+      ).filter((s) => (s.resetGeneration ?? 0) === currentGeneration);
 
       const shouldClamp =
         book.totalChapters === undefined || finalTotalChapters < book.totalChapters;
@@ -552,6 +571,48 @@ export const clearMarkedComplete = mutation({
     }
 
     await ctx.db.patch(args.bookId, { markedCompleteAt: undefined });
+  },
+});
+
+/**
+ * Reset a book to start reading again from scratch. The current cycle's reading
+ * sessions are preserved but become "stale" (frozen, read-only) by bumping the book's
+ * resetGeneration. The book is collapsed to a single day (start = end = today) with no
+ * active sessions, so progress reads 0. The client then sends the user to the edit page
+ * to move the end date forward, which recreates fresh sessions for the new cycle.
+ *
+ * `startDate` is the client's local "today" (yyyy-MM-dd) to avoid server timezone drift.
+ */
+export const resetBook = mutation({
+  args: {
+    bookId: v.id("books"),
+    userId: v.string(),
+    startDate: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = args.userId;
+    if (!userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const book = await ctx.db.get(args.bookId);
+    if (!book) {
+      throw new Error("Book not found");
+    }
+
+    if (book.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+
+    const newGeneration = (book.resetGeneration ?? 0) + 1;
+
+    await ctx.db.patch(args.bookId, {
+      resetGeneration: newGeneration,
+      lastResetAt: Date.now(),
+      markedCompleteAt: undefined,
+      startDate: args.startDate,
+      endDate: args.startDate,
+    });
   },
 });
 

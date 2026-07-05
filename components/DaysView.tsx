@@ -32,7 +32,8 @@ import {
 } from "@/lib/pageTracking";
 import CatchUpSuggestion from "./CatchUpSuggestion";
 import { Input } from "./ui/input";
-import { Timer } from "lucide-react";
+import { ChevronDown, Timer } from "lucide-react";
+import { filterStaleSessions } from "@/lib/resetGeneration";
 import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
 import ReflectionNoteEditor from "./ReflectionNoteEditor";
 import { playTimerEndSound } from "@/lib/timerSound";
@@ -49,6 +50,7 @@ interface DaysViewProps {
     | "progressStyle"
     | "ignorePages"
     | "markedCompleteAt"
+    | "resetGeneration"
   > &
     Record<string, unknown>;
   canEdit?: boolean;
@@ -191,6 +193,7 @@ export default function DaysView({
         isRead: variables.isRead,
         isMissed: variables.isMissed ?? false,
         createdAt: Date.now(),
+        resetGeneration: book.resetGeneration ?? 0,
       };
 
       queryClient.setQueryData<ReadingSessionDoc[] | undefined>(
@@ -250,7 +253,25 @@ export default function DaysView({
   };
 
   // Use empty array as default to ensure hooks are always called
-  const sessions = useMemo(() => sessionsQuery ?? [], [sessionsQuery]);
+  const allSessions = useMemo(() => sessionsQuery ?? [], [sessionsQuery]);
+  const currentGeneration = book.resetGeneration ?? 0;
+  // Only the current reading cycle drives progress; stale (pre-reset) sessions are excluded.
+  const sessions = useMemo(
+    () =>
+      allSessions.filter(
+        (session) => (session.resetGeneration ?? 0) === currentGeneration
+      ),
+    [allSessions, currentGeneration]
+  );
+  // Archived (stale) sessions from previous reading cycles, newest first.
+  const staleSessions = useMemo(
+    () =>
+      filterStaleSessions(allSessions, book).sort((a, b) =>
+        a.date < b.date ? 1 : a.date > b.date ? -1 : 0
+      ),
+    [allSessions, book]
+  );
+  const [previousAttemptsOpen, setPreviousAttemptsOpen] = useState(false);
 
   // Local state for input values to allow smooth typing
   const [inputValues, setInputValues] = useState<Map<string, string>>(
@@ -1457,6 +1478,83 @@ export default function DaysView({
           })}
         </div>
       </div>
+
+      {staleSessions.length > 0 && (
+        <div className="rounded-lg border border-border bg-card p-4">
+          <button
+            type="button"
+            onClick={() => setPreviousAttemptsOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-3 text-left"
+            aria-expanded={previousAttemptsOpen}
+          >
+            <span className="text-sm font-medium text-foreground">
+              Previous attempts ({staleSessions.length})
+            </span>
+            <ChevronDown
+              className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${
+                previousAttemptsOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+
+          {previousAttemptsOpen && (
+            <div className="mt-4 space-y-2 border-t border-border pt-4">
+              <p className="text-xs text-muted-foreground">
+                Archived from before this book was reset. These records are
+                read-only.
+              </p>
+              <div className="max-h-80 space-y-2 overflow-y-auto opacity-70">
+                {staleSessions.map((session) => {
+                  const read = session.isRead && !session.isMissed;
+                  const missed = session.isMissed ?? false;
+                  const note = session.reflectionNote?.trim();
+                  return (
+                    <div
+                      key={session._id}
+                      className={`rounded border px-3 py-2 text-sm ${
+                        read
+                          ? "border-green-600/60 bg-green-100/70 text-green-900 dark:border-green-800 dark:bg-green-950/60 dark:text-green-200"
+                          : missed
+                            ? "border-red-600/60 bg-red-100/70 text-red-900 dark:border-red-800 dark:bg-red-950/60 dark:text-red-200"
+                            : "border-border bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">
+                          {format(
+                            parseDateFromStorage(session.date),
+                            "MMM d, yyyy"
+                          )}
+                        </span>
+                        <span className="text-xs">
+                          {read
+                            ? chapterOnlyMode
+                              ? session.chapterNumber != null
+                                ? `Read · Ch ${session.chapterNumber}`
+                                : "Read"
+                              : `Read · ${
+                                  session.actualPages ??
+                                  session.plannedPages ??
+                                  0
+                                } pages`
+                            : missed
+                              ? "Missed"
+                              : "Not logged"}
+                        </span>
+                      </div>
+                      {note && (
+                        <p className="mt-1 whitespace-pre-wrap text-xs opacity-90">
+                          {note}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

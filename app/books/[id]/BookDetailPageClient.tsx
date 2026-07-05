@@ -7,7 +7,8 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useUser, SignInButton } from "@clerk/nextjs";
 import { format, differenceInDays } from "date-fns";
-import { parseDateFromStorage } from "@/lib/dateUtils";
+import { parseDateFromStorage, formatDateForStorage } from "@/lib/dateUtils";
+import { filterActiveSessions, filterStaleSessions } from "@/lib/resetGeneration";
 import { computeReadingProgressSummary } from "@/lib/readingProgressSummary";
 import { getHighestChapterRead, isChapterOnlyBook } from "@/lib/chapterTracking";
 import ReadingProgressStatusBanner from "@/components/ReadingProgressStatusBanner";
@@ -16,7 +17,7 @@ import { Card } from "@/components/ui/card";
 import CalendarView from "@/components/CalendarView";
 import DaysView from "@/components/DaysView";
 import Navigation from "@/components/Navigation";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   BookOpenText,
@@ -24,6 +25,9 @@ import {
   CheckCircle2,
   ChevronDown,
   Copy,
+  MoreVertical,
+  Pencil,
+  RotateCcw,
   Share2,
   Users,
 } from "lucide-react";
@@ -44,6 +48,7 @@ import {
 
 export default function BookDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { user } = useUser();
   const bookId = params.id as Id<"books">;
@@ -53,6 +58,8 @@ export default function BookDetailPage() {
   const [reflectionsOpen, setReflectionsOpen] = useState(false);
   const [markCompleteOpen, setMarkCompleteOpen] = useState(false);
   const [clearMarkCompleteOpen, setClearMarkCompleteOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [staleReflectionsOpen, setStaleReflectionsOpen] = useState(false);
   const {
     data: book,
     isPending,
@@ -80,7 +87,7 @@ export default function BookDetailPage() {
 
   const { data: communityInfo } = useQuery({
     ...convexQuery(api.communities.getCommunityForBook, {
-      communityBookId: book?.communityBookId!,
+      communityBookId: book?.communityBookId,
     }),
     enabled: !!book?.communityBookId,
   });
@@ -135,9 +142,31 @@ export default function BookDetailPage() {
     }
   };
 
-  const progressSummary = useMemo(
-    () => (book ? computeReadingProgressSummary(book, sessions) : null),
+  // Only the current reading cycle counts toward progress; stale (pre-reset)
+  // sessions are preserved but excluded here.
+  const activeSessions = useMemo(
+    () => (book ? filterActiveSessions(sessions, book) : sessions),
     [book, sessions]
+  );
+
+  // Reflection notes from previous (reset) reading cycles — read-only. Only the owner
+  // receives un-redacted notes from getSessionsForBook, so this stays empty for viewers.
+  const staleReflections = useMemo(() => {
+    if (!book) return [];
+    return filterStaleSessions(sessions, book)
+      .filter(
+        (session) =>
+          session.isRead &&
+          !session.isMissed &&
+          typeof session.reflectionNote === "string" &&
+          session.reflectionNote.trim().length > 0
+      )
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  }, [book, sessions]);
+
+  const progressSummary = useMemo(
+    () => (book ? computeReadingProgressSummary(book, activeSessions) : null),
+    [book, activeSessions]
   );
   const chapterMode = book?.progressStyle === "chapters";
   const chapterOnlyMode = book ? isChapterOnlyBook(book) : false;
@@ -147,19 +176,20 @@ export default function BookDetailPage() {
     if (chapterOnlyMode) {
       if (!book.totalChapters || book.totalChapters <= 0) return 0;
       return (
-        (getHighestChapterRead(sessions, book.totalChapters) / book.totalChapters) *
+        (getHighestChapterRead(activeSessions, book.totalChapters) /
+          book.totalChapters) *
         100
       );
     }
     if (!book.totalPages || book.totalPages <= 0) return 0;
-    const totalPagesRead = sessions.reduce((sum, session) => {
+    const totalPagesRead = activeSessions.reduce((sum, session) => {
       if (session.isRead && !session.isMissed) {
         return sum + (session.actualPages ?? session.plannedPages ?? 0);
       }
       return sum;
     }, 0);
     return (totalPagesRead / book.totalPages) * 100;
-  }, [book, sessions, chapterOnlyMode]);
+  }, [book, activeSessions, chapterOnlyMode]);
 
   const invalidateBookProgressQueries = async () => {
     await queryClient.invalidateQueries({
@@ -197,6 +227,12 @@ export default function BookDetailPage() {
       mutationFn: clearMarkedCompleteMutation,
       onSuccess: invalidateBookProgressQueries,
     });
+
+  const resetBookMutation = useConvexMutation(api.books.resetBook);
+  const { mutateAsync: resetBook, isPending: resetPending } = useMutation({
+    mutationFn: resetBookMutation,
+    onSuccess: invalidateBookProgressQueries,
+  });
 
   const setMergedReflectionSharingMutation = useConvexMutation(
     api.books.setMergedReflectionSharing
@@ -352,37 +388,59 @@ export default function BookDetailPage() {
                   )}
                 </Button>
               )}
-              {showMarkCompleteButton && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 min-h-9 gap-1.5"
-                  onClick={() => setMarkCompleteOpen(true)}
-                >
-                  <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  <span className="hidden sm:inline">Mark completed</span>
-                </Button>
-              )}
-              {showClearMarkedCompleteButton && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 min-h-9 gap-1.5"
-                  onClick={() => setClearMarkCompleteOpen(true)}
-                >
-                  <span className="hidden sm:inline">Remove marked complete</span>
-                  <span className="sm:hidden">Undo complete</span>
-                </Button>
-              )}
-              {canEdit && !isCommunityBook && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 min-h-9"
-                  asChild
-                >
-                  <Link href={`/books/${bookId}/edit`}>Edit</Link>
-                </Button>
+              {(isPublicBook ||
+                showMarkCompleteButton ||
+                showClearMarkedCompleteButton ||
+                (canEdit && !isCommunityBook)) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 min-h-9 w-9 px-0"
+                      aria-label="More actions"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {isPublicBook && (
+                      <DropdownMenuItem onClick={handleShare}>
+                        <Share2 className="mr-2 h-4 w-4" />
+                        Share
+                      </DropdownMenuItem>
+                    )}
+                    {showMarkCompleteButton && (
+                      <DropdownMenuItem
+                        onClick={() => setMarkCompleteOpen(true)}
+                      >
+                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                        Mark completed
+                      </DropdownMenuItem>
+                    )}
+                    {showClearMarkedCompleteButton && (
+                      <DropdownMenuItem
+                        onClick={() => setClearMarkCompleteOpen(true)}
+                      >
+                        Remove marked complete
+                      </DropdownMenuItem>
+                    )}
+                    {canEdit && !isCommunityBook && (
+                      <DropdownMenuItem asChild>
+                        <Link href={`/books/${bookId}/edit`}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+                    {canEdit && !isCommunityBook && (
+                      <DropdownMenuItem onClick={() => setResetOpen(true)}>
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        Reset
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </div>
           </div>
@@ -475,6 +533,19 @@ export default function BookDetailPage() {
                     book.creatorEmail?.split("@")[0] ||
                     "Anonymous"}
                 </Link>
+              </p>
+            )}
+            {book.buyLink && (
+              <p>
+                Buy the book:{" "}
+                <a
+                  href={book.buyLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline hover:no-underline"
+                >
+                  {book.buyLink}
+                </a>
               </p>
             )}
           </div>
@@ -741,6 +812,53 @@ export default function BookDetailPage() {
                       : "No shared reflection is available for this book."}
                   </div>
                 )}
+
+                {canEdit && staleReflections.length > 0 && (
+                  <div className="mt-4 border-t border-border pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setStaleReflectionsOpen((open) => !open)}
+                      className="flex w-full items-center justify-between gap-3 text-left"
+                      aria-expanded={staleReflectionsOpen}
+                    >
+                      <span className="text-sm font-medium text-foreground">
+                        Previous attempts ({staleReflections.length})
+                      </span>
+                      <ChevronDown
+                        className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${
+                          staleReflectionsOpen ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+
+                    {staleReflectionsOpen && (
+                      <div className="mt-3 space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          Notes from before this book was reset. These are
+                          read-only.
+                        </p>
+                        <div className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-3 opacity-80">
+                          {staleReflections.map((reflection) => (
+                            <article
+                              key={reflection._id}
+                              className="border-b border-border pb-3 last:border-0 last:pb-0"
+                            >
+                              <div className="mb-1 text-xs font-medium text-muted-foreground">
+                                {format(
+                                  parseDateFromStorage(reflection.date),
+                                  "MMMM d, yyyy"
+                                )}
+                              </div>
+                              <p className="whitespace-pre-wrap text-sm text-foreground">
+                                {reflection.reflectionNote}
+                              </p>
+                            </article>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </Card>
@@ -833,6 +951,52 @@ export default function BookDetailPage() {
               }}
             >
               {clearMarkCompletePending ? "Removing…" : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset this book?</DialogTitle>
+            <DialogDescription>
+              Start reading this book over from scratch. Everything you&apos;ve
+              tracked so far — read days, missed days, and reflections — is kept
+              but archived: it turns read-only and appears greyed out in the
+              calendar. Your progress resets to 0%. Next, you&apos;ll pick a new
+              end date; the start date will be set to today.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setResetOpen(false)}
+              disabled={resetPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={resetPending || !user?.id}
+              onClick={async () => {
+                if (!user?.id) return;
+                try {
+                  await resetBook({
+                    bookId,
+                    userId: user.id,
+                    startDate: formatDateForStorage(new Date()),
+                  });
+                  setResetOpen(false);
+                  router.push(`/books/${bookId}/edit?reset=1`);
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+            >
+              {resetPending ? "Resetting…" : "Reset book"}
             </Button>
           </DialogFooter>
         </DialogContent>
