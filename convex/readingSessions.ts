@@ -4,7 +4,27 @@ import {
   parseDateFromStorage,
   distributePagesAcrossDays,
 } from "./dateUtils";
+import { getScheduleDayTypeForDate } from "./communitySchedule";
 import type { Doc } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
+
+async function assertLoggableDay(
+  ctx: MutationCtx,
+  book: Doc<"books">,
+  date: string
+) {
+  if (!book.communityBookId) return;
+  const dayType = await getScheduleDayTypeForDate(
+    ctx,
+    book.communityBookId,
+    date
+  );
+  if (dayType && dayType !== "reading") {
+    throw new Error(
+      `This day is set to ${dayType} and can't be marked read or missed.`
+    );
+  }
+}
 
 const redactReflectionNote = (
   session: Doc<"readingSessions">
@@ -52,6 +72,10 @@ export const createSession = mutation({
     // Ensure isRead and isMissed are mutually exclusive
     const isRead = args.isMissed ? false : args.isRead;
     const isMissed = args.isRead ? false : (args.isMissed ?? false);
+
+    if (isRead || isMissed) {
+      await assertLoggableDay(ctx, book, args.date);
+    }
 
     const sessionId = await ctx.db.insert("readingSessions", {
       bookId: args.bookId,
@@ -145,8 +169,9 @@ export const updateSession = mutation({
       throw new Error("Unauthorized");
     }
 
-    // Reject edits to sessions from a previous (reset) cycle — they are frozen.
     const book = await ctx.db.get(session.bookId);
+
+    // Reject edits to sessions from a previous (reset) cycle — they are frozen.
     if (
       book &&
       (session.resetGeneration ?? 0) !== (book.resetGeneration ?? 0)
@@ -154,6 +179,11 @@ export const updateSession = mutation({
       throw new Error(
         "This reading record has been archived and can no longer be edited."
       );
+    }
+
+    // Community-scheduled books restrict which days can be logged.
+    if ((args.isRead || args.isMissed) && book) {
+      await assertLoggableDay(ctx, book, session.date);
     }
 
     const updateData: {

@@ -85,12 +85,14 @@ export default function BookDetailPage() {
   const isPublicBook = book?.isPublic;
   const canEdit = Boolean(isOwner);
 
-  const { data: communityInfo } = useQuery({
-    ...convexQuery(api.communities.getCommunityForBook, {
-      communityBookId: book?.communityBookId,
-    }),
-    enabled: !!book?.communityBookId,
-  });
+  const { data: communityInfo } = useQuery(
+    convexQuery(
+      api.communities.getCommunityForBook,
+      book?.communityBookId
+        ? { communityBookId: book.communityBookId }
+        : "skip"
+    )
+  );
 
   const { data: reflections = [] } = useQuery({
     ...convexQuery(api.readingSessions.getReflectionsForBook, {

@@ -12,6 +12,10 @@ export function canManageCommunity(role?: CommunityRole): boolean {
   return role === "owner" || role === "admin";
 }
 
+export function canManageBooks(role?: CommunityRole): boolean {
+  return role === "owner" || role === "admin" || role === "moderator";
+}
+
 export function canManageInvites(role?: CommunityRole): boolean {
   return role === "owner" || role === "admin";
 }

@@ -152,7 +152,7 @@ export default function BookForm({
     initialBook?.daysToRead?.toString() || ""
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isPublic, setIsPublic] = useState(initialBook?.isPublic ?? true);
+  const [isPublic, setIsPublic] = useState(initialBook ? initialBook.isPublic : true);
   const [showCreatorName, setShowCreatorName] = useState(
     initialBook?.showCreatorName ?? true
   );

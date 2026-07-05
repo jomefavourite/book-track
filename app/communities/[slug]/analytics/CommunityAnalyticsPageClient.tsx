@@ -43,16 +43,16 @@ export default function CommunityAnalyticsPageClient() {
   });
 
   const detail = community as CommunityDetail | null | undefined;
-  const communityId =
-    detail?._id ?? ("placeholder" as Id<"communities">);
+  const communityId = detail?._id;
   const canViewAnalytics = canManage(detail?.viewerRole);
+  const canLoadProgress = !!communityId && canViewAnalytics;
 
-  const { data: progressData, isPending: progressPending } = useQuery({
-    ...convexQuery(api.communities.getCommunityMemberProgress, {
-      communityId,
-    }),
-    enabled: !!detail?._id && canViewAnalytics,
-  });
+  const { data: progressData, isPending: progressPending } = useQuery(
+    convexQuery(
+      api.communities.getCommunityMemberProgress,
+      canLoadProgress ? { communityId } : "skip"
+    )
+  );
 
   const isPending = communityPending || (canViewAnalytics && progressPending);
 
