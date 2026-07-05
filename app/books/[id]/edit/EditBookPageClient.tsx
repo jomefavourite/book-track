@@ -9,7 +9,11 @@ import { useParams, useRouter } from "next/navigation";
 import BookForm from "@/components/BookForm";
 import Link from "next/link";
 
-export default function EditBookPage() {
+export default function EditBookPage({
+  resetMode = false,
+}: {
+  resetMode?: boolean;
+}) {
   const params = useParams();
   const router = useRouter();
   const { user, isLoaded } = useUser();
@@ -66,7 +70,7 @@ export default function EditBookPage() {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <div className="mb-4 text-lg">You don't have permission to edit this book</div>
+          <div className="mb-4 text-lg">You don&apos;t have permission to edit this book</div>
           <Link
             href="/dashboard"
             className="text-blue-600 hover:underline dark:text-blue-400"
@@ -78,6 +82,6 @@ export default function EditBookPage() {
     );
   }
 
-  return <BookForm book={book} />;
+  return <BookForm book={book} resetMode={resetMode} />;
 }
 

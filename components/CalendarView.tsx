@@ -23,7 +23,7 @@ import {
   formatTimerDuration,
   formatCountdown,
 } from "@/lib/dateUtils";
-import { Timer } from "lucide-react";
+import { BookOpenText, Timer } from "lucide-react";
 import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
 import ReflectionNoteEditor from "./ReflectionNoteEditor";
 import { playTimerEndSound } from "@/lib/timerSound";
@@ -77,6 +77,7 @@ interface CalendarViewProps {
     | "progressStyle"
     | "ignorePages"
     | "markedCompleteAt"
+    | "resetGeneration"
     | "communityBookId"
   > &
     Record<string, unknown>;
@@ -234,6 +235,7 @@ export default function CalendarView({
         isRead: variables.isRead,
         isMissed: variables.isMissed ?? false,
         createdAt: Date.now(),
+        resetGeneration: book.resetGeneration ?? 0,
       };
 
       queryClient.setQueryData<ReadingSessionDoc[] | undefined>(
@@ -294,7 +296,38 @@ export default function CalendarView({
 
   // Use empty array as default to ensure hooks are always called
   // Memoize to prevent creating new array reference on every render
-  const sessions = useMemo(() => sessionsQuery || [], [sessionsQuery]);
+  const allSessions = useMemo(() => sessionsQuery || [], [sessionsQuery]);
+  const currentGeneration = book.resetGeneration ?? 0;
+  // Only the current reading cycle drives the interactive calendar and progress.
+  const sessions = useMemo(
+    () =>
+      allSessions.filter(
+        (session) => (session.resetGeneration ?? 0) === currentGeneration
+      ),
+    [allSessions, currentGeneration]
+  );
+  // Sessions from previous (reset) cycles — preserved, shown greyed and read-only.
+  const staleSessionsMap = useMemo(() => {
+    const map = new Map<string, (typeof allSessions)[number]>();
+    allSessions.forEach((session) => {
+      if ((session.resetGeneration ?? 0) < currentGeneration) {
+        map.set(session.date, session);
+      }
+    });
+    return map;
+  }, [allSessions, currentGeneration]);
+  // Earliest / latest date among stale sessions, so navigation can reach those months.
+  const staleDateRange = useMemo(() => {
+    let min: string | null = null;
+    let max: string | null = null;
+    allSessions.forEach((session) => {
+      if ((session.resetGeneration ?? 0) < currentGeneration) {
+        if (min === null || session.date < min) min = session.date;
+        if (max === null || session.date > max) max = session.date;
+      }
+    });
+    return { min, max };
+  }, [allSessions, currentGeneration]);
 
   // Local state for input values to allow smooth typing
   const [inputValues, setInputValues] = useState<Map<string, string>>(
@@ -471,20 +504,32 @@ export default function CalendarView({
 
   // Calculate navigation boundaries based on selected month range if available
   const navigationBounds = useMemo(() => {
+    let start: Date;
+    let end: Date;
     if (book.startMonth && book.endMonth && book.startYear && book.endYear) {
       const startRange = getMonthDateRange(book.startMonth, book.startYear);
       const endRange = getMonthDateRange(book.endMonth, book.endYear);
-      return {
-        start: startOfMonth(startRange.start),
-        end: endOfMonth(endRange.end),
-      };
+      start = startOfMonth(startRange.start);
+      end = endOfMonth(endRange.end);
+    } else {
+      // Fall back to actual reading period
+      start = startOfMonth(readingPeriod.start);
+      end = endOfMonth(readingPeriod.end);
     }
-    // Fall back to actual reading period
-    return {
-      start: startOfMonth(readingPeriod.start),
-      end: endOfMonth(readingPeriod.end),
-    };
-  }, [book, readingPeriod]);
+
+    // Widen the navigable range to include archived (stale) months from previous
+    // reading cycles, so the user can page back to see them.
+    if (staleDateRange.min) {
+      const staleStart = startOfMonth(parseDateFromStorage(staleDateRange.min));
+      if (staleStart < start) start = staleStart;
+    }
+    if (staleDateRange.max) {
+      const staleEnd = endOfMonth(parseDateFromStorage(staleDateRange.max));
+      if (staleEnd > end) end = staleEnd;
+    }
+
+    return { start, end };
+  }, [book, readingPeriod, staleDateRange]);
 
   const pageDistribution = useMemo(() => {
     if (chapterOnlyMode || typeof book.totalPages !== "number") {
@@ -1460,6 +1505,42 @@ export default function CalendarView({
             const isToday = isSameDay(day, new Date());
 
             if (!isInPeriod) {
+              // Show archived (stale) records from a previous reading cycle,
+              // greyed out and non-interactive.
+              const staleSession = staleSessionsMap.get(dateKey);
+              const staleRead = staleSession?.isRead && !staleSession.isMissed;
+              const staleMissed = staleSession?.isMissed || false;
+
+              if (staleRead || staleMissed) {
+                return (
+                  <div
+                    key={dateKey}
+                    title="Archived from a previous reading cycle (read-only)"
+                    className={`aspect-square rounded border p-0.5 opacity-60 sm:p-2 ${
+                      staleRead
+                        ? "border-green-600/60 bg-green-100/70 text-green-900 dark:border-green-800 dark:bg-green-950/60 dark:text-green-200"
+                        : "border-red-600/60 bg-red-100/70 text-red-900 dark:border-red-800 dark:bg-red-950/60 dark:text-red-200"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-medium sm:text-sm">
+                        {format(day, "d")}
+                      </span>
+                      {staleSession?.reflectionNote &&
+                        staleSession.reflectionNote.trim().length > 0 && (
+                          <BookOpenText
+                            className="h-3 w-3 opacity-80"
+                            aria-label="Has a reflection note"
+                          />
+                        )}
+                    </div>
+                    <div className="mt-0.5 hidden text-[9px] leading-tight sm:block">
+                      {staleRead ? "Read" : "Missed"}
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div
                   key={dateKey}
