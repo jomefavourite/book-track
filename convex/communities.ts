@@ -564,6 +564,46 @@ function buildCommunityBookPayload(
   };
 }
 
+/**
+ * Fan a community-book edit out to every member's tracked personal book
+ * (rows in `books` linked via `communityBookId`). Only the shared metadata
+ * fields are overwritten — member-owned state (progress, order, public/archive
+ * flags, reset generation, reading sessions) is left untouched.
+ */
+async function syncTrackedBooks(
+  ctx: MutationCtx,
+  communityBookId: Id<"communityBooks">,
+  payload: ReturnType<typeof buildCommunityBookPayload>
+) {
+  const bookPatch = {
+    name: payload.name,
+    author: payload.author,
+    totalPages: payload.totalPages,
+    totalChapters: payload.totalChapters,
+    progressStyle: payload.progressStyle,
+    ignorePages: payload.ignorePages,
+    readingMode: payload.readingMode,
+    startMonth: payload.startMonth,
+    endMonth: payload.endMonth,
+    startYear: payload.startYear,
+    endYear: payload.endYear,
+    daysToRead: payload.daysToRead,
+    startDate: payload.startDate,
+    endDate: payload.endDate,
+  };
+
+  const trackedBooks = await ctx.db
+    .query("books")
+    .withIndex("by_community_book_id", (q) =>
+      q.eq("communityBookId", communityBookId)
+    )
+    .collect();
+
+  await Promise.all(
+    trackedBooks.map((book) => ctx.db.patch(book._id, bookPatch))
+  );
+}
+
 export const createCommunityBook = mutation({
   args: {
     communityId: v.id("communities"),
@@ -647,6 +687,9 @@ export const updateCommunityBook = mutation({
         ? { coverImageStorageId: args.coverImageStorageId }
         : {}),
     });
+
+    // Keep every member's tracked personal book in sync with this edit.
+    await syncTrackedBooks(ctx, args.communityBookId, payload);
   },
 });
 
