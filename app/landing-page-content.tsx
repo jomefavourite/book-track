@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import Navigation from "@/components/Navigation";
 import PublicBookCard from "@/components/PublicBookCard";
 import PWAInstallBanner from "@/components/PWAInstallBanner";
+import Footer from "@/components/Footer";
 
 const featureCards = [
   {
@@ -241,6 +242,8 @@ export default function LandingPage() {
           </SignInButton>
         </Card>
       </section>
+
+      <Footer />
     </div>
   );
 }
