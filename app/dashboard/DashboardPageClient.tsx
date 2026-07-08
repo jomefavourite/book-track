@@ -8,12 +8,13 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import BookCard from "@/components/BookCard";
+import BookCardSkeleton from "@/components/BookCardSkeleton";
 import ArchivedBookCard from "@/components/ArchivedBookCard";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Lock, Search, ShieldCheck, Users } from "lucide-react";
+import { BookOpen, Lock, Search, ShieldCheck, Users } from "lucide-react";
 
 type TabType = "active" | "archived";
 
@@ -45,9 +46,27 @@ type CommunityPreview = {
   memberCount: number;
   viewerRole?: "owner" | "admin" | "moderator" | "member";
   brandColor?: string;
+  activeBook?: {
+    _id: Id<"communityBooks">;
+    name: string;
+    trackedBookId?: Id<"books"> | null;
+  } | null;
 };
 
-function CommunityDashboardCard({ community }: { community: CommunityPreview }) {
+function getActiveBookHref(community: CommunityPreview) {
+  if (!community.activeBook) return null;
+  if (community.activeBook.trackedBookId) {
+    return `/books/${community.activeBook.trackedBookId}`;
+  }
+  return `/communities/${community.slug}/books/${community.activeBook._id}`;
+}
+
+function CommunityDashboardCard({
+  community,
+}: {
+  community: CommunityPreview;
+}) {
+  const activeBookHref = getActiveBookHref(community);
   return (
     <Card className="flex h-full flex-col p-4">
       <div className="flex items-start justify-between gap-3">
@@ -84,14 +103,35 @@ function CommunityDashboardCard({ community }: { community: CommunityPreview }) 
         {community.viewerRole && (
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4" />
-            <span className="capitalize">Your role: {community.viewerRole}</span>
+            <span className="capitalize">
+              Your role: {community.viewerRole}
+            </span>
           </div>
         )}
       </div>
 
-      <Button asChild size="sm" className="mt-5 w-full">
-        <Link href={`/communities/${community.slug}`}>Open</Link>
-      </Button>
+      <div className="mt-5 flex gap-2">
+        <Button
+          asChild
+          size="sm"
+          className="flex-1"
+        >
+          <Link href={`/communities/${community.slug}`}>Open</Link>
+        </Button>
+        {activeBookHref && (
+          <Button
+            asChild
+            size="sm"
+            variant="outline"
+            className="flex-1"
+          >
+            <Link href={activeBookHref}>
+              <BookOpen className="h-4 w-4" />
+              Open book
+            </Link>
+          </Button>
+        )}
+      </div>
     </Card>
   );
 }
@@ -133,10 +173,10 @@ export default function Dashboard() {
   let content = null;
   if (isPending && books === undefined) {
     content = (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <div className="text-base text-muted-foreground sm:text-lg">
-          Loading books...
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <BookCardSkeleton key={index} />
+        ))}
       </div>
     );
   } else {
@@ -193,7 +233,11 @@ export default function Dashboard() {
                   Open the reading communities you belong to.
                 </p>
               </div>
-              <Button asChild variant="outline" size="sm">
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+              >
                 <Link href="/communities">View all communities</Link>
               </Button>
             </div>

@@ -36,6 +36,7 @@ interface BookCardProps {
     progressStyle?: "pages" | "chapters";
     ignorePages?: boolean;
     communityBookId?: Id<"communityBooks">;
+    communityBookStatus?: "upcoming" | "active" | "completed";
   };
   progress?: number;
 }
@@ -43,6 +44,7 @@ interface BookCardProps {
 export default function BookCard({ book, progress = 0 }: BookCardProps) {
   const { user } = useUser();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showActiveBlockedDialog, setShowActiveBlockedDialog] = useState(false);
   const queryClient = useQueryClient();
   const { mutateAsync: deleteBook } = useMutation({
     mutationFn: useConvexMutation(api.books.deleteBook),
@@ -91,6 +93,11 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    // An active community book can't be deleted — explain why instead.
+    if (book.communityBookId && book.communityBookStatus === "active") {
+      setShowActiveBlockedDialog(true);
+      return;
+    }
     setShowDeleteDialog(true);
   };
 
@@ -241,6 +248,33 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
         title="Delete Book"
         message={`Are you sure you want to delete "${book.name}"? This action cannot be undone and will delete all associated reading sessions.`}
       />
+
+      {showActiveBlockedDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowActiveBlockedDialog(false)}
+        >
+          <Card
+            className="w-full max-w-md p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="mb-2 text-lg font-semibold text-card-foreground">
+              Can&apos;t delete this book
+            </h2>
+            <p className="mb-6 text-sm text-muted-foreground">
+              &quot;{book.name}&quot; is an active community book. It can&apos;t
+              be deleted while the community is still reading it. You can archive
+              it instead, or delete it once the community book is no longer
+              active.
+            </p>
+            <div className="flex justify-end">
+              <Button onClick={() => setShowActiveBlockedDialog(false)}>
+                Got it
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </>
   );
 }

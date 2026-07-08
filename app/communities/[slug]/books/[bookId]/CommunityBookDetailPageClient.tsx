@@ -118,7 +118,9 @@ export default function CommunityBookDetailPageClient() {
     mutationFn: useConvexMutation(api.communities.trackCommunityBook),
   });
 
-  const generateUploadUrl = useConvexMutation(api.communities.generateUploadUrl);
+  const generateUploadUrl = useConvexMutation(
+    api.communities.generateUploadUrl
+  );
   const saveCover = useConvexMutation(api.communities.saveCommunityBookCover);
   const deleteCommunityBook = useConvexMutation(
     api.communities.deleteCommunityBook
@@ -138,7 +140,6 @@ export default function CommunityBookDetailPageClient() {
 
   const scheduleEntries = schedule as ScheduleEntry[];
   const reflectionFeed = reflections as Reflection[];
-  const previewReflections = reflectionFeed.slice(0, 5);
 
   const readingDayCount = useMemo(
     () => scheduleEntries.filter((entry) => entry.dayType === "reading").length,
@@ -191,8 +192,12 @@ export default function CommunityBookDetailPageClient() {
   return (
     <CommunityThemeProvider brandColor={community?.brandColor}>
       <Navigation />
-      <main className="mx-auto max-w-4xl p-3 sm:p-6">
-        <Button variant="ghost" asChild className="mb-4 px-0">
+      <main className="mx-auto max-w-6xl p-3 sm:p-6">
+        <Button
+          variant="ghost"
+          asChild
+          className="mb-4"
+        >
           <Link href={`/communities/${slug}`}>
             <ArrowLeft className="h-4 w-4" />
             Community
@@ -208,7 +213,11 @@ export default function CommunityBookDetailPageClient() {
             <p className="text-sm text-muted-foreground">
               This book could not be opened. It may have been removed.
             </p>
-            <Button asChild variant="outline" className="mt-4">
+            <Button
+              asChild
+              variant="outline"
+              className="mt-4"
+            >
               <Link href={`/communities/${slug}`}>Back to community</Link>
             </Button>
           </Card>
@@ -275,13 +284,21 @@ export default function CommunityBookDetailPageClient() {
                       : `${book.totalPages?.toLocaleString() ?? 0} pages`}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {format(parseDateFromStorage(book.startDate), "MMM d, yyyy")}{" "}
-                    to {format(parseDateFromStorage(book.endDate), "MMM d, yyyy")}
+                    {format(
+                      parseDateFromStorage(book.startDate),
+                      "MMM d, yyyy"
+                    )}{" "}
+                    to{" "}
+                    {format(parseDateFromStorage(book.endDate), "MMM d, yyyy")}
                   </p>
 
                   {isManager && (
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <Button asChild size="sm" variant="outline">
+                      <Button
+                        asChild
+                        size="sm"
+                        variant="outline"
+                      >
                         <Link
                           href={`/communities/${slug}/books/${communityBookId}/schedule`}
                         >
@@ -374,7 +391,11 @@ export default function CommunityBookDetailPageClient() {
                     before members can start tracking. Check back once it goes
                     live.
                   </p>
-                  <Button className="mt-3" disabled size="sm">
+                  <Button
+                    className="mt-3"
+                    disabled
+                    size="sm"
+                  >
                     Start Tracking
                   </Button>
                 </div>
@@ -406,9 +427,75 @@ export default function CommunityBookDetailPageClient() {
               )}
             </Card>
 
-            {scheduleEntries.length > 0 && (
-              <Card className="p-5 sm:p-6">
-                <div className="flex items-center justify-between gap-3">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+              {/* Community reflections — the focus of this page */}
+              {isMember ? (
+                <Card className="p-5 sm:p-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-xl font-semibold text-foreground">
+                        <MessageSquareText className="h-5 w-5" />
+                        Community reflections
+                      </h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        What members took away from each day&apos;s reading.
+                      </p>
+                    </div>
+                    {reflectionFeed.length > 0 && (
+                      <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                        {reflectionFeed.length}
+                      </span>
+                    )}
+                  </div>
+
+                  {myBookId && (
+                    <Button
+                      asChild
+                      size="sm"
+                      variant="outline"
+                      className="mt-4"
+                    >
+                      <Link href={`/books/${myBookId}`}>
+                        <Pencil className="h-4 w-4" />
+                        Add your reflection
+                      </Link>
+                    </Button>
+                  )}
+
+                  {reflectionFeed.length === 0 ? (
+                    <p className="mt-4 rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                      No reflections yet. Reflections members add to their read
+                      days will show up here.
+                    </p>
+                  ) : (
+                    <div className="mt-4 divide-y divide-border">
+                      {reflectionFeed.map((reflection) => (
+                        <div
+                          key={reflection.sessionId}
+                          className="py-4 first:pt-0 last:pb-0"
+                        >
+                          <ReflectionItem reflection={reflection} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              ) : (
+                <Card className="p-5 sm:p-6">
+                  <h2 className="flex items-center gap-2 text-xl font-semibold text-foreground">
+                    <MessageSquareText className="h-5 w-5" />
+                    Community reflections
+                  </h2>
+                  <p className="mt-4 rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                    Join this community to read and share reflections on this
+                    book.
+                  </p>
+                </Card>
+              )}
+
+              {/* Reading schedule — supporting context */}
+              {scheduleEntries.length > 0 && (
+                <Card className="p-5 sm:p-6">
                   <div>
                     <h2 className="text-lg font-semibold text-foreground">
                       Reading schedule
@@ -416,95 +503,61 @@ export default function CommunityBookDetailPageClient() {
                     <p className="mt-1 text-sm text-muted-foreground">
                       {readingDayCount} reading{" "}
                       {readingDayCount === 1 ? "day" : "days"},{" "}
-                      {scheduleEntries.length - readingDayCount} rest, reflection
-                      or catch-up {scheduleEntries.length - readingDayCount === 1
+                      {scheduleEntries.length - readingDayCount} rest,
+                      reflection or catch-up{" "}
+                      {scheduleEntries.length - readingDayCount === 1
                         ? "day"
                         : "days"}
                       .
                     </p>
                   </div>
-                </div>
-                <div className="mt-4 max-h-80 space-y-1 overflow-y-auto pr-1">
-                  {scheduleEntries.map((entry) => {
-                    const meta = DAY_TYPE_META[entry.dayType];
-                    const Icon = meta.icon;
-                    const isReading = entry.dayType === "reading";
-                    return (
-                      <div
-                        key={entry._id}
-                        className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm"
-                        style={
-                          isReading
-                            ? {
-                                backgroundColor: "var(--brand-soft)",
-                                borderColor: "var(--brand-border)",
-                              }
-                            : { borderColor: "var(--border)" }
-                        }
-                      >
-                        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <span className="w-28 shrink-0 font-medium text-foreground">
-                          {format(parseDateFromStorage(entry.date), "EEE, MMM d")}
-                        </span>
-                        <span className="text-muted-foreground">
-                          {meta.label}
-                          {isReading && entry.chapterNumber !== undefined
-                            ? ` • Chapter ${entry.chapterNumber}`
-                            : ""}
-                          {entry.notes ? ` • ${entry.notes}` : ""}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-            )}
-
-            {isMember && (
-              <Card className="p-5 sm:p-6">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
-                      <MessageSquareText className="h-5 w-5" />
-                      Community reflections
-                    </h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      What members took away from each day&apos;s reading.
-                    </p>
+                  <div className="mt-4 max-h-96 space-y-1 overflow-y-auto pr-1">
+                    {scheduleEntries.map((entry) => {
+                      const meta = DAY_TYPE_META[entry.dayType];
+                      const Icon = meta.icon;
+                      const isReading = entry.dayType === "reading";
+                      return (
+                        <div
+                          key={entry._id}
+                          className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm"
+                          style={
+                            isReading
+                              ? {
+                                  backgroundColor: "var(--brand-soft)",
+                                  borderColor: "var(--brand-border)",
+                                }
+                              : { borderColor: "var(--border)" }
+                          }
+                        >
+                          <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span className="w-24 shrink-0 font-medium text-foreground">
+                            {format(
+                              parseDateFromStorage(entry.date),
+                              "EEE, MMM d"
+                            )}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {meta.label}
+                            {isReading && entry.chapterNumber !== undefined
+                              ? ` • Chapter ${entry.chapterNumber}`
+                              : ""}
+                            {entry.notes ? ` • ${entry.notes}` : ""}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
-                  {reflectionFeed.length > previewReflections.length && (
-                    <Button asChild variant="outline" size="sm">
-                      <Link
-                        href={`/communities/${slug}/books/${communityBookId}/reflections`}
-                      >
-                        View all
-                      </Link>
-                    </Button>
-                  )}
-                </div>
-
-                {previewReflections.length === 0 ? (
-                  <p className="mt-4 rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-                    No reflections yet. Reflections members add to their read
-                    days will show up here.
-                  </p>
-                ) : (
-                  <div className="mt-4 space-y-4">
-                    {previewReflections.map((reflection) => (
-                      <ReflectionItem
-                        key={reflection.sessionId}
-                        reflection={reflection}
-                      />
-                    ))}
-                  </div>
-                )}
-              </Card>
-            )}
+                </Card>
+              )}
+            </div>
           </div>
         )}
       </main>
 
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <Dialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete community book?</DialogTitle>

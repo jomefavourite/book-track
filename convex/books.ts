@@ -10,6 +10,7 @@ import {
 import {
   getBookProgressPercent,
   getEffectivePagesReadForStats,
+  isChapterOnlyBook,
 } from "./bookProgress";
 
 const isValidPositiveInteger = (value: number | undefined): value is number =>
@@ -198,9 +199,16 @@ export const getBooks = query({
 
         const progress = getBookProgressPercent(book, sessions);
 
+        // Surface the linked community book's status so the UI can, e.g.,
+        // block deleting a personal copy while the community book is active.
+        const communityBook = book.communityBookId
+          ? await ctx.db.get(book.communityBookId)
+          : null;
+
         return {
           ...book,
           progress,
+          communityBookStatus: communityBook?.status,
         };
       })
     );
@@ -727,6 +735,16 @@ export const deleteBook = mutation({
       throw new Error("Unauthorized");
     }
 
+    // A community book that is still actively being read can't be deleted.
+    if (book.communityBookId) {
+      const communityBook = await ctx.db.get(book.communityBookId);
+      if (communityBook?.status === "active") {
+        throw new Error(
+          "This community book is still active and can't be deleted."
+        );
+      }
+    }
+
     // Delete all reading sessions associated with this book
     const sessions = await ctx.db
       .query("readingSessions")
@@ -982,5 +1000,62 @@ export const getBooksForProfile = query({
     );
 
     return booksWithProgress;
+  },
+});
+
+// Aggregate reading stats over ALL of a user's books (public + private), so shared
+// profiles show the owner's true totals. Returns only aggregate numbers — never
+// individual book details — so no private book data is exposed to visitors.
+export const getProfileStats = query({
+  args: {
+    profileUserId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const allBooks = await ctx.db
+      .query("books")
+      .withIndex("by_user", (q) => q.eq("userId", args.profileUserId))
+      .collect();
+
+    const withProgress = await Promise.all(
+      allBooks.map(async (book) => {
+        const sessions = await ctx.db
+          .query("readingSessions")
+          .withIndex("by_book", (q) => q.eq("bookId", book._id))
+          .collect();
+        return { book, progress: getBookProgressPercent(book, sessions) };
+      })
+    );
+
+    let completed = 0;
+    let inProgress = 0;
+    let totalPagesRead = 0;
+    let progressSum = 0;
+    let earliestStartDate: string | null = null;
+
+    for (const { book, progress } of withProgress) {
+      if (progress >= 100) {
+        completed++;
+      } else if (progress > 0) {
+        inProgress++;
+      }
+      if (!isChapterOnlyBook(book)) {
+        totalPagesRead += ((book.totalPages ?? 0) * progress) / 100;
+      }
+      progressSum += progress;
+      if (!earliestStartDate || book.startDate < earliestStartDate) {
+        earliestStartDate = book.startDate;
+      }
+    }
+
+    return {
+      totalBooks: allBooks.length,
+      completed,
+      inProgress,
+      totalPagesRead: Math.round(totalPagesRead),
+      earliestStartDate,
+      avgProgress: allBooks.length
+        ? Math.round(progressSum / allBooks.length)
+        : 0,
+    };
   },
 });

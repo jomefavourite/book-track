@@ -12,6 +12,8 @@ import {
   BookOpen,
   CalendarDays,
   CheckCircle2,
+  Globe,
+  Instagram,
   Lock,
   MoreVertical,
   Pencil,
@@ -57,6 +59,9 @@ type CommunityDetail = {
   totalChapters?: number;
   ownerName?: string;
   brandColor?: string;
+  instagramUrl?: string;
+  tiktokUrl?: string;
+  websiteUrl?: string;
   logoUrl?: string | null;
   memberCount: number;
   viewerRole?: "owner" | "admin" | "moderator" | "member";
@@ -212,7 +217,7 @@ export default function CommunityDetailPageClient() {
         <Button
           variant="ghost"
           asChild
-          className="mb-4 px-0"
+          className="mb-4"
         >
           <Link href="/communities">
             <ArrowLeft className="h-4 w-4" />
@@ -489,6 +494,20 @@ export default function CommunityDetailPageClient() {
                       </div>
                     )}
                   </div>
+                  {(detail.instagramUrl ||
+                    detail.tiktokUrl ||
+                    detail.websiteUrl) && (
+                    <div className="mt-4 border-t border-border pt-4">
+                      <p className="mb-2 text-sm font-medium text-foreground">
+                        Connect
+                      </p>
+                      <SocialLinks
+                        instagramUrl={detail.instagramUrl}
+                        tiktokUrl={detail.tiktokUrl}
+                        websiteUrl={detail.websiteUrl}
+                      />
+                    </div>
+                  )}
                 </Card>
                 {detail.visibility === "private" && (
                   <Card className="p-5">
@@ -606,6 +625,58 @@ function SectionHeading({
   );
 }
 
+// lucide-react has no TikTok glyph, so we render a small inline SVG.
+function TikTokIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M16.5 3a5.6 5.6 0 0 0 4.5 4.5v2.9a8.4 8.4 0 0 1-4.5-1.35v6.15a5.9 5.9 0 1 1-5.9-5.9c.2 0 .4 0 .6.03v3.02a2.9 2.9 0 1 0 2 2.75V3h3.2Z" />
+    </svg>
+  );
+}
+
+function SocialLinks({
+  instagramUrl,
+  tiktokUrl,
+  websiteUrl,
+}: {
+  instagramUrl?: string;
+  tiktokUrl?: string;
+  websiteUrl?: string;
+}) {
+  const links = [
+    { url: instagramUrl, label: "Instagram", Icon: Instagram },
+    { url: tiktokUrl, label: "TikTok", Icon: TikTokIcon },
+    { url: websiteUrl, label: "Website", Icon: Globe },
+  ].filter((link): link is { url: string; label: string; Icon: typeof Globe } =>
+    Boolean(link.url)
+  );
+
+  if (links.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-3">
+      {links.map(({ url, label, Icon }) => (
+        <a
+          key={label}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={label}
+          title={label}
+          className="text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Icon className="h-5 w-5" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function BookMenu({
   book,
   slug,
@@ -640,6 +711,15 @@ function BookMenu({
             Edit book
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link
+            href={`/communities/${slug}/books/${book._id}/schedule`}
+            className="flex items-center gap-2"
+          >
+            <CalendarDays className="h-4 w-4" />
+            Manage schedule
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {current !== "upcoming" && (
           <DropdownMenuItem
@@ -665,7 +745,13 @@ function BookMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={onDelete}
+          disabled={current === "active"}
           className="text-destructive focus:text-destructive"
+          title={
+            current === "active"
+              ? "Set the book to Upcoming or Completed before deleting it."
+              : undefined
+          }
         >
           <Trash2 className="h-4 w-4" />
           Delete book

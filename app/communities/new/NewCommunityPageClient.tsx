@@ -21,6 +21,9 @@ export default function NewCommunityPageClient() {
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState<"public" | "private">("private");
   const [brandColor, setBrandColor] = useState("#111827");
+  const [instagramUrl, setInstagramUrl] = useState("");
+  const [tiktokUrl, setTiktokUrl] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -67,6 +70,9 @@ export default function NewCommunityPageClient() {
         description,
         visibility,
         brandColor,
+        instagramUrl,
+        tiktokUrl,
+        websiteUrl,
       });
     } catch (caught) {
       setIsSubmitting(false);
@@ -78,7 +84,7 @@ export default function NewCommunityPageClient() {
     <>
       <Navigation />
       <main className="mx-auto max-w-3xl p-3 sm:p-6">
-        <Button variant="ghost" asChild className="mb-4 px-0">
+        <Button variant="ghost" asChild className="mb-4">
           <Link href="/communities">
             <ArrowLeft className="h-4 w-4" />
             Communities
@@ -252,6 +258,42 @@ export default function NewCommunityPageClient() {
                       placeholder="#111827"
                     />
                   </div>
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-foreground">
+                    Instagram <span className="text-muted-foreground">(optional)</span>
+                  </span>
+                  <Input
+                    type="url"
+                    value={instagramUrl}
+                    onChange={(event) => setInstagramUrl(event.target.value)}
+                    placeholder="https://instagram.com/yourcommunity"
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-foreground">
+                    TikTok <span className="text-muted-foreground">(optional)</span>
+                  </span>
+                  <Input
+                    type="url"
+                    value={tiktokUrl}
+                    onChange={(event) => setTiktokUrl(event.target.value)}
+                    placeholder="https://tiktok.com/@yourcommunity"
+                  />
+                </label>
+
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-foreground">
+                    Website <span className="text-muted-foreground">(optional)</span>
+                  </span>
+                  <Input
+                    type="url"
+                    value={websiteUrl}
+                    onChange={(event) => setWebsiteUrl(event.target.value)}
+                    placeholder="https://yourcommunity.com"
+                  />
                 </label>
               </div>
 

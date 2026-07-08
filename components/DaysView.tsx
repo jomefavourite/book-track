@@ -37,7 +37,12 @@ import { filterStaleSessions } from "@/lib/resetGeneration";
 import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
 import ReflectionNoteEditor from "./ReflectionNoteEditor";
 import { playTimerEndSound } from "@/lib/timerSound";
-import { DAY_TYPE_META, type ScheduleDayType } from "@/lib/scheduleDayType";
+import {
+  DAY_TYPE_META,
+  dayTypeAllowsReading,
+  scheduleChapterTargets,
+  type ScheduleDayType,
+} from "@/lib/scheduleDayType";
 
 interface DaysViewProps {
   bookId: Id<"books">;
@@ -131,6 +136,10 @@ export default function DaysView({
                   variables.chapterNumber !== undefined
                     ? variables.chapterNumber
                     : session.chapterNumber,
+                targetChapter:
+                  variables.targetChapter !== undefined
+                    ? variables.targetChapter
+                    : session.targetChapter,
                 timerDurationSec:
                   variables.timerDurationSec ?? session.timerDurationSec,
                 reflectionNote:
@@ -205,6 +214,7 @@ export default function DaysView({
         actualPages: variables.actualPages,
         stopPage: variables.stopPage,
         chapterNumber: variables.chapterNumber,
+        targetChapter: variables.targetChapter,
         reflectionNote: variables.reflectionNote?.trim() || undefined,
         isRead: variables.isRead,
         isMissed: variables.isMissed ?? false,
@@ -408,23 +418,53 @@ export default function DaysView({
     });
   }, [startDate, totalDays]);
 
+  // Community books follow the admin's schedule verbatim (its per-day chapter
+  // targets), instead of a locally recomputed even distribution.
+  const communityChapterTargets = useMemo(
+    () => scheduleChapterTargets(scheduleQuery),
+    [scheduleQuery]
+  );
+  const useCommunitySchedule =
+    Boolean(communityBookId) && communityChapterTargets.size > 0;
+
   const chapterDistribution = useMemo(() => {
     if (!chapterOnlyMode || !chapterDropdownMax) {
       return new Map<string, number>();
     }
+    if (useCommunitySchedule) {
+      return communityChapterTargets;
+    }
     return distributeChaptersAcrossDays(chapterDropdownMax, startDate, endDate);
-  }, [chapterOnlyMode, chapterDropdownMax, startDate, endDate]);
+  }, [
+    chapterOnlyMode,
+    chapterDropdownMax,
+    startDate,
+    endDate,
+    useCommunitySchedule,
+    communityChapterTargets,
+  ]);
 
   const chapterSuggestions = useMemo(
     () =>
-      computeChapterSuggestions(
-        days.map(({ date }) => date),
-        (dateKey) => sessionsMap.get(dateKey),
-        chapterDropdownMax,
-        chapterDistribution,
-        chapterOnlyMode
-      ),
-    [days, sessionsMap, chapterDropdownMax, chapterDistribution, chapterOnlyMode]
+      // For community books, the admin's schedule is fixed — don't adaptively
+      // redistribute remaining chapters; show the scheduled targets as-is.
+      useCommunitySchedule
+        ? chapterDistribution
+        : computeChapterSuggestions(
+            days.map(({ date }) => date),
+            (dateKey) => sessionsMap.get(dateKey),
+            chapterDropdownMax,
+            chapterDistribution,
+            chapterOnlyMode
+          ),
+    [
+      useCommunitySchedule,
+      days,
+      sessionsMap,
+      chapterDropdownMax,
+      chapterDistribution,
+      chapterOnlyMode,
+    ]
   );
 
   const normalizeChapterValue = (value: number) => {
@@ -481,6 +521,7 @@ export default function DaysView({
           isRead: false,
           isMissed: false,
           actualPages: existingSession.actualPages,
+          targetChapter: null,
         }).catch(console.error);
         if (!chapterOnlyMode) {
           // Redistribute pages after unmarking as read (non-blocking)
@@ -498,15 +539,27 @@ export default function DaysView({
               plannedPages: existingSession.plannedPages ?? pagesPerDay,
               totalPages: book.totalPages,
             });
+        const chapterFields = chapterMode
+          ? {
+              chapterNumber: defaultChapterForDate(dateKey),
+              ...(chapterOnlyMode
+                ? {
+                    targetChapter: getTargetChapterForDate(
+                      dateKey,
+                      chapterSuggestions,
+                      chapterDistribution
+                    ),
+                  }
+                : {}),
+            }
+          : {};
         updateSession({
           sessionId: existingSession._id,
           userId: user.id,
           isRead: true,
           isMissed: false,
           ...(chapterOnlyMode ? {} : markPages),
-          ...(chapterMode
-            ? { chapterNumber: defaultChapterForDate(dateKey) }
-            : {}),
+          ...chapterFields,
         }).catch(console.error);
         if (!chapterOnlyMode) {
           // Redistribute after marking as read (non-blocking)
@@ -526,6 +579,20 @@ export default function DaysView({
             plannedPages: defaultPlannedPages,
             totalPages: book.totalPages,
           });
+      const chapterFields = chapterMode
+        ? {
+            chapterNumber: defaultChapterForDate(dateKey),
+            ...(chapterOnlyMode
+              ? {
+                  targetChapter: getTargetChapterForDate(
+                    dateKey,
+                    chapterSuggestions,
+                    chapterDistribution
+                  ),
+                }
+              : {}),
+          }
+        : {};
       createSession({
         bookId,
         userId: user.id,
@@ -534,9 +601,7 @@ export default function DaysView({
         ...(chapterOnlyMode ? {} : markPages),
         isRead: true,
         isMissed: false,
-        ...(chapterMode
-          ? { chapterNumber: defaultChapterForDate(dateKey) }
-          : {}),
+        ...chapterFields,
       }).catch(console.error);
 
       if (!chapterOnlyMode) {
@@ -1052,7 +1117,12 @@ export default function DaysView({
             const isRead = session?.isRead || false;
             const isMissed = session?.isMissed || false;
             const scheduledDayType = dayTypeByDate.get(dateKey) ?? "reading";
+            // Rest/reflection days can't be logged; catch-up days can (read only).
             const isNonReadingDay =
+              !dayTypeAllowsReading(scheduledDayType) && !isRead && !isMissed;
+            // Show the day-type label (instead of a page plan) for any
+            // non-reading type that hasn't been logged yet — including catch-up.
+            const showDayTypeLabel =
               scheduledDayType !== "reading" && !isRead && !isMissed;
             const dayTypeMeta = DAY_TYPE_META[scheduledDayType];
             const DayTypeIcon = dayTypeMeta.icon;
@@ -1169,8 +1239,8 @@ export default function DaysView({
                         )}
                       </button>
                     )}
-                    {/* Missed Checkbox - only show if not read and not a non-reading scheduled day */}
-                    {!isRead && !isNonReadingDay && (
+                    {/* Missed Checkbox - only real reading days can be "missed" */}
+                    {!isRead && scheduledDayType === "reading" && (
                       <button
                         onClick={() => handleMissedToggle(dateKey)}
                         disabled={!canEdit}
@@ -1220,7 +1290,7 @@ export default function DaysView({
                     )}
                   </div>
                 </div>
-                {isNonReadingDay ? (
+                {showDayTypeLabel ? (
                   <div className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
                     <DayTypeIcon className="h-3.5 w-3.5 shrink-0" />
                     {dayTypeMeta.label}

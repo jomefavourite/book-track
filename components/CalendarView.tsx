@@ -60,7 +60,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import CatchUpSuggestion from "./CatchUpSuggestion";
-import { DAY_TYPE_META, type ScheduleDayType } from "@/lib/scheduleDayType";
+import {
+  DAY_TYPE_META,
+  dayTypeAllowsReading,
+  scheduleChapterTargets,
+  type ScheduleDayType,
+} from "@/lib/scheduleDayType";
 
 interface CalendarViewProps {
   bookId: Id<"books">;
@@ -157,6 +162,10 @@ export default function CalendarView({
                   variables.chapterNumber !== undefined
                     ? variables.chapterNumber
                     : session.chapterNumber,
+                targetChapter:
+                  variables.targetChapter !== undefined
+                    ? variables.targetChapter
+                    : session.targetChapter,
                 timerDurationSec:
                   variables.timerDurationSec ?? session.timerDurationSec,
                 reflectionNote:
@@ -231,6 +240,7 @@ export default function CalendarView({
         actualPages: variables.actualPages,
         stopPage: variables.stopPage,
         chapterNumber: variables.chapterNumber,
+        targetChapter: variables.targetChapter,
         reflectionNote: variables.reflectionNote?.trim() || undefined,
         isRead: variables.isRead,
         isMissed: variables.isMissed ?? false,
@@ -542,16 +552,34 @@ export default function CalendarView({
     );
   }, [book.totalPages, readingPeriod, chapterOnlyMode]);
 
+  // Community books follow the admin's schedule verbatim (its per-day chapter
+  // targets), instead of a locally recomputed even distribution.
+  const communityChapterTargets = useMemo(
+    () => scheduleChapterTargets(scheduleQuery),
+    [scheduleQuery]
+  );
+  const useCommunitySchedule =
+    Boolean(communityBookId) && communityChapterTargets.size > 0;
+
   const chapterDistribution = useMemo(() => {
     if (!chapterOnlyMode || chapterDropdownMax === null) {
       return new Map<string, number>();
+    }
+    if (useCommunitySchedule) {
+      return communityChapterTargets;
     }
     return distributeChaptersAcrossDays(
       chapterDropdownMax,
       readingPeriod.start,
       readingPeriod.end
     );
-  }, [chapterOnlyMode, chapterDropdownMax, readingPeriod]);
+  }, [
+    chapterOnlyMode,
+    chapterDropdownMax,
+    readingPeriod,
+    useCommunitySchedule,
+    communityChapterTargets,
+  ]);
 
   const sessionsMap = useMemo(() => {
     const map = new Map<string, (typeof sessions)[0]>();
@@ -597,14 +625,19 @@ export default function CalendarView({
 
   const chapterSuggestions = useMemo(
     () =>
-      computeChapterSuggestions(
-        readingPeriodDays,
-        (dateKey) => sessionsMap.get(dateKey),
-        chapterDropdownMax,
-        chapterDistribution,
-        chapterOnlyMode
-      ),
+      // For community books, the admin's schedule is fixed — don't adaptively
+      // redistribute remaining chapters; show the scheduled targets as-is.
+      useCommunitySchedule
+        ? chapterDistribution
+        : computeChapterSuggestions(
+            readingPeriodDays,
+            (dateKey) => sessionsMap.get(dateKey),
+            chapterDropdownMax,
+            chapterDistribution,
+            chapterOnlyMode
+          ),
     [
+      useCommunitySchedule,
       readingPeriodDays,
       sessionsMap,
       chapterDropdownMax,
@@ -676,6 +709,7 @@ export default function CalendarView({
           isRead: false,
           isMissed: false,
           actualPages: existingSession.actualPages,
+          targetChapter: null,
         }).catch(console.error);
         if (!chapterOnlyMode) {
           // Redistribute pages after unmarking as read
@@ -746,15 +780,27 @@ export default function CalendarView({
               plannedPages: existingSession.plannedPages ?? plannedPages,
               totalPages: book.totalPages,
             });
+        const chapterFields = chapterMode
+          ? {
+              chapterNumber: defaultChapterForDate(dateKey),
+              ...(chapterOnlyMode
+                ? {
+                    targetChapter: getTargetChapterForDate(
+                      dateKey,
+                      chapterSuggestions,
+                      chapterDistribution
+                    ),
+                  }
+                : {}),
+            }
+          : {};
         await updateSession({
           sessionId: existingSession._id,
           userId: user.id,
           isRead: true,
           isMissed: false,
           ...(chapterOnlyMode ? {} : markPages),
-          ...(chapterMode
-            ? { chapterNumber: defaultChapterForDate(dateKey) }
-            : {}),
+          ...chapterFields,
         });
         if (!chapterOnlyMode) {
           // Redistribute after marking as read
@@ -774,6 +820,20 @@ export default function CalendarView({
             plannedPages,
             totalPages: book.totalPages,
           });
+      const chapterFields = chapterMode
+        ? {
+            chapterNumber: defaultChapterForDate(dateKey),
+            ...(chapterOnlyMode
+              ? {
+                  targetChapter: getTargetChapterForDate(
+                    dateKey,
+                    chapterSuggestions,
+                    chapterDistribution
+                  ),
+                }
+              : {}),
+          }
+        : {};
       // No session exists - create one as read
       await createSession({
         bookId,
@@ -783,9 +843,7 @@ export default function CalendarView({
         ...(chapterOnlyMode ? {} : markPages),
         isRead: true,
         isMissed: false,
-        ...(chapterMode
-          ? { chapterNumber: defaultChapterForDate(dateKey) }
-          : {}),
+        ...chapterFields,
       });
 
       if (!chapterOnlyMode) {
@@ -1291,8 +1349,11 @@ export default function CalendarView({
     const selectedIsRead = selectedSession?.isRead || false;
     const selectedIsMissed = selectedSession?.isMissed || false;
     const selectedDayType = dayTypeByDate.get(selectedDateKey) ?? "reading";
+    // Catch-up days allow reading (read only); rest/reflection do not.
     const selectedIsNonReadingDay =
-      selectedDayType !== "reading" && !selectedIsRead && !selectedIsMissed;
+      !dayTypeAllowsReading(selectedDayType) &&
+      !selectedIsRead &&
+      !selectedIsMissed;
     const selectedChapter = getDisplayTargetChapterForDate(
       selectedDateKey,
       selectedSession,
@@ -1556,7 +1617,12 @@ export default function CalendarView({
             const isRead = session?.isRead || false;
             const isMissed = session?.isMissed || false;
             const scheduledDayType = dayTypeByDate.get(dateKey) ?? "reading";
+            // Rest/reflection days can't be logged; catch-up days can (read only).
             const isNonReadingDay =
+              !dayTypeAllowsReading(scheduledDayType) && !isRead && !isMissed;
+            // Show the day-type label (instead of a page plan) for any
+            // non-reading type that hasn't been logged yet — including catch-up.
+            const showDayTypeLabel =
               scheduledDayType !== "reading" && !isRead && !isMissed;
             const dayTypeMeta = DAY_TYPE_META[scheduledDayType];
             const DayTypeIcon = dayTypeMeta.icon;
@@ -1650,8 +1716,8 @@ export default function CalendarView({
                           )}
                         </button>
                       )}
-                      {/* Missed Checkbox - only show if not read and not a non-reading scheduled day */}
-                      {!isRead && !isNonReadingDay && (
+                      {/* Missed Checkbox - only real reading days can be "missed" */}
+                      {!isRead && scheduledDayType === "reading" && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1932,7 +1998,7 @@ export default function CalendarView({
                         Missed
                       </div>
                     )}
-                    {isNonReadingDay ? (
+                    {showDayTypeLabel ? (
                       <div className="hidden items-center gap-1 text-[10px] text-muted-foreground sm:flex sm:text-xs">
                         <DayTypeIcon className="h-3 w-3 shrink-0" />
                         {dayTypeMeta.label}
@@ -2019,7 +2085,7 @@ export default function CalendarView({
                         Missed
                       </div>
                     )}
-                    {isNonReadingDay ? (
+                    {showDayTypeLabel ? (
                       <div className="flex items-center gap-1 truncate text-[9px] text-muted-foreground">
                         <DayTypeIcon className="h-2.5 w-2.5 shrink-0" />
                         {dayTypeMeta.label}
@@ -2161,7 +2227,9 @@ function DayDetailModal({
               ? "Marked as missed"
               : isNonReadingDay
                 ? `${DAY_TYPE_META[dayType].label} day — nothing to log`
-                : "Not yet recorded"}
+                : dayType === "catchup"
+                  ? "Catch-up day — read to catch up"
+                  : "Not yet recorded"}
         </DialogDescription>
       </DialogHeader>
 
@@ -2236,8 +2304,8 @@ function DayDetailModal({
               </button>
             )}
 
-            {/* Missed Checkbox */}
-            {!isRead && (
+            {/* Missed Checkbox - only real reading days can be "missed" */}
+            {!isRead && dayType === "reading" && (
               <button
                 onClick={() => {
                   void onMissedToggle();

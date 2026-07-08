@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import DeleteConfirmDialog from "./DeleteConfirmDialog";
+import { Users } from "lucide-react";
 
 interface ArchivedBookCardProps {
   book: {
@@ -33,6 +34,7 @@ interface ArchivedBookCardProps {
     isPublic?: boolean;
     progressStyle?: "pages" | "chapters";
     ignorePages?: boolean;
+    communityBookId?: Id<"communityBooks">;
   };
   progress?: number;
 }
@@ -108,6 +110,12 @@ export default function ArchivedBookCard({
     <>
       <Card className="relative p-3 opacity-75 transition-shadow hover:shadow-lg sm:p-4">
         <div className="absolute right-1.5 top-1.5 flex items-center gap-1 sm:right-2 sm:top-2 sm:gap-2">
+          {book.communityBookId && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground sm:px-2 sm:py-1 sm:text-xs">
+              <Users className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+              Community
+            </span>
+          )}
           <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200 sm:px-2 sm:py-1 sm:text-xs">
             Archived
           </span>

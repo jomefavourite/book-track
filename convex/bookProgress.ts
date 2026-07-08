@@ -13,7 +13,7 @@ export function activeSessions(
   return sessions.filter((session) => (session.resetGeneration ?? 0) === gen);
 }
 
-function isChapterOnlyBook(
+export function isChapterOnlyBook(
   book: Pick<Doc<"books">, "progressStyle" | "ignorePages">
 ) {
   return book.progressStyle === "chapters" && book.ignorePages === true;
