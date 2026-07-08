@@ -34,7 +34,10 @@ const inviteRoleValidator = v.union(
   v.literal("member")
 );
 
-const progressStyleValidator = v.union(v.literal("pages"), v.literal("chapters"));
+const progressStyleValidator = v.union(
+  v.literal("pages"),
+  v.literal("chapters")
+);
 
 const readingModeValidator = v.union(
   v.literal("calendar"),
@@ -91,7 +94,10 @@ async function requireClerkId(ctx: QueryCtx | MutationCtx) {
   };
 }
 
-async function getActiveCreatorGrant(ctx: QueryCtx | MutationCtx, clerkId: string) {
+async function getActiveCreatorGrant(
+  ctx: QueryCtx | MutationCtx,
+  clerkId: string
+) {
   const grants = await ctx.db
     .query("communityCreatorGrants")
     .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
@@ -155,7 +161,10 @@ async function getViewerRole(
   return membership?.role;
 }
 
-async function getMemberCount(ctx: QueryCtx | MutationCtx, communityId: Id<"communities">) {
+async function getMemberCount(
+  ctx: QueryCtx | MutationCtx,
+  communityId: Id<"communities">
+) {
   const members = await ctx.db
     .query("communityMembers")
     .withIndex("by_community", (q) => q.eq("communityId", communityId))
@@ -250,7 +259,12 @@ export const requestCreatorAccess = mutation({
         status: existing.status === "approved" ? "approved" : "pending",
         updatedAt: now,
       });
-      return { status: existing.status === "approved" ? "approved" as const : "pending" as const };
+      return {
+        status:
+          existing.status === "approved"
+            ? ("approved" as const)
+            : ("pending" as const),
+      };
     }
 
     await ctx.db.insert("communityCreatorRequests", {
@@ -365,7 +379,10 @@ export const discoverCommunities = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     const viewerClerkId = identity?.subject;
-    const communities = await ctx.db.query("communities").order("desc").collect();
+    const communities = await ctx.db
+      .query("communities")
+      .order("desc")
+      .collect();
     const activeCommunities = communities.filter(
       (community) => community.isArchived !== true
     );
@@ -467,7 +484,7 @@ export const getCommunityBySlug = query({
 
     return {
       ...preview,
-      access: viewerRole ? "member" as const : "public" as const,
+      access: viewerRole ? ("member" as const) : ("public" as const),
       updatedAt: community.updatedAt,
     };
   },
@@ -579,27 +596,25 @@ export const updateCommunity = mutation({
   },
 });
 
-function buildCommunityBookPayload(
-  args: {
-    name: string;
-    author?: string;
-    totalPages?: number;
-    totalChapters?: number;
-    progressStyle?: "pages" | "chapters";
-    ignorePages?: boolean;
-    readingMode: "calendar" | "fixed-days";
-    startMonth?: string;
-    endMonth?: string;
-    startYear?: number;
-    endYear?: number;
-    daysToRead?: number;
-    startDate: string;
-    endDate: string;
-  }
-) {
+function buildCommunityBookPayload(args: {
+  name: string;
+  author?: string;
+  totalPages?: number;
+  totalChapters?: number;
+  progressStyle?: "pages" | "chapters";
+  ignorePages?: boolean;
+  readingMode: "calendar" | "fixed-days";
+  startMonth?: string;
+  endMonth?: string;
+  startYear?: number;
+  endYear?: number;
+  daysToRead?: number;
+  startDate: string;
+  endDate: string;
+}) {
   const progressStyle = args.progressStyle ?? "pages";
   const ignorePages =
-    progressStyle === "chapters" ? args.ignorePages ?? false : false;
+    progressStyle === "chapters" ? (args.ignorePages ?? false) : false;
 
   validateCommunityBookInput({
     name: args.name,
@@ -893,7 +908,11 @@ export const getCommunityBooks = query({
       throw new Error("Community not found");
     }
 
-    const viewerRole = await getViewerRole(ctx, args.communityId, viewerClerkId);
+    const viewerRole = await getViewerRole(
+      ctx,
+      args.communityId,
+      viewerClerkId
+    );
     if (
       !canAccessCommunityBooks({
         visibility: community.visibility,
@@ -939,7 +958,11 @@ export const getCommunityBook = query({
       return null;
     }
 
-    const viewerRole = await getViewerRole(ctx, book.communityId, viewerClerkId);
+    const viewerRole = await getViewerRole(
+      ctx,
+      book.communityId,
+      viewerClerkId
+    );
     if (
       !canAccessCommunityBooks({
         visibility: community.visibility,
@@ -1101,8 +1124,7 @@ export const getInvitePreview = query({
     const isExpired = invite.expiresAt !== undefined && invite.expiresAt < now;
     const isUsedUp =
       invite.maxUses !== undefined && invite.usedCount >= invite.maxUses;
-    const isActive =
-      invite.disabledAt === undefined && !isExpired && !isUsedUp;
+    const isActive = invite.disabledAt === undefined && !isExpired && !isUsedUp;
 
     return {
       community: {
@@ -1289,9 +1311,15 @@ export const trackCommunityBook = mutation({
       throw new Error("Community book not found");
     }
 
-    const membership = await getActiveMembership(ctx, communityBook.communityId, clerkId);
+    const membership = await getActiveMembership(
+      ctx,
+      communityBook.communityId,
+      clerkId
+    );
     if (!membership) {
-      throw new Error("You must be a member of this community to track its books");
+      throw new Error(
+        "You must be a member of this community to track its books"
+      );
     }
 
     const existing = await ctx.db

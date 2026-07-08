@@ -61,7 +61,11 @@ function getActiveBookHref(community: CommunityPreview) {
   return `/communities/${community.slug}/books/${community.activeBook._id}`;
 }
 
-function CommunityDashboardCard({ community }: { community: CommunityPreview }) {
+function CommunityDashboardCard({
+  community,
+}: {
+  community: CommunityPreview;
+}) {
   const activeBookHref = getActiveBookHref(community);
   return (
     <Card className="flex h-full flex-col p-4">
@@ -99,17 +103,28 @@ function CommunityDashboardCard({ community }: { community: CommunityPreview }) 
         {community.viewerRole && (
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4" />
-            <span className="capitalize">Your role: {community.viewerRole}</span>
+            <span className="capitalize">
+              Your role: {community.viewerRole}
+            </span>
           </div>
         )}
       </div>
 
       <div className="mt-5 flex gap-2">
-        <Button asChild size="sm" className="flex-1">
+        <Button
+          asChild
+          size="sm"
+          className="flex-1"
+        >
           <Link href={`/communities/${community.slug}`}>Open</Link>
         </Button>
         {activeBookHref && (
-          <Button asChild size="sm" variant="outline" className="flex-1">
+          <Button
+            asChild
+            size="sm"
+            variant="outline"
+            className="flex-1"
+          >
             <Link href={activeBookHref}>
               <BookOpen className="h-4 w-4" />
               Open book
@@ -218,7 +233,11 @@ export default function Dashboard() {
                   Open the reading communities you belong to.
                 </p>
               </div>
-              <Button asChild variant="outline" size="sm">
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+              >
                 <Link href="/communities">View all communities</Link>
               </Button>
             </div>
