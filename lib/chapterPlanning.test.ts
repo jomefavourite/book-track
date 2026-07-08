@@ -141,5 +141,122 @@ describe("getDisplayTargetChapterForDate", () => {
         chapterDistribution
       )
     ).toBe(36);
+    expect(getStaticTargetChapterForDate(dateKey, chapterDistribution)).toBe(35);
+  });
+
+  it("keeps frozen adaptive target after marking (does not fall back to static)", () => {
+    const start = new Date(2026, 6, 5);
+    const end = new Date(2026, 6, 8);
+    const days = getAllDaysInRange(start, end);
+    const totalChapters = 20;
+    const distribution = distributeChaptersAcrossDays(totalChapters, start, end);
+
+    const sessions = new Map<string, ChapterSessionLike>();
+    sessions.set(formatDateForStorage(days[0]!), {
+      isRead: true,
+      isMissed: false,
+      chapterNumber: 5,
+    });
+    sessions.set(formatDateForStorage(days[1]!), {
+      isRead: true,
+      isMissed: false,
+      chapterNumber: 8,
+    });
+
+    const suggestions = computeChapterSuggestions(
+      days,
+      (dateKey) => sessions.get(dateKey),
+      totalChapters,
+      distribution,
+      true
+    );
+
+    const day3Key = formatDateForStorage(days[2]!);
+    expect(suggestions.get(day3Key)).toBe(14);
+    expect(getStaticTargetChapterForDate(day3Key, distribution)).toBe(15);
+
+    // Unread: adaptive catch-up target
+    expect(
+      getDisplayTargetChapterForDate(day3Key, undefined, suggestions, distribution)
+    ).toBe(14);
+
+    // After mark with frozen targetChapter: stays 14 (not static 15)
+    const readSession: ChapterSessionLike = {
+      isRead: true,
+      isMissed: false,
+      chapterNumber: 14,
+      targetChapter: 14,
+    };
+    expect(
+      getDisplayTargetChapterForDate(day3Key, readSession, suggestions, distribution)
+    ).toBe(14);
+
+    // Legacy read sessions without targetChapter still show static schedule
+    const legacyRead: ChapterSessionLike = {
+      isRead: true,
+      isMissed: false,
+      chapterNumber: 14,
+    };
+    expect(
+      getDisplayTargetChapterForDate(day3Key, legacyRead, suggestions, distribution)
+    ).toBe(15);
+  });
+
+  it("adapts unread day targets when ahead of schedule and freezes on mark", () => {
+    const start = new Date(2026, 6, 5);
+    const end = new Date(2026, 6, 9);
+    const days = getAllDaysInRange(start, end);
+    const totalChapters = 20;
+    const distribution = distributeChaptersAcrossDays(totalChapters, start, end);
+
+    // Static: 4 / 8 / 12 / 16 / 20
+    expect(distribution.get(formatDateForStorage(days[0]!))).toBe(4);
+    expect(distribution.get(formatDateForStorage(days[1]!))).toBe(8);
+    expect(distribution.get(formatDateForStorage(days[2]!))).toBe(12);
+    expect(distribution.get(formatDateForStorage(days[3]!))).toBe(16);
+    expect(distribution.get(formatDateForStorage(days[4]!))).toBe(20);
+
+    const sessions = new Map<string, ChapterSessionLike>();
+    sessions.set(formatDateForStorage(days[0]!), {
+      isRead: true,
+      isMissed: false,
+      chapterNumber: 4,
+    });
+    sessions.set(formatDateForStorage(days[1]!), {
+      isRead: true,
+      isMissed: false,
+      chapterNumber: 15, // ahead of static target 8
+    });
+
+    const suggestions = computeChapterSuggestions(
+      days,
+      (dateKey) => sessions.get(dateKey),
+      totalChapters,
+      distribution,
+      true
+    );
+
+    const day7Key = formatDateForStorage(days[2]!);
+    const unreadTarget = getDisplayTargetChapterForDate(
+      day7Key,
+      undefined,
+      suggestions,
+      distribution
+    );
+
+    expect(getStaticTargetChapterForDate(day7Key, distribution)).toBe(12);
+    expect(unreadTarget).toBeGreaterThan(15);
+    expect(unreadTarget).not.toBe(12);
+
+    // Marking the day freezes the adaptive target (e.g. 17), not static 12
+    const marked: ChapterSessionLike = {
+      isRead: true,
+      isMissed: false,
+      chapterNumber: unreadTarget,
+      targetChapter: unreadTarget,
+    };
+    expect(
+      getDisplayTargetChapterForDate(day7Key, marked, suggestions, distribution)
+    ).toBe(unreadTarget);
   });
 });

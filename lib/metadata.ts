@@ -169,6 +169,22 @@ export async function getPublicBookMetadata(bookId: string) {
   }
 }
 
+export async function getInviteMetadata(token: string) {
+  const client = getConvexClient();
+  if (!client || !token) {
+    return null;
+  }
+
+  try {
+    const invite = await client.query(api.communities.getInvitePreview, {
+      token,
+    });
+    return invite ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getPublicLibraryMetadata() {
   const client = getConvexClient();
   if (!client) {

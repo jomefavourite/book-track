@@ -51,6 +51,9 @@ type CommunityDetail = {
   description?: string;
   visibility: "public" | "private";
   brandColor?: string;
+  instagramUrl?: string;
+  tiktokUrl?: string;
+  websiteUrl?: string;
   logoUrl?: string | null;
   viewerRole?: Role;
 };
@@ -339,6 +342,9 @@ export default function CommunitySettingsPageClient() {
       | "public"
       | "private";
     const brandColor = String(formData.get("brandColor") ?? "");
+    const instagramUrl = String(formData.get("instagramUrl") ?? "");
+    const tiktokUrl = String(formData.get("tiktokUrl") ?? "");
+    const websiteUrl = String(formData.get("websiteUrl") ?? "");
     try {
       await updateCommunity({
         communityId: detail._id,
@@ -346,6 +352,9 @@ export default function CommunitySettingsPageClient() {
         description,
         visibility,
         brandColor,
+        instagramUrl,
+        tiktokUrl,
+        websiteUrl,
       });
       toast({
         title: "Community settings saved",
@@ -362,7 +371,7 @@ export default function CommunitySettingsPageClient() {
     <>
       <Navigation />
       <main className="mx-auto max-w-6xl p-3 sm:p-6">
-        <Button variant="ghost" asChild className="mb-4 px-0">
+        <Button variant="ghost" asChild className="mb-4">
           <Link href={detail ? `/communities/${detail.slug}` : "/communities"}>
             <ArrowLeft className="h-4 w-4" />
             Community
@@ -457,6 +466,42 @@ export default function CommunitySettingsPageClient() {
                         <BrandColorInput
                           key={`${detail._id}:${detail.brandColor ?? ""}`}
                           defaultColor={detail.brandColor}
+                        />
+                      </label>
+                      <label className="space-y-2 sm:col-span-2">
+                        <span className="text-sm font-medium text-foreground">
+                          Instagram{" "}
+                          <span className="text-muted-foreground">(optional)</span>
+                        </span>
+                        <Input
+                          name="instagramUrl"
+                          type="url"
+                          defaultValue={detail.instagramUrl ?? ""}
+                          placeholder="https://instagram.com/yourcommunity"
+                        />
+                      </label>
+                      <label className="space-y-2 sm:col-span-2">
+                        <span className="text-sm font-medium text-foreground">
+                          TikTok{" "}
+                          <span className="text-muted-foreground">(optional)</span>
+                        </span>
+                        <Input
+                          name="tiktokUrl"
+                          type="url"
+                          defaultValue={detail.tiktokUrl ?? ""}
+                          placeholder="https://tiktok.com/@yourcommunity"
+                        />
+                      </label>
+                      <label className="space-y-2 sm:col-span-2">
+                        <span className="text-sm font-medium text-foreground">
+                          Website{" "}
+                          <span className="text-muted-foreground">(optional)</span>
+                        </span>
+                        <Input
+                          name="websiteUrl"
+                          type="url"
+                          defaultValue={detail.websiteUrl ?? ""}
+                          placeholder="https://yourcommunity.com"
                         />
                       </label>
                     </div>

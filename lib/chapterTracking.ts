@@ -8,6 +8,8 @@ export interface ChapterTrackingSessionLike {
   isRead: boolean;
   isMissed?: boolean;
   chapterNumber?: number | null;
+  /** Adaptive target frozen at mark time (chapter-only books) */
+  targetChapter?: number | null;
 }
 
 export function isChapterOnlyBook(book: ChapterTrackingBookLike): boolean {

@@ -61,6 +61,16 @@ function normalizeBrandColor(value: string | undefined) {
   return /^#[0-9a-fA-F]{6}$/.test(color) ? color : undefined;
 }
 
+/**
+ * Normalizes an optional external link: trims, drops empties, and prepends
+ * `https://` when no scheme is present so it renders as a working href.
+ */
+function normalizeUrl(value: string | undefined) {
+  const url = normalizeOptionalText(value);
+  if (!url) return undefined;
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}
+
 function generateInviteToken() {
   if (globalThis.crypto && "randomUUID" in globalThis.crypto) {
     return globalThis.crypto.randomUUID().replace(/-/g, "");
@@ -153,6 +163,19 @@ async function getMemberCount(ctx: QueryCtx | MutationCtx, communityId: Id<"comm
   return members.filter((member) => member.status === "active").length;
 }
 
+async function getActiveCommunityBook(
+  ctx: QueryCtx | MutationCtx,
+  communityId: Id<"communities">
+) {
+  return await ctx.db
+    .query("communityBooks")
+    .withIndex("by_community_and_status", (q) =>
+      q.eq("communityId", communityId).eq("status", "active")
+    )
+    .filter((q) => q.neq(q.field("isArchived"), true))
+    .first();
+}
+
 const communityBookStatusValidator = v.union(
   v.literal("upcoming"),
   v.literal("active"),
@@ -176,6 +199,9 @@ function buildCommunityPreview(
     totalChapters: community.totalChapters,
     ownerName: community.ownerName,
     brandColor: community.brandColor,
+    instagramUrl: community.instagramUrl,
+    tiktokUrl: community.tiktokUrl,
+    websiteUrl: community.websiteUrl,
     memberCount,
     viewerRole,
     isMember: viewerRole !== undefined,
@@ -286,6 +312,9 @@ export const createCommunity = mutation({
     description: v.optional(v.string()),
     visibility: v.union(v.literal("public"), v.literal("private")),
     brandColor: v.optional(v.string()),
+    instagramUrl: v.optional(v.string()),
+    tiktokUrl: v.optional(v.string()),
+    websiteUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { clerkId, name } = await requireClerkId(ctx);
@@ -309,6 +338,9 @@ export const createCommunity = mutation({
       ownerClerkId: clerkId,
       ownerName: name,
       brandColor: normalizeBrandColor(args.brandColor),
+      instagramUrl: normalizeUrl(args.instagramUrl),
+      tiktokUrl: normalizeUrl(args.tiktokUrl),
+      websiteUrl: normalizeUrl(args.websiteUrl),
       isArchived: false,
       createdAt: now,
       updatedAt: now,
@@ -367,11 +399,32 @@ export const getMyCommunities = query({
       activeMemberships.map(async (membership) => {
         const community = await ctx.db.get(membership.communityId);
         if (!community || community.isArchived === true) return null;
-        return buildCommunityPreview(
-          community,
-          await getMemberCount(ctx, community._id),
-          membership.role
-        );
+        const activeBook = await getActiveCommunityBook(ctx, community._id);
+        let trackedBookId: Id<"books"> | null = null;
+        if (activeBook) {
+          const personalBook = await ctx.db
+            .query("books")
+            .withIndex("by_community_book_id", (q) =>
+              q.eq("communityBookId", activeBook._id)
+            )
+            .filter((q) => q.eq(q.field("userId"), clerkId))
+            .first();
+          trackedBookId = personalBook?._id ?? null;
+        }
+        return {
+          ...buildCommunityPreview(
+            community,
+            await getMemberCount(ctx, community._id),
+            membership.role
+          ),
+          activeBook: activeBook
+            ? {
+                _id: activeBook._id,
+                name: activeBook.name,
+                trackedBookId,
+              }
+            : null,
+        };
       })
     );
 
@@ -479,6 +532,9 @@ export const updateCommunity = mutation({
     description: v.optional(v.string()),
     visibility: v.optional(v.union(v.literal("public"), v.literal("private"))),
     brandColor: v.optional(v.string()),
+    instagramUrl: v.optional(v.string()),
+    tiktokUrl: v.optional(v.string()),
+    websiteUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { clerkId } = await requireClerkId(ctx);
@@ -508,6 +564,15 @@ export const updateCommunity = mutation({
     }
     if (args.brandColor !== undefined) {
       updates.brandColor = normalizeBrandColor(args.brandColor);
+    }
+    if (args.instagramUrl !== undefined) {
+      updates.instagramUrl = normalizeUrl(args.instagramUrl);
+    }
+    if (args.tiktokUrl !== undefined) {
+      updates.tiktokUrl = normalizeUrl(args.tiktokUrl);
+    }
+    if (args.websiteUrl !== undefined) {
+      updates.websiteUrl = normalizeUrl(args.websiteUrl);
     }
 
     await ctx.db.patch(args.communityId, updates);
@@ -793,6 +858,12 @@ export const deleteCommunityBook = mutation({
     const role = await getViewerRole(ctx, book.communityId, clerkId);
     if (!canManageBooks(role)) {
       throw new Error("Unauthorized");
+    }
+
+    if (book.status === "active") {
+      throw new Error(
+        "Set the book to Upcoming or Completed before deleting it."
+      );
     }
 
     const scheduleEntries = await ctx.db

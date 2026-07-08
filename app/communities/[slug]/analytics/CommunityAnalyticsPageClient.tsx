@@ -60,7 +60,7 @@ export default function CommunityAnalyticsPageClient() {
     <>
       <Navigation />
       <main className="mx-auto max-w-5xl p-3 sm:p-6">
-        <Button variant="ghost" asChild className="mb-4 px-0">
+        <Button variant="ghost" asChild className="mb-4">
           <Link href={`/communities/${slug}`}>
             <ArrowLeft className="h-4 w-4" />
             {detail?.name ?? "Community"}

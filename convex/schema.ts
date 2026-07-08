@@ -90,6 +90,9 @@ export default defineSchema({
     ownerClerkId: v.string(),
     ownerName: v.optional(v.string()),
     brandColor: v.optional(v.string()),
+    instagramUrl: v.optional(v.string()),
+    tiktokUrl: v.optional(v.string()),
+    websiteUrl: v.optional(v.string()),
     logoStorageId: v.optional(v.id("_storage")),
     isArchived: v.optional(v.boolean()),
     createdAt: v.number(),
@@ -148,6 +151,8 @@ export default defineSchema({
     ),
     /** Chapter assigned for reading days on chapter-based books */
     chapterNumber: v.optional(v.number()),
+    /** Pages assigned for reading days on page-based books */
+    plannedPages: v.optional(v.number()),
     /** Short admin label shown to members, e.g. "Discuss ch. 1-2" */
     notes: v.optional(v.string()),
   })
@@ -222,6 +227,11 @@ export default defineSchema({
     stopPage: v.optional(v.number()),
     /** Chapter read that day when book uses chapter-based reading; null clears */
     chapterNumber: v.optional(v.union(v.number(), v.null())),
+    /**
+     * Adaptive target chapter frozen when the day was marked read (chapter-only).
+     * Keeps the Target label stable after mark; null clears on unmark.
+     */
+    targetChapter: v.optional(v.union(v.number(), v.null())),
     /** Owner-private note for a read day */
     reflectionNote: v.optional(v.string()),
     isRead: v.boolean(),

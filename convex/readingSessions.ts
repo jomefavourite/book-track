@@ -19,7 +19,9 @@ async function assertLoggableDay(
     book.communityBookId,
     date
   );
-  if (dayType && dayType !== "reading") {
+  // Catch-up days carry no assignment but members may still read on them to
+  // catch up, so they are loggable. Only rest/reflection days are blocked.
+  if (dayType && dayType !== "reading" && dayType !== "catchup") {
     throw new Error(
       `This day is set to ${dayType} and can't be marked read or missed.`
     );
@@ -50,6 +52,7 @@ export const createSession = mutation({
     actualPages: v.optional(v.number()),
     stopPage: v.optional(v.number()),
     chapterNumber: v.optional(v.number()),
+    targetChapter: v.optional(v.number()),
     reflectionNote: v.optional(v.string()),
     isRead: v.boolean(),
     isMissed: v.optional(v.boolean()),
@@ -85,6 +88,7 @@ export const createSession = mutation({
       actualPages: args.actualPages,
       stopPage: args.stopPage,
       chapterNumber: args.chapterNumber,
+      targetChapter: args.targetChapter,
       reflectionNote: normalizeReflectionNote(args.reflectionNote),
       isRead,
       isMissed,
@@ -148,6 +152,7 @@ export const updateSession = mutation({
     stopPage: v.optional(v.number()),
     plannedPages: v.optional(v.number()),
     chapterNumber: v.optional(v.union(v.number(), v.null())),
+    targetChapter: v.optional(v.union(v.number(), v.null())),
     reflectionNote: v.optional(v.string()),
     isRead: v.optional(v.boolean()),
     isMissed: v.optional(v.boolean()),
@@ -191,6 +196,7 @@ export const updateSession = mutation({
       stopPage?: number;
       plannedPages?: number;
       chapterNumber?: number | null;
+      targetChapter?: number | null;
       reflectionNote?: string;
       isRead?: boolean;
       isMissed?: boolean;
@@ -213,6 +219,10 @@ export const updateSession = mutation({
       updateData.chapterNumber = args.chapterNumber;
     }
 
+    if (args.targetChapter !== undefined) {
+      updateData.targetChapter = args.targetChapter;
+    }
+
     if (args.reflectionNote !== undefined) {
       updateData.reflectionNote = normalizeReflectionNote(args.reflectionNote);
     }
@@ -225,6 +235,7 @@ export const updateSession = mutation({
         updateData.isMissed = false;
       } else {
         updateData.chapterNumber = null;
+        updateData.targetChapter = null;
       }
     }
 
@@ -234,6 +245,7 @@ export const updateSession = mutation({
       if (args.isMissed) {
         updateData.isRead = false;
         updateData.chapterNumber = null;
+        updateData.targetChapter = null;
       }
     }
 

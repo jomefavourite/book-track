@@ -233,7 +233,7 @@ export default function EditCommunityBookPageClient() {
     <>
       <Navigation />
       <main className="mx-auto max-w-3xl p-3 sm:p-6">
-        <Button variant="ghost" asChild className="mb-4 px-0">
+        <Button variant="ghost" asChild className="mb-4">
           <Link href={`/communities/${slug}/books/${communityBookId}`}>
             <ArrowLeft className="h-4 w-4" />
             Back

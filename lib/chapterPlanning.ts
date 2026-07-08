@@ -107,7 +107,11 @@ export function getTargetChapterForDate(
   return chapterSuggestions.get(dateKey) ?? chapterDistribution.get(dateKey) ?? 1;
 }
 
-/** Target shown in UI: static schedule for read days, adaptive for unread. */
+/**
+ * Target shown in UI:
+ * - unread: adaptive catch-up/ahead suggestion
+ * - read: frozen targetChapter from mark time, else original static schedule
+ */
 export function getDisplayTargetChapterForDate(
   dateKey: string,
   session: ChapterSessionLike | undefined,
@@ -115,6 +119,13 @@ export function getDisplayTargetChapterForDate(
   chapterDistribution: Map<string, number>
 ): number {
   if (session?.isRead && !session?.isMissed) {
+    if (
+      session.targetChapter !== undefined &&
+      session.targetChapter !== null &&
+      session.targetChapter >= 1
+    ) {
+      return session.targetChapter;
+    }
     return getStaticTargetChapterForDate(dateKey, chapterDistribution);
   }
   return getTargetChapterForDate(dateKey, chapterSuggestions, chapterDistribution);

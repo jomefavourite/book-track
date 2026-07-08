@@ -8,9 +8,15 @@ import { Id } from "@/convex/_generated/dataModel";
 import { useUser, SignInButton } from "@clerk/nextjs";
 import { format, differenceInDays } from "date-fns";
 import { parseDateFromStorage, formatDateForStorage } from "@/lib/dateUtils";
-import { filterActiveSessions, filterStaleSessions } from "@/lib/resetGeneration";
+import {
+  filterActiveSessions,
+  filterStaleSessions,
+} from "@/lib/resetGeneration";
 import { computeReadingProgressSummary } from "@/lib/readingProgressSummary";
-import { getHighestChapterRead, isChapterOnlyBook } from "@/lib/chapterTracking";
+import {
+  getHighestChapterRead,
+  isChapterOnlyBook,
+} from "@/lib/chapterTracking";
 import ReadingProgressStatusBanner from "@/components/ReadingProgressStatusBanner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,6 +31,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Copy,
+  MessageSquareText,
   MoreVertical,
   Pencil,
   RotateCcw,
@@ -88,9 +95,7 @@ export default function BookDetailPage() {
   const { data: communityInfo } = useQuery(
     convexQuery(
       api.communities.getCommunityForBook,
-      book?.communityBookId
-        ? { communityBookId: book.communityBookId }
-        : "skip"
+      book?.communityBookId ? { communityBookId: book.communityBookId } : "skip"
     )
   );
 
@@ -100,8 +105,7 @@ export default function BookDetailPage() {
       userId: user?.id,
     }),
     enabled: Boolean(
-      book &&
-        (isOwner || (book.isPublic && book.shareMergedReflection))
+      book && (isOwner || (book.isPublic && book.shareMergedReflection))
     ),
     retry: false,
   });
@@ -109,9 +113,7 @@ export default function BookDetailPage() {
   // Check if this is a private book access error
   // Handle both Error objects and Convex error responses
   const errorMessage =
-    error instanceof Error
-      ? error.message
-      : String(error || "");
+    error instanceof Error ? error.message : String(error || "");
   const isPrivateBookError =
     error &&
     (errorMessage === "Unauthorized" ||
@@ -208,13 +210,14 @@ export default function BookDetailPage() {
     });
     if (user?.id) {
       await queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getBooks, { userId: user.id })
-          .queryKey,
+        queryKey: convexQuery(api.books.getBooks, { userId: user.id }).queryKey,
       });
     }
   };
 
-  const markBookCompletedMutation = useConvexMutation(api.books.markBookCompleted);
+  const markBookCompletedMutation = useConvexMutation(
+    api.books.markBookCompleted
+  );
   const { mutateAsync: markBookCompleted, isPending: markCompletePending } =
     useMutation({
       mutationFn: markBookCompletedMutation,
@@ -224,11 +227,13 @@ export default function BookDetailPage() {
   const clearMarkedCompleteMutation = useConvexMutation(
     api.books.clearMarkedComplete
   );
-  const { mutateAsync: clearMarkedComplete, isPending: clearMarkCompletePending } =
-    useMutation({
-      mutationFn: clearMarkedCompleteMutation,
-      onSuccess: invalidateBookProgressQueries,
-    });
+  const {
+    mutateAsync: clearMarkedComplete,
+    isPending: clearMarkCompletePending,
+  } = useMutation({
+    mutationFn: clearMarkedCompleteMutation,
+    onSuccess: invalidateBookProgressQueries,
+  });
 
   const resetBookMutation = useConvexMutation(api.books.resetBook);
   const { mutateAsync: resetBook, isPending: resetPending } = useMutation({
@@ -270,11 +275,17 @@ export default function BookDetailPage() {
 
   const isCommunityBook = !!book?.communityBookId;
 
-  const showMarkCompleteButton =
-    Boolean(canEdit && !isCommunityBook && book && !book.markedCompleteAt && sessionProgressPercent < 100);
+  const showMarkCompleteButton = Boolean(
+    canEdit &&
+    !isCommunityBook &&
+    book &&
+    !book.markedCompleteAt &&
+    sessionProgressPercent < 100
+  );
 
-  const showClearMarkedCompleteButton =
-    Boolean(canEdit && !isCommunityBook && book && book.markedCompleteAt != null);
+  const showClearMarkedCompleteButton = Boolean(
+    canEdit && !isCommunityBook && book && book.markedCompleteAt != null
+  );
 
   // Show private book message first (even if still pending, if we have the error)
   if (isPrivateBookError) {
@@ -412,6 +423,14 @@ export default function BookDetailPage() {
                         Share
                       </DropdownMenuItem>
                     )}
+                    {canEdit && !isCommunityBook && (
+                      <DropdownMenuItem asChild>
+                        <Link href={`/books/${bookId}/edit`}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
                     {showMarkCompleteButton && (
                       <DropdownMenuItem
                         onClick={() => setMarkCompleteOpen(true)}
@@ -425,14 +444,6 @@ export default function BookDetailPage() {
                         onClick={() => setClearMarkCompleteOpen(true)}
                       >
                         Remove marked complete
-                      </DropdownMenuItem>
-                    )}
-                    {canEdit && !isCommunityBook && (
-                      <DropdownMenuItem asChild>
-                        <Link href={`/books/${bookId}/edit`}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Edit
-                        </Link>
                       </DropdownMenuItem>
                     )}
                     {canEdit && !isCommunityBook && (
@@ -457,15 +468,29 @@ export default function BookDetailPage() {
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-start gap-2">
               {book.communityBookId && communityInfo && (
-                <Link
-                  href={`/communities/${communityInfo.slug}`}
-                  className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
-                >
-                  <Users className="h-3 w-3" />
-                  {communityInfo.name}
-                </Link>
+                <div className="flex flex-col items-end gap-2">
+                  <Link
+                    href={`/communities/${communityInfo.slug}`}
+                    className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                  >
+                    <Users className="h-3 w-3" />
+                    {communityInfo.name}
+                  </Link>
+                  <Button
+                    asChild
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Link
+                      href={`/communities/${communityInfo.slug}/books/${book.communityBookId}`}
+                    >
+                      <MessageSquareText className="h-4 w-4" />
+                      View reflections
+                    </Link>
+                  </Button>
+                </div>
               )}
               {isPublicBook && (
                 <>
@@ -496,7 +521,7 @@ export default function BookDetailPage() {
                 ? "Chapter-only"
                 : book.progressStyle === "chapters"
                   ? "Chapter-based"
-                : "Page-based"}
+                  : "Page-based"}
             </p>
             {book.progressStyle === "chapters" &&
               typeof book.totalChapters === "number" && (
@@ -712,7 +737,9 @@ export default function BookDetailPage() {
                 </span>
                 <span className="mt-1 block text-sm text-muted-foreground">
                   {canEdit
-                    ? "Your daily notes are private. You can share the merged reflection publicly for this book."
+                    ? isCommunityBook
+                      ? "Your daily notes are shared with members of this community. You can also share the merged reflection publicly for this book."
+                      : "Your daily notes are private. You can share the merged reflection publicly for this book."
                     : "Shared merged reflection from this reading journey."}
                 </span>
               </span>
@@ -881,15 +908,18 @@ export default function BookDetailPage() {
         )}
       </div>
 
-      <Dialog open={markCompleteOpen} onOpenChange={setMarkCompleteOpen}>
+      <Dialog
+        open={markCompleteOpen}
+        onOpenChange={setMarkCompleteOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Mark this book as completed?</DialogTitle>
             <DialogDescription>
               This records the book as fully read without updating each day you
-              tracked. Your existing session data is kept, but progress will show
-              as 100% everywhere. You can still edit the book or log days below
-              if you want.
+              tracked. Your existing session data is kept, but progress will
+              show as 100% everywhere. You can still edit the book or log days
+              below if you want.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -920,13 +950,16 @@ export default function BookDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={clearMarkCompleteOpen} onOpenChange={setClearMarkCompleteOpen}>
+      <Dialog
+        open={clearMarkCompleteOpen}
+        onOpenChange={setClearMarkCompleteOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Remove marked complete?</DialogTitle>
             <DialogDescription>
-              Progress will go back to what your daily sessions show. You can mark
-              the book completed again anytime.
+              Progress will go back to what your daily sessions show. You can
+              mark the book completed again anytime.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -958,7 +991,10 @@ export default function BookDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+      <Dialog
+        open={resetOpen}
+        onOpenChange={setResetOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Reset this book?</DialogTitle>

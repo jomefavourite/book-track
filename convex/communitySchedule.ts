@@ -17,6 +17,7 @@ const scheduleEntryValidator = v.object({
   date: v.string(),
   dayType: scheduleDayTypeValidator,
   chapterNumber: v.optional(v.number()),
+  plannedPages: v.optional(v.number()),
   notes: v.optional(v.string()),
 });
 
@@ -71,6 +72,7 @@ export function buildSessionsFromSchedule(
     date: string;
     dayType: "reading" | "rest" | "reflection" | "catchup";
     chapterNumber?: number;
+    plannedPages?: number;
   }>
 ) {
   const readingDays = schedule.filter((entry) => entry.dayType === "reading");
@@ -86,7 +88,10 @@ export function buildSessionsFromSchedule(
     let plannedPages = 0;
     let chapterNumber: number | undefined;
     if (entry.dayType === "reading") {
-      plannedPages = perDay + (readingIndex < remainder ? 1 : 0);
+      // Honor the manager-configured per-day target; fall back to an even
+      // split for legacy schedules and days without an explicit amount.
+      const evenSplit = perDay + (readingIndex < remainder ? 1 : 0);
+      plannedPages = entry.plannedPages ?? evenSplit;
       chapterNumber = entry.chapterNumber;
       readingIndex += 1;
     }
@@ -160,6 +165,7 @@ export const upsertScheduleDay = mutation({
     date: v.string(),
     dayType: scheduleDayTypeValidator,
     chapterNumber: v.optional(v.number()),
+    plannedPages: v.optional(v.number()),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -175,6 +181,7 @@ export const upsertScheduleDay = mutation({
     const fields = {
       dayType: args.dayType,
       chapterNumber: args.dayType === "reading" ? args.chapterNumber : undefined,
+      plannedPages: args.dayType === "reading" ? args.plannedPages : undefined,
       notes: args.notes?.trim() || undefined,
     };
 
@@ -248,6 +255,8 @@ export const bulkReplaceSchedule = mutation({
           dayType: entry.dayType,
           chapterNumber:
             entry.dayType === "reading" ? entry.chapterNumber : undefined,
+          plannedPages:
+            entry.dayType === "reading" ? entry.plannedPages : undefined,
           notes: entry.notes?.trim() || undefined,
         })
       )

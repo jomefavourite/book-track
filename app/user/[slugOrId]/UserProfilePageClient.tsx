@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { parseDateFromStorage } from "@/lib/dateUtils";
-import { isChapterOnlyBook } from "@/lib/chapterTracking";
 import Navigation from "@/components/Navigation";
 import PublicBookCard from "@/components/PublicBookCard";
 import { Card } from "@/components/ui/card";
@@ -44,11 +43,18 @@ export default function UserProfilePage() {
     enabled: !!profileUser?.clerkId,
   });
 
+  const { data: profileStats } = useQuery({
+    ...convexQuery(api.books.getProfileStats, {
+      profileUserId: profileUser?.clerkId ?? "",
+    }),
+    enabled: !!profileUser?.clerkId,
+  });
+
   const isOwnProfile =
     !!profileUser?.clerkId && !!viewer?.id && viewer.id === profileUser.clerkId;
 
   const stats = useMemo(() => {
-    if (!books.length) {
+    if (!profileStats) {
       return {
         totalBooks: 0,
         completed: 0,
@@ -58,53 +64,19 @@ export default function UserProfilePage() {
         avgProgress: 0,
       };
     }
-    const completed = books.filter(
-      (b: { progress?: number }) => (b.progress ?? 0) >= 100
-    ).length;
-    const inProgress = books.filter((b: { progress?: number }) => {
-      const p = b.progress ?? 0;
-      return p > 0 && p < 100;
-    }).length;
-    const totalPagesRead = Math.round(
-      books.reduce(
-        (
-          sum: number,
-          b: {
-            totalPages?: number;
-            progress?: number;
-            progressStyle?: "pages" | "chapters";
-            ignorePages?: boolean;
-          }
-        ) =>
-          isChapterOnlyBook(b)
-            ? sum
-            : sum + ((b.totalPages ?? 0) * (b.progress ?? 0)) / 100,
-        0
-      )
-    );
-    const earliestStart = books.reduce(
-      (min: string | null, b: { startDate: string }) =>
-        !min || b.startDate < min ? b.startDate : min,
-      null as string | null
-    );
-    const readingSince = earliestStart
-      ? format(parseDateFromStorage(earliestStart), "MMM yyyy")
+    const readingSince = profileStats.earliestStartDate
+      ? format(parseDateFromStorage(profileStats.earliestStartDate), "MMM yyyy")
       : null;
-    const avgProgress =
-      books.reduce(
-        (sum: number, b: { progress?: number }) => sum + (b.progress ?? 0),
-        0
-      ) / books.length;
 
     return {
-      totalBooks: books.length,
-      completed,
-      inProgress,
-      totalPagesRead,
+      totalBooks: profileStats.totalBooks,
+      completed: profileStats.completed,
+      inProgress: profileStats.inProgress,
+      totalPagesRead: profileStats.totalPagesRead,
       readingSince,
-      avgProgress: Math.round(avgProgress),
+      avgProgress: profileStats.avgProgress,
     };
-  }, [books]);
+  }, [profileStats]);
 
   const [copied, setCopied] = useState(false);
 
@@ -245,7 +217,7 @@ export default function UserProfilePage() {
           </div>
         </Card>
 
-        {!booksPending && books.length > 0 && (
+        {stats.totalBooks > 0 && (
           <div className="mb-8">
             <h2 className="mb-4 text-sm font-medium text-muted-foreground">
               Reading stats
