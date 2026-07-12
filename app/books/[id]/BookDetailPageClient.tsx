@@ -657,24 +657,27 @@ export default function BookDetailPage() {
                       {progressSummary.progressPercentage.toFixed(1)}%
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Expected by Today:
-                    </span>
-                    <span className="font-medium text-foreground">
-                      {progressSummary.isChapterOnly
-                        ? progressSummary.expectedChapterByToday !== undefined
-                          ? `Chapter ${progressSummary.expectedChapterByToday}`
-                          : "Not started yet"
-                        : `Page ${progressSummary.expectedPageByToday}${
-                            chapterMode &&
-                            progressSummary.expectedChapterByToday !== undefined
-                              ? ` • Chapter ${progressSummary.expectedChapterByToday}`
-                              : ""
-                          }`}
-                    </span>
-                  </div>
-                  {progressSummary.showExpectedDropdown && (
+                  {!isCommunityBook && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        Expected by Today:
+                      </span>
+                      <span className="font-medium text-foreground">
+                        {progressSummary.isChapterOnly
+                          ? progressSummary.expectedChapterByToday !== undefined
+                            ? `Chapter ${progressSummary.expectedChapterByToday}`
+                            : "Not started yet"
+                          : `Page ${progressSummary.expectedPageByToday}${
+                              chapterMode &&
+                              progressSummary.expectedChapterByToday !==
+                                undefined
+                                ? ` • Chapter ${progressSummary.expectedChapterByToday}`
+                                : ""
+                            }`}
+                      </span>
+                    </div>
+                  )}
+                  {!isCommunityBook && progressSummary.showExpectedDropdown && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
