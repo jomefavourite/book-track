@@ -663,7 +663,9 @@ export default function BookDetailPage() {
                     </span>
                     <span className="font-medium text-foreground">
                       {progressSummary.isChapterOnly
-                        ? `Chapter ${progressSummary.expectedChapterByToday}`
+                        ? progressSummary.expectedChapterByToday !== undefined
+                          ? `Chapter ${progressSummary.expectedChapterByToday}`
+                          : "Not started yet"
                         : `Page ${progressSummary.expectedPageByToday}${
                             chapterMode &&
                             progressSummary.expectedChapterByToday !== undefined
