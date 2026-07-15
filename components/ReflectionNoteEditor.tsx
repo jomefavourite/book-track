@@ -30,6 +30,7 @@ export default function ReflectionNoteEditor({
   const [isSaving, setIsSaving] = useState(false);
   const mountedRef = useRef(false);
   const hasNote = Boolean(note?.trim());
+  const savedNote = note ?? "";
 
   useEffect(() => {
     mountedRef.current = true;
@@ -38,11 +39,17 @@ export default function ReflectionNoteEditor({
     };
   }, []);
 
+  // Sync draft when the persisted note changes (e.g. after a save).
+  // Do not reset draft when the menu merely closes — that was wiping
+  // in-progress typing on outside click.
   useEffect(() => {
-    if (!open) {
-      setDraft(note ?? "");
-    }
-  }, [note, open]);
+    setDraft(savedNote);
+  }, [savedNote]);
+
+  const cancel = () => {
+    setDraft(savedNote);
+    setOpen(false);
+  };
 
   const save = async () => {
     setIsSaving(true);
@@ -126,7 +133,7 @@ export default function ReflectionNoteEditor({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setOpen(false)}
+              onClick={cancel}
               disabled={isSaving}
             >
               Cancel

@@ -14,6 +14,7 @@ import {
   Loader2,
   MessageSquareText,
   Pencil,
+  Search,
   Trash2,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
@@ -22,6 +23,7 @@ import Navigation from "@/components/Navigation";
 import CommunityThemeProvider from "@/components/CommunityThemeProvider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { parseDateFromStorage } from "@/lib/dateUtils";
 import { DAY_TYPE_META, type ScheduleDayType } from "@/lib/scheduleDayType";
@@ -77,6 +79,7 @@ export default function CommunityBookDetailPageClient() {
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [reflectionSearch, setReflectionSearch] = useState("");
 
   const { data: community } = useQuery({
     ...convexQuery(api.communities.getCommunityBySlug, { slug }),
@@ -140,6 +143,20 @@ export default function CommunityBookDetailPageClient() {
 
   const scheduleEntries = schedule as ScheduleEntry[];
   const reflectionFeed = reflections as Reflection[];
+  const normalizedReflectionSearch = reflectionSearch
+    .trim()
+    .toLocaleLowerCase();
+  const filteredReflectionFeed = useMemo(
+    () =>
+      normalizedReflectionSearch
+        ? reflectionFeed.filter((reflection) =>
+            (reflection.userName ?? "A member")
+              .toLocaleLowerCase()
+              .includes(normalizedReflectionSearch)
+          )
+        : reflectionFeed,
+    [normalizedReflectionSearch, reflectionFeed]
+  );
 
   const readingDayCount = useMemo(
     () => scheduleEntries.filter((entry) => entry.dayType === "reading").length,
@@ -443,7 +460,9 @@ export default function CommunityBookDetailPageClient() {
                     </div>
                     {reflectionFeed.length > 0 && (
                       <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                        {reflectionFeed.length}
+                        {normalizedReflectionSearch
+                          ? `${filteredReflectionFeed.length} of ${reflectionFeed.length}`
+                          : reflectionFeed.length}
                       </span>
                     )}
                   </div>
@@ -462,14 +481,47 @@ export default function CommunityBookDetailPageClient() {
                     </Button>
                   )}
 
+                  {reflectionFeed.length > 0 && (
+                    <div className="relative mt-4 w-full">
+                      <label
+                        htmlFor="reflection-search"
+                        className="sr-only"
+                      >
+                        Search reflections by member name
+                      </label>
+                      <Search
+                        aria-hidden="true"
+                        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                      />
+                      <Input
+                        id="reflection-search"
+                        type="search"
+                        value={reflectionSearch}
+                        onChange={(event) =>
+                          setReflectionSearch(event.target.value)
+                        }
+                        placeholder="Search by member name..."
+                        className="pl-9 "
+                      />
+                    </div>
+                  )}
+
                   {reflectionFeed.length === 0 ? (
                     <p className="mt-4 rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
                       No reflections yet. Reflections members add to their read
                       days will show up here.
                     </p>
+                  ) : filteredReflectionFeed.length === 0 ? (
+                    <p
+                      role="status"
+                      className="mt-4 rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground"
+                    >
+                      No reflections found for &ldquo;
+                      {reflectionSearch.trim()}&rdquo;.
+                    </p>
                   ) : (
                     <div className="mt-4 divide-y divide-border">
-                      {reflectionFeed.map((reflection) => (
+                      {filteredReflectionFeed.map((reflection) => (
                         <div
                           key={reflection.sessionId}
                           className="py-4 first:pt-0 last:pb-0"
