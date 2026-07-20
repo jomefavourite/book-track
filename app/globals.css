@@ -84,6 +84,211 @@
   border-color: var(--border);
 }
 
+/* ---------------------------------------------------------------- */
+/* Landing page motion system — transform/opacity only (GPU cheap)  */
+/* ---------------------------------------------------------------- */
+
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes landing-bar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes landing-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes landing-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes landing-toast {
+  0%,
+  10% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  18%,
+  78% {
+    opacity: 1;
+    transform: none;
+  }
+  86%,
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.97);
+  }
+}
+
+@keyframes landing-dot-on {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes landing-wiggle {
+  0%,
+  55%,
+  100% {
+    transform: rotate(0);
+  }
+  10% {
+    transform: rotate(-14deg);
+  }
+  22% {
+    transform: rotate(11deg);
+  }
+  34% {
+    transform: rotate(-7deg);
+  }
+  45% {
+    transform: rotate(4deg);
+  }
+}
+
+@keyframes landing-ring {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 28;
+  }
+}
+
+@keyframes landing-blink {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.landing-hero-enter {
+  opacity: 0;
+  animation: landing-rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Progress bars animate with scaleX so no layout is invalidated */
+.landing-bar-fill {
+  transform-origin: left center;
+  transform: scaleX(0);
+  animation: landing-bar 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.landing-marquee-track {
+  animation: landing-marquee var(--marquee-duration, 40s) linear infinite;
+}
+
+.landing-float {
+  animation: landing-float 6s ease-in-out infinite;
+}
+
+.landing-toast-loop {
+  opacity: 0;
+  animation: landing-toast 7s ease-in-out infinite;
+}
+
+.landing-dot-on {
+  opacity: 0.25;
+  transform: scale(0.6);
+  animation: landing-dot-on 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.landing-wiggle {
+  transform-origin: top center;
+  animation: landing-wiggle 3.2s ease-in-out infinite;
+}
+
+.landing-ring {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: landing-ring 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.landing-blink {
+  animation: landing-blink 1.8s ease-in-out infinite;
+}
+
+/* Scroll reveal (driven by IntersectionObserver adding .is-visible) */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-enter,
+  .landing-bar-fill,
+  .landing-marquee-track,
+  .landing-float,
+  .landing-toast-loop,
+  .landing-dot-on,
+  .landing-wiggle,
+  .landing-ring,
+  .landing-blink {
+    animation: none;
+  }
+
+  .landing-hero-enter,
+  .landing-toast-loop {
+    opacity: 1;
+  }
+
+  .landing-bar-fill {
+    transform: scaleX(1);
+  }
+
+  .landing-dot-on {
+    opacity: 1;
+    transform: none;
+  }
+
+  .landing-ring {
+    stroke-dashoffset: 28;
+  }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
