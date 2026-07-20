@@ -19,6 +19,7 @@ import {
   buildSessionsFromSchedule,
   getScheduleEntries,
 } from "./communitySchedule";
+import { ensureDefaultLabels } from "./communityDayLabels";
 import { getBookProgressPercent } from "./bookProgress";
 
 const communityRoleValidator = v.union(
@@ -368,6 +369,9 @@ export const createCommunity = mutation({
       joinedAt: now,
       updatedAt: now,
     });
+
+    // Every community starts with a working day-label vocabulary it can rename.
+    await ensureDefaultLabels(ctx, communityId);
 
     const community = await ctx.db.get(communityId);
     return community;
@@ -1355,12 +1359,24 @@ export const trackCommunityBook = mutation({
     });
 
     // Seed sessions from the community reading schedule (if one exists) so
-    // rest/reflection/catch-up days and chapter assignments carry over.
+    // non-reading days and chapter assignments carry over.
     const schedule = await getScheduleEntries(ctx, args.communityBookId);
     if (schedule.length > 0) {
       const book = await ctx.db.get(bookId);
       if (book) {
-        const planned = buildSessionsFromSchedule(book, schedule);
+        const labels = await ctx.db
+          .query("communityDayLabels")
+          .withIndex("by_community", (q) =>
+            q.eq("communityId", communityBook.communityId)
+          )
+          .collect();
+        const labelsById = new Map(
+          labels.map((label) => [
+            label._id as string,
+            { behavior: label.behavior, name: label.name },
+          ])
+        );
+        const planned = buildSessionsFromSchedule(book, schedule, labelsById);
         await Promise.all(
           planned.map((day) =>
             ctx.db.insert("readingSessions", {

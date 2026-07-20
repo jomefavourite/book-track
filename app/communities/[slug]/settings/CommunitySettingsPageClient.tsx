@@ -41,6 +41,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
+import DayLabelsSettings from "@/components/DayLabelsSettings";
 
 type Role = "owner" | "admin" | "moderator" | "member";
 
@@ -582,6 +583,10 @@ export default function CommunitySettingsPageClient() {
                     ))}
                   </div>
                 </Card>
+                <DayLabelsSettings
+                  communityId={detail._id}
+                  canEdit={canEdit}
+                />
               </section>
 
               <aside className="space-y-6">

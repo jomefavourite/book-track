@@ -38,11 +38,15 @@ import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
 import ReflectionNoteEditor from "./ReflectionNoteEditor";
 import { playTimerEndSound } from "@/lib/timerSound";
 import {
-  DAY_TYPE_META,
-  dayTypeAllowsReading,
+  DEFAULT_DAY_LABEL,
+  behaviorAllowsLogging,
+  buildDayBehaviorMap,
+  buildDayLabelMap,
+  dayIconFor,
   scheduleChapterTargets,
-  type ScheduleDayType,
+  schedulePlannedPages,
 } from "@/lib/scheduleDayType";
+import type { CatchUpSchedule } from "@/lib/catchUpPlanning";
 
 interface DaysViewProps {
   bookId: Id<"books">;
@@ -94,13 +98,16 @@ export default function DaysView({
     }),
     enabled: Boolean(communityBookId),
   });
-  const dayTypeByDate = useMemo(() => {
-    const map = new Map<string, ScheduleDayType>();
-    (scheduleQuery ?? []).forEach((entry) => {
-      map.set(entry.date, entry.dayType as ScheduleDayType);
-    });
-    return map;
-  }, [scheduleQuery]);
+  const { data: dayLabelsQuery } = useQuery({
+    ...convexQuery(api.communityDayLabels.listForCommunityBook, {
+      communityBookId: communityBookId as Id<"communityBooks">,
+    }),
+    enabled: Boolean(communityBookId),
+  });
+  const dayLabelByDate = useMemo(
+    () => buildDayLabelMap(scheduleQuery, dayLabelsQuery),
+    [scheduleQuery, dayLabelsQuery]
+  );
   type ReadingSessionDoc = Doc<"readingSessions">;
   const sessionsQueryKey = convexQuery(api.readingSessions.getSessionsForBook, {
     bookId,
@@ -421,11 +428,24 @@ export default function DaysView({
   // Community books follow the admin's schedule verbatim (its per-day chapter
   // targets), instead of a locally recomputed even distribution.
   const communityChapterTargets = useMemo(
-    () => scheduleChapterTargets(scheduleQuery),
-    [scheduleQuery]
+    () => scheduleChapterTargets(scheduleQuery, dayLabelsQuery),
+    [scheduleQuery, dayLabelsQuery]
   );
   const useCommunitySchedule =
     Boolean(communityBookId) && communityChapterTargets.size > 0;
+
+  // Catch-up math only gets a schedule for community books, so personal books
+  // keep the original every-calendar-day behavior untouched.
+  const catchUpSchedule = useMemo<CatchUpSchedule | undefined>(() => {
+    if (!communityBookId || !scheduleQuery || scheduleQuery.length === 0) {
+      return undefined;
+    }
+    return {
+      behaviorByDate: buildDayBehaviorMap(scheduleQuery, dayLabelsQuery),
+      chapterTargetByDate: communityChapterTargets,
+      plannedPagesByDate: schedulePlannedPages(scheduleQuery, dayLabelsQuery),
+    };
+  }, [communityBookId, scheduleQuery, dayLabelsQuery, communityChapterTargets]);
 
   const chapterDistribution = useMemo(() => {
     if (!chapterOnlyMode || !chapterDropdownMax) {
@@ -1088,6 +1108,7 @@ export default function DaysView({
         bookId={bookId}
         book={book}
         sessions={sessions}
+        schedule={catchUpSchedule}
       />
 
       <div className="rounded-lg border border-border bg-card p-4">
@@ -1116,16 +1137,15 @@ export default function DaysView({
             const session = sessionsMap.get(dateKey);
             const isRead = session?.isRead || false;
             const isMissed = session?.isMissed || false;
-            const scheduledDayType = dayTypeByDate.get(dateKey) ?? "reading";
-            // Rest/reflection days can't be logged; catch-up days can (read only).
+            const dayLabel = dayLabelByDate.get(dateKey) ?? DEFAULT_DAY_LABEL;
+            // "Off" days can't be logged; flexible days can (read only).
             const isNonReadingDay =
-              !dayTypeAllowsReading(scheduledDayType) && !isRead && !isMissed;
-            // Show the day-type label (instead of a page plan) for any
-            // non-reading type that hasn't been logged yet — including catch-up.
+              !behaviorAllowsLogging(dayLabel.behavior) && !isRead && !isMissed;
+            // Show the day label (instead of a page plan) for any non-reading
+            // behavior that hasn't been logged yet — including flexible days.
             const showDayTypeLabel =
-              scheduledDayType !== "reading" && !isRead && !isMissed;
-            const dayTypeMeta = DAY_TYPE_META[scheduledDayType];
-            const DayTypeIcon = dayTypeMeta.icon;
+              dayLabel.behavior !== "reading" && !isRead && !isMissed;
+            const DayTypeIcon = dayIconFor(dayLabel.icon, dayLabel.behavior);
             const targetChapter = chapterOnlyMode
               ? getDisplayTargetChapterForDate(
                   dateKey,
@@ -1240,7 +1260,7 @@ export default function DaysView({
                       </button>
                     )}
                     {/* Missed Checkbox - only real reading days can be "missed" */}
-                    {!isRead && scheduledDayType === "reading" && (
+                    {!isRead && dayLabel.behavior === "reading" && (
                       <button
                         onClick={() => handleMissedToggle(dateKey)}
                         disabled={!canEdit}
@@ -1293,7 +1313,7 @@ export default function DaysView({
                 {showDayTypeLabel ? (
                   <div className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
                     <DayTypeIcon className="h-3.5 w-3.5 shrink-0" />
-                    {dayTypeMeta.label}
+                    {dayLabel.name}
                   </div>
                 ) : (
                   !isMissed && (

@@ -14,6 +14,10 @@ import {
 } from "@/lib/resetGeneration";
 import { computeReadingProgressSummary } from "@/lib/readingProgressSummary";
 import {
+  buildDayBehaviorMap,
+  scheduleChapterTargets,
+} from "@/lib/scheduleDayType";
+import {
   getHighestChapterRead,
   isChapterOnlyBook,
 } from "@/lib/chapterTracking";
@@ -99,6 +103,21 @@ export default function BookDetailPage() {
     )
   );
 
+  // Community books follow their community's schedule; personal books have
+  // neither query enabled and keep the original even-split behavior.
+  const { data: scheduleQuery } = useQuery(
+    convexQuery(
+      api.communitySchedule.getScheduleForBook,
+      book?.communityBookId ? { communityBookId: book.communityBookId } : "skip"
+    )
+  );
+  const { data: dayLabelsQuery } = useQuery(
+    convexQuery(
+      api.communityDayLabels.listForCommunityBook,
+      book?.communityBookId ? { communityBookId: book.communityBookId } : "skip"
+    )
+  );
+
   const { data: reflections = [] } = useQuery({
     ...convexQuery(api.readingSessions.getReflectionsForBook, {
       bookId,
@@ -168,9 +187,25 @@ export default function BookDetailPage() {
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   }, [book, sessions]);
 
+  const progressSchedule = useMemo(() => {
+    if (!book?.communityBookId || !scheduleQuery || scheduleQuery.length === 0) {
+      return undefined;
+    }
+    return {
+      behaviorByDate: buildDayBehaviorMap(scheduleQuery, dayLabelsQuery),
+      chapterTargetByDate: scheduleChapterTargets(
+        scheduleQuery,
+        dayLabelsQuery
+      ),
+    };
+  }, [book?.communityBookId, scheduleQuery, dayLabelsQuery]);
+
   const progressSummary = useMemo(
-    () => (book ? computeReadingProgressSummary(book, activeSessions) : null),
-    [book, activeSessions]
+    () =>
+      book
+        ? computeReadingProgressSummary(book, activeSessions, progressSchedule)
+        : null,
+    [book, activeSessions, progressSchedule]
   );
   const chapterMode = book?.progressStyle === "chapters";
   const chapterOnlyMode = book ? isChapterOnlyBook(book) : false;

@@ -18,6 +18,10 @@ import {
   getHighestChapterRead,
   isChapterOnlyBook,
 } from "@/lib/chapterTracking";
+import {
+  behaviorCountsAsMissed,
+  type DayBehavior,
+} from "@/lib/scheduleDayType";
 
 /** Minimal book fields needed for progress summary (matches Convex book shape). */
 export interface ReadingProgressBookInput {
@@ -65,11 +69,41 @@ export interface ReadingProgressSummary {
   expectedChapterByToday?: number;
 }
 
+/**
+ * Community schedule inputs. Supplied only for community books; without them
+ * the summary keeps its original even-split behavior.
+ */
+export interface ReadingProgressSchedule {
+  behaviorByDate: Map<string, DayBehavior>;
+  chapterTargetByDate: Map<string, number>;
+}
+
+/** Highest cumulative target the schedule assigned on or before `through`. */
+function highestTargetThrough(
+  targets: Map<string, number>,
+  allDays: Date[],
+  through: Date
+): number {
+  let highest = 0;
+  for (const day of allDays) {
+    if (isAfter(day, through)) break;
+    const target = targets.get(formatDateForStorage(day));
+    if (target != null && target > highest) highest = target;
+  }
+  return Math.max(1, highest);
+}
+
 export function computeReadingProgressSummary(
   book: ReadingProgressBookInput,
-  sessions: ReadingProgressSessionInput[]
+  sessions: ReadingProgressSessionInput[],
+  schedule?: ReadingProgressSchedule
 ): ReadingProgressSummary {
   const chapterOnly = isChapterOnlyBook(book);
+  /** Days the schedule says nothing is expected on. */
+  const isOffDay = (dayKey: string) => {
+    const behavior = schedule?.behaviorByDate.get(dayKey);
+    return behavior !== undefined && !behaviorCountsAsMissed(behavior);
+  };
   const totalPages = book.totalPages ?? 0;
   const totalChapters = book.totalChapters;
   const startDate = parseDateFromStorage(book.startDate);
@@ -81,11 +115,12 @@ export function computeReadingProgressSummary(
   const allDays = getAllDaysInRange(startDate, endDate);
 
   if (chapterOnly && typeof totalChapters === "number" && totalChapters > 0) {
-    const chapterDistribution = distributeChaptersAcrossDays(
-      totalChapters,
-      startDate,
-      endDate
-    );
+    // Community books follow the admin's per-day targets; personal books fall
+    // back to an even split across the calendar.
+    const useScheduledTargets = (schedule?.chapterTargetByDate.size ?? 0) > 0;
+    const chapterDistribution = useScheduledTargets
+      ? schedule!.chapterTargetByDate
+      : distributeChaptersAcrossDays(totalChapters, startDate, endDate);
 
     if (book.markedCompleteAt != null) {
       return {
@@ -115,6 +150,8 @@ export function computeReadingProgressSummary(
       const dayKey = formatDateForStorage(day);
       if (completedDates.has(dayKey)) return false;
       if (sessionsByDate.get(dayKey)?.isMissed) return false;
+      // Rest days aren't days the reader failed to account for.
+      if (isOffDay(dayKey)) return false;
       return true;
     });
     const expectedPerUnaccountedDay = unaccountedDays.map((day, index) => {
@@ -125,12 +162,19 @@ export function computeReadingProgressSummary(
         expectedChapter: chapterDistribution.get(dayKey) ?? 1,
       };
     });
-    const expectedChapterByToday =
-      !isBefore(today, startDate)
-        ? chapterDistribution.get(
+    const expectedChapterByToday = isBefore(today, startDate)
+      ? undefined
+      : useScheduledTargets
+        ? // Targets are cumulative and only land on reading days, so the
+          // expectation today is the highest one assigned so far.
+          highestTargetThrough(
+            chapterDistribution,
+            allDays,
+            isAfter(today, endDate) ? endDate : today
+          )
+        : chapterDistribution.get(
             formatDateForStorage(isAfter(today, endDate) ? endDate : today)
-          ) ?? 1
-        : undefined;
+          ) ?? 1;
     const isBehind =
       expectedChapterByToday !== undefined && currentChapter < expectedChapterByToday;
     const isAhead =
@@ -251,6 +295,8 @@ export function computeReadingProgressSummary(
     const dayKey = formatDateForStorage(day);
     if (completedDates.has(dayKey)) return false;
     if (sessionsByDate.get(dayKey)?.isMissed) return false;
+    // Rest days aren't days the reader failed to account for.
+    if (isOffDay(dayKey)) return false;
     return true;
   });
   const expectedPerUnaccountedDay = unaccountedDays.map((day, index) => {

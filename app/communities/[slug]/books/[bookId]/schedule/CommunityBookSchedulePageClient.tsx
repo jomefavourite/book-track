@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { format, getDay } from "date-fns";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Tags } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import Navigation from "@/components/Navigation";
@@ -35,19 +35,33 @@ import {
   balanceChapterTargets,
   type BalanceDay,
 } from "@/lib/readingCalculator";
+import { toUserMessage } from "@/lib/errorMessage";
+import {
+  behaviorAssignsTarget,
+  dayIconFor,
+  type DayBehavior,
+} from "@/lib/scheduleDayType";
 
 type Role = "owner" | "admin" | "moderator" | "member";
 
-type ScheduleDayType = "reading" | "rest" | "reflection" | "catchup";
-
 type DraftDay = {
   date: string;
-  dayType: ScheduleDayType;
+  /** Which of the community's day labels this day uses */
+  dayLabelId: string;
   /** Per-day reading target: pages (page books) or target chapter (chapter books) */
   amount: string;
   /** True once the manager types a target for this day; auto-adjust preserves it. */
   locked: boolean;
   notes: string;
+};
+
+type LabelOption = {
+  _id: string;
+  name: string;
+  behavior: DayBehavior;
+  icon?: string;
+  legacyDayType?: string;
+  isArchived?: boolean;
 };
 
 // Default target chapter to reach on the i-th reading day (0-based) of n.
@@ -65,13 +79,14 @@ function defaultChapterForReadingIndex(
 
 // Default per-day target (pages or target chapter) for each reading day.
 function computeReadingDefaults(
-  rows: Array<{ date: string; dayType: ScheduleDayType }>,
+  rows: Array<{ date: string; dayLabelId: string }>,
+  isReadingLabel: (dayLabelId: string) => boolean,
   chapterBased: boolean,
   totalPages: number,
   totalChapters: number
 ): Map<string, number> {
   const readingDates = rows
-    .filter((row) => row.dayType === "reading")
+    .filter((row) => isReadingLabel(row.dayLabelId))
     .map((row) => row.date);
   const pageDefaults = distributeAcrossReadingDays(
     totalPages,
@@ -93,29 +108,24 @@ function computeReadingDefaults(
 // manually entered value untouched.
 function fillReadingDefaults(
   rows: DraftDay[],
+  isReadingLabel: (dayLabelId: string) => boolean,
   chapterBased: boolean,
   totalPages: number,
   totalChapters: number
 ): DraftDay[] {
   const defaults = computeReadingDefaults(
     rows,
+    isReadingLabel,
     chapterBased,
     totalPages,
     totalChapters
   );
   return rows.map((row) =>
-    row.dayType === "reading" && row.amount.trim() === ""
+    isReadingLabel(row.dayLabelId) && row.amount.trim() === ""
       ? { ...row, amount: String(defaults.get(row.date) ?? ""), locked: false }
       : row
   );
 }
-
-const DAY_TYPE_OPTIONS: Array<{ value: ScheduleDayType; label: string }> = [
-  { value: "reading", label: "Reading" },
-  { value: "rest", label: "Rest" },
-  { value: "reflection", label: "Reflection" },
-  { value: "catchup", label: "Catch-up" },
-];
 
 const WEEKDAY_LABELS = [
   "Monday",
@@ -168,6 +178,69 @@ export default function CommunityBookSchedulePageClient() {
     enabled: Boolean(book),
   });
 
+  const { data: dayLabels, isPending: labelsPending } = useQuery({
+    ...convexQuery(api.communityDayLabels.listForCommunityBook, {
+      communityBookId,
+    }),
+    enabled: Boolean(book),
+  });
+
+  const labelOptions = useMemo(
+    () => (dayLabels ?? []) as LabelOption[],
+    [dayLabels]
+  );
+  const labelById = useMemo(
+    () => new Map(labelOptions.map((label) => [label._id, label])),
+    [labelOptions]
+  );
+  // Archived labels still resolve days already assigned to them, but a manager
+  // shouldn't be able to pick one for a new day.
+  const pickableLabels = useMemo(
+    () => labelOptions.filter((label) => label.isArchived !== true),
+    [labelOptions]
+  );
+  /** Maps a legacy dayType on an un-backfilled row to the equivalent label. */
+  const labelByLegacyType = useMemo(
+    () =>
+      new Map(
+        labelOptions
+          .filter((label) => label.legacyDayType !== undefined)
+          .map((label) => [label.legacyDayType as string, label])
+      ),
+    [labelOptions]
+  );
+  const defaultLabelId =
+    pickableLabels.find((label) => label.behavior === "reading")?._id ??
+    pickableLabels[0]?._id ??
+    "";
+  const isReadingLabel = useCallback(
+    (dayLabelId: string) =>
+      behaviorAssignsTarget(labelById.get(dayLabelId)?.behavior ?? "reading"),
+    [labelById]
+  );
+
+  // A community that predates day labels has none stored, so the query hands
+  // back read-only placeholders whose ids aren't real. Persist the defaults
+  // before the manager can save, or the mutation rejects the placeholder id.
+  const hasPlaceholderLabels = labelOptions.some((label) =>
+    label._id.startsWith("default:")
+  );
+  const { mutate: ensureLabels } = useMutation({
+    mutationFn: useConvexMutation(api.communityDayLabels.ensureLabelsForBook),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: convexQuery(api.communityDayLabels.listForCommunityBook, {
+          communityBookId,
+        }).queryKey,
+      });
+    },
+  });
+  useEffect(() => {
+    if (hasPlaceholderLabels) {
+      ensureLabels({ communityBookId });
+    }
+  }, [hasPlaceholderLabels, ensureLabels, communityBookId]);
+
   const viewerRole = book?.viewerRole as Role | undefined;
   const isManager = canManageBooks(viewerRole);
   const chapterBased = book?.progressStyle === "chapters";
@@ -176,7 +249,15 @@ export default function CommunityBookSchedulePageClient() {
   const totalChapters = book?.totalChapters ?? 0;
 
   const initialDraft = useMemo<DraftDay[] | null>(() => {
-    if (!book || schedulePending) return null;
+    if (
+      !book ||
+      schedulePending ||
+      labelsPending ||
+      !defaultLabelId ||
+      hasPlaceholderLabels
+    ) {
+      return null;
+    }
     const savedByDate = new Map(
       (schedule ?? []).map((entry) => [entry.date, entry])
     );
@@ -187,16 +268,21 @@ export default function CommunityBookSchedulePageClient() {
     const rows = days.map((day) => {
       const date = formatDateForStorage(day);
       const saved = savedByDate.get(date);
-      return {
-        date,
-        dayType: (saved?.dayType ?? "reading") as ScheduleDayType,
-        saved,
-      };
+      // Rows written before day labels carry only a legacy dayType; map them
+      // onto the seeded label so the editor shows what the schedule means.
+      const dayLabelId =
+        (saved?.dayLabelId as string | undefined) ??
+        (saved?.dayType
+          ? labelByLegacyType.get(saved.dayType)?._id
+          : undefined) ??
+        defaultLabelId;
+      return { date, dayLabelId, saved };
     });
 
     // Pre-fill reading days with the saved target, or the even-split default.
     const defaultByDate = computeReadingDefaults(
       rows,
+      isReadingLabel,
       chapterBased,
       totalPages,
       totalChapters
@@ -206,21 +292,32 @@ export default function CommunityBookSchedulePageClient() {
       const savedAmount = chapterBased
         ? row.saved?.chapterNumber
         : row.saved?.plannedPages;
-      const amount =
-        row.dayType === "reading"
-          ? savedAmount !== undefined
-            ? String(savedAmount)
-            : String(defaultByDate.get(row.date) ?? "")
-          : "";
+      const amount = isReadingLabel(row.dayLabelId)
+        ? savedAmount !== undefined
+          ? String(savedAmount)
+          : String(defaultByDate.get(row.date) ?? "")
+        : "";
       return {
         date: row.date,
-        dayType: row.dayType,
+        dayLabelId: row.dayLabelId,
         amount,
         locked: false,
         notes: row.saved?.notes ?? "",
       };
     });
-  }, [book, schedule, schedulePending, chapterBased, totalPages, totalChapters]);
+  }, [
+    book,
+    schedule,
+    schedulePending,
+    labelsPending,
+    defaultLabelId,
+    hasPlaceholderLabels,
+    labelByLegacyType,
+    isReadingLabel,
+    chapterBased,
+    totalPages,
+    totalChapters,
+  ]);
 
   const draft = draftEdits ?? initialDraft;
 
@@ -245,12 +342,18 @@ export default function CommunityBookSchedulePageClient() {
   }, [draft, useMonthTabs, activeMonth]);
 
   const readingCount =
-    draft?.filter((day) => day.dayType === "reading").length ?? 0;
+    draft?.filter((day) => isReadingLabel(day.dayLabelId)).length ?? 0;
 
   // Default per-day target for each reading day of the current draft. Used to
   // show placeholders and to seed newly-toggled reading days.
   const defaultAmountByDate = draft
-    ? computeReadingDefaults(draft, chapterBased, totalPages, totalChapters)
+    ? computeReadingDefaults(
+        draft,
+        isReadingLabel,
+        chapterBased,
+        totalPages,
+        totalChapters
+      )
     : new Map<string, number>();
 
   // The computed average shown in the global "per reading day" field.
@@ -265,7 +368,7 @@ export default function CommunityBookSchedulePageClient() {
   // Book total and how much the current per-day targets cover.
   const bookTotal = chapterBased ? totalChapters : totalPages;
   const readingDaysList = (draft ?? []).filter(
-    (day) => day.dayType === "reading"
+    (day) => isReadingLabel(day.dayLabelId)
   );
   const assignedTotal = chapterBased
     ? readingDaysList.reduce(
@@ -278,21 +381,18 @@ export default function CommunityBookSchedulePageClient() {
 
   const weekdayTemplates = useMemo(() => {
     if (!draft) return [];
-    const byWeekday: ScheduleDayType[][] = Array.from(
-      { length: 7 },
-      () => []
-    );
+    const byWeekday: string[][] = Array.from({ length: 7 }, () => []);
     for (const day of draft) {
       const index = toMondayFirstIndex(getDay(parseDateFromStorage(day.date)));
-      byWeekday[index].push(day.dayType);
+      byWeekday[index].push(day.dayLabelId);
     }
     return WEEKDAY_LABELS.map((label, index) => {
       const types = byWeekday[index];
-      const counts = new Map<ScheduleDayType, number>();
+      const counts = new Map<string, number>();
       for (const type of types) {
         counts.set(type, (counts.get(type) ?? 0) + 1);
       }
-      let mode: ScheduleDayType = "reading";
+      let mode: string = defaultLabelId;
       let best = -1;
       for (const [type, count] of counts) {
         if (count > best) {
@@ -300,13 +400,13 @@ export default function CommunityBookSchedulePageClient() {
           mode = type;
         }
       }
-      return { label, index, dayType: mode, hasDays: types.length > 0 };
+      return { label, index, dayLabelId: mode, hasDays: types.length > 0 };
     });
-  }, [draft]);
+  }, [draft, defaultLabelId]);
 
   const applyWeekdayTemplate = (
     weekdayIndex: number,
-    dayType: ScheduleDayType
+    dayLabelId: string
   ) => {
     setDraftEdits((current) => {
       const base = current ?? initialDraft;
@@ -316,12 +416,18 @@ export default function CommunityBookSchedulePageClient() {
         weekdayIndex
           ? {
               ...day,
-              dayType,
-              amount: dayType === "reading" ? day.amount : "",
+              dayLabelId,
+              amount: isReadingLabel(dayLabelId) ? day.amount : "",
             }
           : day
       );
-      return fillReadingDefaults(next, chapterBased, totalPages, totalChapters);
+      return fillReadingDefaults(
+        next,
+        isReadingLabel,
+        chapterBased,
+        totalPages,
+        totalChapters
+      );
     });
   };
 
@@ -346,7 +452,7 @@ export default function CommunityBookSchedulePageClient() {
     });
   };
 
-  const changeDayType = (date: string, dayType: ScheduleDayType) => {
+  const changeDayType = (date: string, dayLabelId: string) => {
     setDraftEdits((current) => {
       const base = current ?? initialDraft;
       if (!base) return current;
@@ -354,14 +460,20 @@ export default function CommunityBookSchedulePageClient() {
         day.date === date
           ? {
               ...day,
-              dayType,
-              amount: dayType === "reading" ? day.amount : "",
-              locked: dayType === "reading" ? day.locked : false,
+              dayLabelId,
+              amount: isReadingLabel(dayLabelId) ? day.amount : "",
+              locked: isReadingLabel(dayLabelId) ? day.locked : false,
             }
           : day
       );
       // Seed a default for the newly-reading day and keep others intact.
-      return fillReadingDefaults(next, chapterBased, totalPages, totalChapters);
+      return fillReadingDefaults(
+        next,
+        isReadingLabel,
+        chapterBased,
+        totalPages,
+        totalChapters
+      );
     });
   };
 
@@ -374,12 +486,13 @@ export default function CommunityBookSchedulePageClient() {
       if (!base) return current;
       const defaults = computeReadingDefaults(
         base,
+        isReadingLabel,
         true,
         totalPages,
         totalChapters
       );
       return base.map((day) =>
-        day.dayType === "reading"
+        isReadingLabel(day.dayLabelId)
           ? {
               ...day,
               amount: String(defaults.get(day.date) ?? day.amount),
@@ -405,7 +518,7 @@ export default function CommunityBookSchedulePageClient() {
       const base = current ?? initialDraft;
       if (!base) return current;
       return base.map((day) =>
-        day.dayType === "reading"
+        isReadingLabel(day.dayLabelId)
           ? { ...day, amount: raw, locked: false }
           : day
       );
@@ -420,7 +533,7 @@ export default function CommunityBookSchedulePageClient() {
     setDraftEdits((current) => {
       const base = current ?? initialDraft;
       if (!base) return current;
-      const readingDays = base.filter((day) => day.dayType === "reading");
+      const readingDays = base.filter((day) => isReadingLabel(day.dayLabelId));
       const balanceInput: BalanceDay[] = readingDays.map((day) => ({
         value: Number(day.amount) || 0,
         locked: day.locked,
@@ -432,7 +545,7 @@ export default function CommunityBookSchedulePageClient() {
         readingDays.map((day, index) => [day.date, balanced[index]])
       );
       return base.map((day) =>
-        day.dayType === "reading"
+        isReadingLabel(day.dayLabelId)
           ? { ...day, amount: String(balancedByDate.get(day.date) ?? day.amount) }
           : day
       );
@@ -443,8 +556,13 @@ export default function CommunityBookSchedulePageClient() {
     if (!draft) return;
     setError(null);
 
+    if (hasPlaceholderLabels) {
+      setError("Still setting up this community's day labels. Try again in a moment.");
+      return;
+    }
+
     for (const day of draft) {
-      if (day.dayType !== "reading" || day.amount.trim() === "") continue;
+      if (!isReadingLabel(day.dayLabelId) || day.amount.trim() === "") continue;
       const value = Number(day.amount);
       if (!Number.isInteger(value) || value < 1) {
         setError(
@@ -458,14 +576,14 @@ export default function CommunityBookSchedulePageClient() {
       await saveSchedule({
         communityBookId,
         entries: draft.map((day) => {
-          const isReading = day.dayType === "reading";
+          const isReading = isReadingLabel(day.dayLabelId);
           const value =
             isReading && day.amount.trim() !== ""
               ? Number(day.amount)
               : undefined;
           return {
             date: day.date,
-            dayType: day.dayType,
+            dayLabelId: day.dayLabelId as Id<"communityDayLabels">,
             chapterNumber: isReading && chapterBased ? value : undefined,
             plannedPages: isReading && !chapterBased ? value : undefined,
             notes: day.notes.trim() || undefined,
@@ -479,9 +597,7 @@ export default function CommunityBookSchedulePageClient() {
       });
       router.push(`/communities/${slug}/books/${communityBookId}`);
     } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Unable to save the schedule."
-      );
+      setError(toUserMessage(caught, "Unable to save the schedule."));
     }
   };
 
@@ -519,15 +635,28 @@ export default function CommunityBookSchedulePageClient() {
           </div>
         ) : (
           <div className="space-y-6">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground sm:text-4xl">
-                Reading schedule
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-                Choose what each day of &quot;{book.name}&quot; is for. Members
-                get reading targets only on reading days — rest, reflection, and
-                catch-up days have nothing assigned.
-              </p>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-foreground sm:text-4xl">
+                  Reading schedule
+                </h1>
+                <p className="mt-2 text-sm text-muted-foreground sm:text-base">
+                  Choose what each day of &quot;{book.name}&quot; is for.
+                  Members get reading targets only on reading days; every other
+                  day has nothing assigned.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                asChild
+                className="shrink-0 sm:mt-1"
+                title="Change the names and meanings available in the pickers below"
+              >
+                <Link href={`/communities/${slug}/settings`}>
+                  <Tags className="h-4 w-4" />
+                  Edit day labels
+                </Link>
+              </Button>
             </div>
 
             <Card className="p-5 sm:p-6">
@@ -550,12 +679,9 @@ export default function CommunityBookSchedulePageClient() {
                       {weekday.label}
                     </span>
                     <Select
-                      value={weekday.dayType}
+                      value={weekday.dayLabelId}
                       onValueChange={(value) =>
-                        applyWeekdayTemplate(
-                          weekday.index,
-                          value as ScheduleDayType
-                        )
+                        applyWeekdayTemplate(weekday.index, value)
                       }
                       disabled={!weekday.hasDays}
                     >
@@ -563,11 +689,17 @@ export default function CommunityBookSchedulePageClient() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {DAY_TYPE_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
+                        {pickableLabels.map((option) => {
+                          const Icon = dayIconFor(option.icon, option.behavior);
+                          return (
+                            <SelectItem key={option._id} value={option._id}>
+                              <span className="flex items-center gap-2">
+                                <Icon className="h-3.5 w-3.5 shrink-0" />
+                                {option.name}
+                              </span>
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </div>
@@ -684,7 +816,7 @@ export default function CommunityBookSchedulePageClient() {
 
               <div className="mt-4 space-y-2">
                 {visibleDays.map((day) => {
-                  const isReading = day.dayType === "reading";
+                  const isReading = isReadingLabel(day.dayLabelId);
                   return (
                     <div
                       key={day.date}
@@ -702,20 +834,29 @@ export default function CommunityBookSchedulePageClient() {
                         {format(parseDateFromStorage(day.date), "EEE, MMM d")}
                       </span>
                       <Select
-                        value={day.dayType}
+                        value={day.dayLabelId}
                         onValueChange={(value) =>
-                          changeDayType(day.date, value as ScheduleDayType)
+                          changeDayType(day.date, value)
                         }
                       >
                         <SelectTrigger className="h-9 w-full sm:w-36">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {DAY_TYPE_OPTIONS.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
+                          {pickableLabels.map((option) => {
+                            const Icon = dayIconFor(
+                              option.icon,
+                              option.behavior
+                            );
+                            return (
+                              <SelectItem key={option._id} value={option._id}>
+                                <span className="flex items-center gap-2">
+                                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                                  {option.name}
+                                </span>
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                       {isReading && (
@@ -744,7 +885,7 @@ export default function CommunityBookSchedulePageClient() {
                       )}
                       <Input
                         placeholder={
-                          day.dayType === "reflection"
+                          !isReadingLabel(day.dayLabelId)
                             ? "e.g. What stood out this week?"
                             : "Note (optional)"
                         }
