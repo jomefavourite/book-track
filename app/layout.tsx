@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ConvexClientProvider } from "@/lib/convex";
@@ -120,6 +121,12 @@ export default function RootLayout({
           </ThemeProvider>
         </ClerkProvider>
         <Analytics />
+        <Script
+          src="https://sabilytics.vercel.app/script.js"
+          data-site="uqzjfvo9vdmz"
+          data-domain="booktrackr.app"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
