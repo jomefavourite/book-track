@@ -5,21 +5,66 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { canManageBooks } from "./communityRules";
 import { canAccessCommunityBooks } from "./communityBookRules";
+import {
+  BEHAVIOR_LEGACY_DAY_TYPE,
+  LEGACY_DAY_TYPE_BEHAVIOR,
+  behaviorAssignsTarget,
+  legacyDayTypeValidator,
+  type DayBehavior,
+} from "./dayBehavior";
 
-export const scheduleDayTypeValidator = v.union(
-  v.literal("reading"),
-  v.literal("rest"),
-  v.literal("reflection"),
-  v.literal("catchup")
-);
+/** @deprecated Kept for legacy callers; day labels are the source of truth. */
+export const scheduleDayTypeValidator = legacyDayTypeValidator;
 
 const scheduleEntryValidator = v.object({
   date: v.string(),
-  dayType: scheduleDayTypeValidator,
+  dayLabelId: v.id("communityDayLabels"),
   chapterNumber: v.optional(v.number()),
   plannedPages: v.optional(v.number()),
   notes: v.optional(v.string()),
 });
+
+type ScheduleEntryLike = {
+  dayLabelId?: Id<"communityDayLabels">;
+  dayType?: string;
+};
+
+/**
+ * Resolves what a schedule day is for. `dayLabelId` wins; rows written before
+ * day labels existed fall back to their legacy `dayType`, so schedules stay
+ * correct whether or not `backfillScheduleDayLabels` has run. Anything
+ * unrecognised is treated as a reading day — the app's pre-existing assumption.
+ */
+export function resolveEntryBehavior(
+  entry: ScheduleEntryLike | undefined,
+  labelsById: Map<string, { behavior: DayBehavior; name: string }>
+): { behavior: DayBehavior; name: string } {
+  if (entry?.dayLabelId) {
+    const label = labelsById.get(entry.dayLabelId);
+    if (label) return label;
+  }
+  const legacy = entry?.dayType;
+  if (legacy && legacy in LEGACY_DAY_TYPE_BEHAVIOR) {
+    return { behavior: LEGACY_DAY_TYPE_BEHAVIOR[legacy], name: legacy };
+  }
+  return { behavior: "reading", name: "Reading" };
+}
+
+async function getLabelsById(
+  ctx: QueryCtx | MutationCtx,
+  communityId: Id<"communities">
+) {
+  const labels = await ctx.db
+    .query("communityDayLabels")
+    .withIndex("by_community", (q) => q.eq("communityId", communityId))
+    .collect();
+  return new Map(
+    labels.map((label) => [
+      label._id as string,
+      { behavior: label.behavior as DayBehavior, name: label.name },
+    ])
+  );
+}
 
 async function requireClerkId(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
@@ -64,18 +109,23 @@ async function requireBookManager(
 /**
  * Builds readingSessions insert payloads for a personal book from a community
  * schedule. Total pages are spread evenly across the schedule's reading days;
- * rest/reflection/catch-up days get 0 planned pages.
+ * days whose label is flexible or off get 0 planned pages.
  */
 export function buildSessionsFromSchedule(
   book: Pick<Doc<"books">, "totalPages" | "ignorePages">,
   schedule: Array<{
     date: string;
-    dayType: "reading" | "rest" | "reflection" | "catchup";
+    dayLabelId?: Id<"communityDayLabels">;
+    dayType?: string;
     chapterNumber?: number;
     plannedPages?: number;
-  }>
+  }>,
+  labelsById: Map<string, { behavior: DayBehavior; name: string }>
 ) {
-  const readingDays = schedule.filter((entry) => entry.dayType === "reading");
+  const assignsTarget = (entry: (typeof schedule)[number]) =>
+    behaviorAssignsTarget(resolveEntryBehavior(entry, labelsById).behavior);
+
+  const readingDays = schedule.filter(assignsTarget);
   const totalPages =
     book.ignorePages === true ? 0 : book.totalPages ?? 0;
   const perDay =
@@ -87,7 +137,7 @@ export function buildSessionsFromSchedule(
   return schedule.map((entry) => {
     let plannedPages = 0;
     let chapterNumber: number | undefined;
-    if (entry.dayType === "reading") {
+    if (assignsTarget(entry)) {
       // Honor the manager-configured per-day target; fall back to an even
       // split for legacy schedules and days without an explicit amount.
       const evenSplit = perDay + (readingIndex < remainder ? 1 : 0);
@@ -99,18 +149,27 @@ export function buildSessionsFromSchedule(
   });
 }
 
-export async function getScheduleDayTypeForDate(
+/**
+ * What a given day of a community book is for, resolved through the community's
+ * own day labels. Returns undefined when the schedule has no entry for the date.
+ */
+export async function getScheduleDayBehaviorForDate(
   ctx: QueryCtx | MutationCtx,
   communityBookId: Id<"communityBooks">,
   date: string
-) {
+): Promise<{ behavior: DayBehavior; name: string } | undefined> {
   const entry = await ctx.db
     .query("communityBookSchedule")
     .withIndex("by_community_book_and_date", (q) =>
       q.eq("communityBookId", communityBookId).eq("date", date)
     )
     .unique();
-  return entry?.dayType;
+  if (!entry) return undefined;
+
+  const book = await ctx.db.get(communityBookId);
+  if (!book) return undefined;
+  const labelsById = await getLabelsById(ctx, book.communityId);
+  return resolveEntryBehavior(entry, labelsById);
 }
 
 export async function getScheduleEntries(
@@ -159,17 +218,47 @@ export const getScheduleForBook = query({
   },
 });
 
+/**
+ * Validates a label belongs to the book's community and returns the fields to
+ * persist. `dayType` is shadow-written with the legacy equivalent of the
+ * label's behavior purely for rollback safety — nothing reads it while
+ * `dayLabelId` is present.
+ */
+async function buildDayFields(
+  ctx: MutationCtx,
+  book: Doc<"communityBooks">,
+  input: {
+    dayLabelId: Id<"communityDayLabels">;
+    chapterNumber?: number;
+    plannedPages?: number;
+    notes?: string;
+  }
+) {
+  const label = await ctx.db.get(input.dayLabelId);
+  if (!label || label.communityId !== book.communityId) {
+    throw new Error("Unknown day label for this community");
+  }
+  const assignsTarget = behaviorAssignsTarget(label.behavior);
+  return {
+    dayLabelId: input.dayLabelId,
+    dayType: BEHAVIOR_LEGACY_DAY_TYPE[label.behavior],
+    chapterNumber: assignsTarget ? input.chapterNumber : undefined,
+    plannedPages: assignsTarget ? input.plannedPages : undefined,
+    notes: input.notes?.trim() || undefined,
+  };
+}
+
 export const upsertScheduleDay = mutation({
   args: {
     communityBookId: v.id("communityBooks"),
     date: v.string(),
-    dayType: scheduleDayTypeValidator,
+    dayLabelId: v.id("communityDayLabels"),
     chapterNumber: v.optional(v.number()),
     plannedPages: v.optional(v.number()),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireBookManager(ctx, args.communityBookId);
+    const book = await requireBookManager(ctx, args.communityBookId);
 
     const existing = await ctx.db
       .query("communityBookSchedule")
@@ -178,12 +267,7 @@ export const upsertScheduleDay = mutation({
       )
       .unique();
 
-    const fields = {
-      dayType: args.dayType,
-      chapterNumber: args.dayType === "reading" ? args.chapterNumber : undefined,
-      plannedPages: args.dayType === "reading" ? args.plannedPages : undefined,
-      notes: args.notes?.trim() || undefined,
-    };
+    const fields = await buildDayFields(ctx, book, args);
 
     if (existing) {
       await ctx.db.patch(existing._id, fields);
@@ -229,7 +313,7 @@ export const bulkReplaceSchedule = mutation({
     entries: v.array(scheduleEntryValidator),
   },
   handler: async (ctx, args) => {
-    await requireBookManager(ctx, args.communityBookId);
+    const book = await requireBookManager(ctx, args.communityBookId);
 
     const seen = new Set<string>();
     for (const entry of args.entries) {
@@ -238,6 +322,15 @@ export const bulkReplaceSchedule = mutation({
       }
       seen.add(entry.date);
     }
+
+    // Resolve every label before deleting anything, so an invalid label can't
+    // leave the book with a half-written schedule.
+    const prepared = await Promise.all(
+      args.entries.map(async (entry) => ({
+        date: entry.date,
+        ...(await buildDayFields(ctx, book, entry)),
+      }))
+    );
 
     const existing = await ctx.db
       .query("communityBookSchedule")
@@ -248,16 +341,10 @@ export const bulkReplaceSchedule = mutation({
     await Promise.all(existing.map((entry) => ctx.db.delete(entry._id)));
 
     await Promise.all(
-      args.entries.map((entry) =>
+      prepared.map((entry) =>
         ctx.db.insert("communityBookSchedule", {
           communityBookId: args.communityBookId,
-          date: entry.date,
-          dayType: entry.dayType,
-          chapterNumber:
-            entry.dayType === "reading" ? entry.chapterNumber : undefined,
-          plannedPages:
-            entry.dayType === "reading" ? entry.plannedPages : undefined,
-          notes: entry.notes?.trim() || undefined,
+          ...entry,
         })
       )
     );
@@ -282,6 +369,9 @@ export const syncSessionsToSchedule = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const schedule = await getScheduleEntries(ctx, args.communityBookId);
+    const communityBook = await ctx.db.get(args.communityBookId);
+    if (!communityBook) return null;
+    const labelsById = await getLabelsById(ctx, communityBook.communityId);
 
     const personalBooks = await ctx.db
       .query("books")
@@ -291,7 +381,11 @@ export const syncSessionsToSchedule = internalMutation({
       .collect();
 
     for (const personalBook of personalBooks) {
-      const planned = buildSessionsFromSchedule(personalBook, schedule);
+      const planned = buildSessionsFromSchedule(
+        personalBook,
+        schedule,
+        labelsById
+      );
       const plannedByDate = new Map(planned.map((p) => [p.date, p]));
 
       const sessions = await ctx.db

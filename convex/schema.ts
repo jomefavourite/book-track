@@ -140,14 +140,53 @@ export default defineSchema({
     .index("by_community_and_created", ["communityId", "createdAt"])
     .index("by_community_and_status", ["communityId", "status"]),
 
+  /**
+   * Community-defined vocabulary for schedule days. Each label carries one
+   * `behavior` the reading/catch-up engine understands, so communities can name
+   * their days ("Sabbath", "Recap") without the logic hardcoding those names.
+   */
+  communityDayLabels: defineTable({
+    communityId: v.id("communities"),
+    name: v.string(),
+    /**
+     * reading — assigns a target, loggable, unlogged counts as missed.
+     * flex    — no target, loggable, never missed, gives catch-up capacity.
+     * off     — nothing expected; invisible to progress and catch-up math.
+     */
+    behavior: v.union(
+      v.literal("reading"),
+      v.literal("flex"),
+      v.literal("off")
+    ),
+    /** Key into DAY_ICONS in lib/scheduleDayType.ts */
+    icon: v.optional(v.string()),
+    /**
+     * Set only on the four seeded defaults. Keeps seeding idempotent and lets
+     * the backfill map legacy `communityBookSchedule.dayType` values exactly.
+     */
+    legacyDayType: v.optional(v.string()),
+    order: v.number(),
+    isArchived: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_community", ["communityId"]),
+
   communityBookSchedule: defineTable({
     communityBookId: v.id("communityBooks"),
     date: v.string(),
-    dayType: v.union(
-      v.literal("reading"),
-      v.literal("rest"),
-      v.literal("reflection"),
-      v.literal("catchup")
+    /** Current source of truth for what a day is for */
+    dayLabelId: v.optional(v.id("communityDayLabels")),
+    /**
+     * Legacy day type. Still shadow-written for rollback safety and used as the
+     * fallback for rows created before day labels existed. Never removed.
+     */
+    dayType: v.optional(
+      v.union(
+        v.literal("reading"),
+        v.literal("rest"),
+        v.literal("reflection"),
+        v.literal("catchup")
+      )
     ),
     /** Chapter assigned for reading days on chapter-based books */
     chapterNumber: v.optional(v.number()),

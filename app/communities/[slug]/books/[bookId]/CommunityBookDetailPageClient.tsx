@@ -26,7 +26,12 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { parseDateFromStorage } from "@/lib/dateUtils";
-import { DAY_TYPE_META, type ScheduleDayType } from "@/lib/scheduleDayType";
+import {
+  dayIconFor,
+  labelsById as buildLabelsById,
+  resolveDayLabel,
+  type DayLabelLike,
+} from "@/lib/scheduleDayType";
 import {
   Dialog,
   DialogContent,
@@ -41,7 +46,9 @@ type Role = "owner" | "admin" | "moderator" | "member";
 type ScheduleEntry = {
   _id: Id<"communityBookSchedule">;
   date: string;
-  dayType: ScheduleDayType;
+  dayLabelId?: Id<"communityDayLabels">;
+  /** Legacy fallback for rows written before day labels */
+  dayType?: string;
   chapterNumber?: number;
   notes?: string;
 };
@@ -109,6 +116,13 @@ export default function CommunityBookDetailPageClient() {
     enabled: Boolean(book),
   });
 
+  const { data: dayLabels = [] } = useQuery({
+    ...convexQuery(api.communityDayLabels.listForCommunityBook, {
+      communityBookId,
+    }),
+    enabled: Boolean(book),
+  });
+
   const { data: reflections = [] } = useQuery({
     ...convexQuery(api.communities.getCommunityBookReflections, {
       communityBookId,
@@ -158,9 +172,17 @@ export default function CommunityBookDetailPageClient() {
     [normalizedReflectionSearch, reflectionFeed]
   );
 
+  const labelsById = useMemo(
+    () => buildLabelsById(dayLabels as DayLabelLike[]),
+    [dayLabels]
+  );
+
   const readingDayCount = useMemo(
-    () => scheduleEntries.filter((entry) => entry.dayType === "reading").length,
-    [scheduleEntries]
+    () =>
+      scheduleEntries.filter(
+        (entry) => resolveDayLabel(entry, labelsById).behavior === "reading"
+      ).length,
+    [scheduleEntries, labelsById]
   );
 
   const handleStartTracking = async () => {
@@ -555,8 +577,7 @@ export default function CommunityBookDetailPageClient() {
                     <p className="mt-1 text-sm text-muted-foreground">
                       {readingDayCount} reading{" "}
                       {readingDayCount === 1 ? "day" : "days"},{" "}
-                      {scheduleEntries.length - readingDayCount} rest,
-                      reflection or catch-up{" "}
+                      {scheduleEntries.length - readingDayCount} other{" "}
                       {scheduleEntries.length - readingDayCount === 1
                         ? "day"
                         : "days"}
@@ -565,9 +586,9 @@ export default function CommunityBookDetailPageClient() {
                   </div>
                   <div className="mt-4 max-h-96 space-y-1 overflow-y-auto pr-1">
                     {scheduleEntries.map((entry) => {
-                      const meta = DAY_TYPE_META[entry.dayType];
-                      const Icon = meta.icon;
-                      const isReading = entry.dayType === "reading";
+                      const label = resolveDayLabel(entry, labelsById);
+                      const Icon = dayIconFor(label.icon, label.behavior);
+                      const isReading = label.behavior === "reading";
                       return (
                         <div
                           key={entry._id}
@@ -589,7 +610,7 @@ export default function CommunityBookDetailPageClient() {
                             )}
                           </span>
                           <span className="text-muted-foreground">
-                            {meta.label}
+                            {label.name}
                             {isReading && entry.chapterNumber !== undefined
                               ? ` • Chapter ${entry.chapterNumber}`
                               : ""}

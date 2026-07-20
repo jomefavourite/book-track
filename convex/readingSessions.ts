@@ -4,7 +4,8 @@ import {
   parseDateFromStorage,
   distributePagesAcrossDays,
 } from "./dateUtils";
-import { getScheduleDayTypeForDate } from "./communitySchedule";
+import { getScheduleDayBehaviorForDate } from "./communitySchedule";
+import { behaviorAllowsLogging } from "./dayBehavior";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 
@@ -14,16 +15,16 @@ async function assertLoggableDay(
   date: string
 ) {
   if (!book.communityBookId) return;
-  const dayType = await getScheduleDayTypeForDate(
+  const day = await getScheduleDayBehaviorForDate(
     ctx,
     book.communityBookId,
     date
   );
-  // Catch-up days carry no assignment but members may still read on them to
-  // catch up, so they are loggable. Only rest/reflection days are blocked.
-  if (dayType && dayType !== "reading" && dayType !== "catchup") {
+  // Flexible days carry no assignment but members may still read on them to
+  // catch up, so they are loggable. Only "off" days are blocked.
+  if (day && !behaviorAllowsLogging(day.behavior)) {
     throw new Error(
-      `This day is set to ${dayType} and can't be marked read or missed.`
+      `This day is set to ${day.name} and can't be marked read or missed.`
     );
   }
 }
