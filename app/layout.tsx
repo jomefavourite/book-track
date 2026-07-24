@@ -122,7 +122,7 @@ export default function RootLayout({
         </ClerkProvider>
         <Analytics />
         <Script
-          src="https://sabilytics.vercel.app/script.js"
+          src="https://www.sabilytics.com/script.js"
           data-site="uqzjfvo9vdmz"
           data-domain="booktrackr.app"
           strategy="afterInteractive"
