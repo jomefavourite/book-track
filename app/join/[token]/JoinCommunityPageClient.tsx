@@ -11,6 +11,7 @@ import Navigation from "@/components/Navigation";
 import CommunityThemeProvider from "@/components/CommunityThemeProvider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type InvitePreview = {
   community: {
@@ -60,8 +61,14 @@ export default function JoinCommunityPageClient() {
       <Navigation />
       <main className="mx-auto flex min-h-[70vh] max-w-2xl items-center p-3 sm:p-6">
         {isPending || !isLoaded ? (
-          <Card className="w-full p-6 text-center text-muted-foreground">
-            Loading invite...
+          <Card className="w-full space-y-4 p-6 sm:p-10" aria-hidden="true">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-14 w-14 shrink-0 rounded-lg" />
+              <Skeleton className="h-7 w-1/2" />
+            </div>
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-10 w-full rounded-md" />
           </Card>
         ) : !preview ? (
           <Card className="w-full p-6 text-center sm:p-10">

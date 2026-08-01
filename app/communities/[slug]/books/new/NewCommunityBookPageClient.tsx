@@ -12,6 +12,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { FormPageSkeleton } from "@/components/CommunityCardSkeleton";
 import { Input } from "@/components/ui/input";
 import {
   formatDateForStorage,
@@ -219,7 +220,7 @@ export default function NewCommunityBookPageClient() {
         </Button>
 
         {isPending ? (
-          <Card className="p-6 text-muted-foreground">Loading community...</Card>
+          <FormPageSkeleton fields={5} />
         ) : !detail ? (
           <Card className="p-6 text-center text-muted-foreground">
             Community not found.

@@ -23,6 +23,8 @@ import { parseDateFromStorage } from "@/lib/dateUtils";
 import Navigation from "@/components/Navigation";
 import PublicBookCard from "@/components/PublicBookCard";
 import { Card } from "@/components/ui/card";
+import BookCardSkeleton from "@/components/BookCardSkeleton";
+import { DetailPageSkeleton } from "@/components/CommunityCardSkeleton";
 import { Button } from "@/components/ui/button";
 
 export default function UserProfilePage() {
@@ -150,9 +152,7 @@ export default function UserProfilePage() {
       <>
         <Navigation />
         <div className="mx-auto max-w-6xl p-6">
-          <div className="flex min-h-[400px] items-center justify-center">
-            <p className="text-muted-foreground">Loading profile...</p>
-          </div>
+          <DetailPageSkeleton />
         </div>
       </>
     );
@@ -300,8 +300,10 @@ export default function UserProfilePage() {
         </h2>
 
         {booksPending ? (
-          <div className="flex min-h-[200px] items-center justify-center">
-            <p className="text-muted-foreground">Loading books...</p>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <BookCardSkeleton key={index} />
+            ))}
           </div>
         ) : books.length === 0 ? (
           <Card className="p-8 text-center">

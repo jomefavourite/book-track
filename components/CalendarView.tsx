@@ -50,6 +50,7 @@ import {
   isUnsupportedStopPageError,
 } from "@/lib/pageTracking";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -1356,8 +1357,16 @@ export default function CalendarView({
 
   if (isPending && sessionsQuery === undefined) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-muted-foreground">Loading reading sessions...</div>
+      <div className="space-y-4 p-4" aria-hidden="true">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-8 w-24 rounded-md" />
+        </div>
+        <div className="grid grid-cols-7 gap-2">
+          {Array.from({ length: 35 }).map((_, index) => (
+            <Skeleton key={index} className="aspect-square w-full rounded-md" />
+          ))}
+        </div>
       </div>
     );
   }

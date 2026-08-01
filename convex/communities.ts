@@ -192,7 +192,8 @@ const communityBookStatusValidator = v.union(
   v.literal("completed")
 );
 
-function buildCommunityPreview(
+async function buildCommunityPreview(
+  ctx: QueryCtx | MutationCtx,
   community: Doc<"communities">,
   memberCount: number,
   viewerRole?: CommunityRole
@@ -209,6 +210,9 @@ function buildCommunityPreview(
     totalChapters: community.totalChapters,
     ownerName: community.ownerName,
     brandColor: community.brandColor,
+    logoUrl: community.logoStorageId
+      ? await ctx.storage.getUrl(community.logoStorageId)
+      : null,
     instagramUrl: community.instagramUrl,
     tiktokUrl: community.tiktokUrl,
     websiteUrl: community.websiteUrl,
@@ -394,6 +398,7 @@ export const discoverCommunities = query({
     return await Promise.all(
       activeCommunities.map(async (community) =>
         buildCommunityPreview(
+          ctx,
           community,
           await getMemberCount(ctx, community._id),
           await getViewerRole(ctx, community._id, viewerClerkId)
@@ -433,11 +438,12 @@ export const getMyCommunities = query({
           trackedBookId = personalBook?._id ?? null;
         }
         return {
-          ...buildCommunityPreview(
+          ...(await buildCommunityPreview(
+            ctx,
             community,
             await getMemberCount(ctx, community._id),
             membership.role
-          ),
+          )),
           activeBook: activeBook
             ? {
                 _id: activeBook._id,
@@ -471,13 +477,12 @@ export const getCommunityBySlug = query({
 
     const viewerRole = await getViewerRole(ctx, community._id, viewerClerkId);
     const memberCount = await getMemberCount(ctx, community._id);
-    const logoUrl = community.logoStorageId
-      ? await ctx.storage.getUrl(community.logoStorageId)
-      : null;
-    const preview = {
-      ...buildCommunityPreview(community, memberCount, viewerRole),
-      logoUrl,
-    };
+    const preview = await buildCommunityPreview(
+      ctx,
+      community,
+      memberCount,
+      viewerRole
+    );
 
     if (community.visibility === "private" && viewerRole === undefined) {
       return {
@@ -900,6 +905,91 @@ export const deleteCommunityBook = mutation({
   },
 });
 
+export const deleteCommunity = mutation({
+  args: {
+    communityId: v.id("communities"),
+  },
+  handler: async (ctx, args) => {
+    const { clerkId } = await requireClerkId(ctx);
+    const community = await ctx.db.get(args.communityId);
+    if (!community) {
+      throw new Error("Community not found");
+    }
+
+    const role = await getViewerRole(ctx, args.communityId, clerkId);
+    // Deleting an entire community is irreversible, so restrict it to the
+    // owner (the person who created it) rather than any admin.
+    if (role !== "owner") {
+      throw new Error("Only the community owner can delete it");
+    }
+
+    // Community books, their schedules, and any personal books that tracked them.
+    const communityBooks = await ctx.db
+      .query("communityBooks")
+      .withIndex("by_community", (q) => q.eq("communityId", args.communityId))
+      .collect();
+    for (const book of communityBooks) {
+      const scheduleEntries = await ctx.db
+        .query("communityBookSchedule")
+        .withIndex("by_community_book", (q) =>
+          q.eq("communityBookId", book._id)
+        )
+        .collect();
+      for (const entry of scheduleEntries) {
+        await ctx.db.delete(entry._id);
+      }
+
+      // Keep members' personal books, but drop the now-dangling link.
+      const linkedPersonalBooks = await ctx.db
+        .query("books")
+        .withIndex("by_community_book_id", (q) =>
+          q.eq("communityBookId", book._id)
+        )
+        .collect();
+      for (const personal of linkedPersonalBooks) {
+        await ctx.db.patch(personal._id, { communityBookId: undefined });
+      }
+
+      await ctx.db.delete(book._id);
+    }
+
+    // Day-label vocabulary
+    const labels = await ctx.db
+      .query("communityDayLabels")
+      .withIndex("by_community", (q) => q.eq("communityId", args.communityId))
+      .collect();
+    for (const label of labels) {
+      await ctx.db.delete(label._id);
+    }
+
+    // Memberships
+    const members = await ctx.db
+      .query("communityMembers")
+      .withIndex("by_community", (q) => q.eq("communityId", args.communityId))
+      .collect();
+    for (const member of members) {
+      await ctx.db.delete(member._id);
+    }
+
+    // Invites
+    const invites = await ctx.db
+      .query("communityInvites")
+      .withIndex("by_community", (q) => q.eq("communityId", args.communityId))
+      .collect();
+    for (const invite of invites) {
+      await ctx.db.delete(invite._id);
+    }
+
+    // Uploaded logo file
+    if (community.logoStorageId) {
+      await ctx.storage.delete(community.logoStorageId);
+    }
+
+    await ctx.db.delete(args.communityId);
+    return { deleted: true as const };
+  },
+});
+
 export const getCommunityBooks = query({
   args: {
     communityId: v.id("communities"),
@@ -1131,15 +1221,11 @@ export const getInvitePreview = query({
     const isActive = invite.disabledAt === undefined && !isExpired && !isUsedUp;
 
     return {
-      community: {
-        ...buildCommunityPreview(
-          community,
-          await getMemberCount(ctx, community._id)
-        ),
-        logoUrl: community.logoStorageId
-          ? await ctx.storage.getUrl(community.logoStorageId)
-          : null,
-      },
+      community: await buildCommunityPreview(
+        ctx,
+        community,
+        await getMemberCount(ctx, community._id)
+      ),
       roleToGrant: invite.roleToGrant,
       isActive,
       isExpired,

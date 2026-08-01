@@ -7,6 +7,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { useUser } from "@clerk/nextjs";
 import { useParams, useRouter } from "next/navigation";
 import BookForm from "@/components/BookForm";
+import { FormPageSkeleton } from "@/components/CommunityCardSkeleton";
 import Link from "next/link";
 
 export default function EditBookPage({
@@ -26,10 +27,8 @@ export default function EditBookPage({
 
   if (!isLoaded) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 text-lg">Loading...</div>
-        </div>
+      <div className="mx-auto max-w-2xl p-3 sm:p-6">
+        <FormPageSkeleton fields={5} />
       </div>
     );
   }
@@ -41,10 +40,8 @@ export default function EditBookPage({
 
   if (isPending) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 text-lg">Loading book...</div>
-        </div>
+      <div className="mx-auto max-w-2xl p-3 sm:p-6">
+        <FormPageSkeleton fields={5} />
       </div>
     );
   }

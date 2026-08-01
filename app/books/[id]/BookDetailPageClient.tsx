@@ -27,6 +27,7 @@ import { Card } from "@/components/ui/card";
 import CalendarView from "@/components/CalendarView";
 import DaysView from "@/components/DaysView";
 import Navigation from "@/components/Navigation";
+import { DetailPageSkeleton } from "@/components/CommunityCardSkeleton";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -347,11 +348,12 @@ export default function BookDetailPage() {
   // Show loading only if we don't have an error and don't have data yet
   if (isPending && !error && book === undefined) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 text-lg">Loading...</div>
+      <>
+        <Navigation />
+        <div className="mx-auto max-w-6xl p-3 sm:p-6">
+          <DetailPageSkeleton />
         </div>
-      </div>
+      </>
     );
   }
 
@@ -395,11 +397,12 @@ export default function BookDetailPage() {
   // Ensure book exists before rendering
   if (!book) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 text-lg">Loading...</div>
+      <>
+        <Navigation />
+        <div className="mx-auto max-w-6xl p-3 sm:p-6">
+          <DetailPageSkeleton />
         </div>
-      </div>
+      </>
     );
   }
 

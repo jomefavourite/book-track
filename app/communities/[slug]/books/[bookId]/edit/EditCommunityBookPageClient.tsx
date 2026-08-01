@@ -12,6 +12,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { FormPageSkeleton } from "@/components/CommunityCardSkeleton";
 import { Input } from "@/components/ui/input";
 import {
   formatDateForStorage,
@@ -241,7 +242,7 @@ export default function EditCommunityBookPageClient() {
         </Button>
 
         {bookPending ? (
-          <Card className="p-6 text-muted-foreground">Loading...</Card>
+          <FormPageSkeleton fields={5} />
         ) : !book ? (
           <Card className="p-6 text-center text-muted-foreground">
             Book not found.

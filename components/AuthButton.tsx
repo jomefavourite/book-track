@@ -2,14 +2,13 @@
 
 import { useUser, SignInButton, SignOutButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function AuthButton() {
   const { isLoaded, isSignedIn } = useUser();
 
   if (!isLoaded) {
-    return (
-      <div className="text-sm text-muted-foreground">Loading...</div>
-    );
+    return <Skeleton className="h-8 w-20 rounded-md" />;
   }
 
   if (isSignedIn) {
