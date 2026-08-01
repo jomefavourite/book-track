@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useUser } from "@clerk/nextjs";
 import { formatDateForStorage, parseDateFromStorage, formatTimerDuration, formatCountdown } from "@/lib/dateUtils";
 import {
@@ -1096,8 +1097,10 @@ export default function DaysView({
 
   if (isPending && sessionsQuery === undefined) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-muted-foreground">Loading reading sessions...</div>
+      <div className="space-y-3 p-4" aria-hidden="true">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <Skeleton key={index} className="h-16 w-full rounded-md" />
+        ))}
       </div>
     );
   }

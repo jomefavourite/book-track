@@ -10,6 +10,8 @@ import type { Id } from "@/convex/_generated/dataModel";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { DetailPageSkeleton } from "@/components/CommunityCardSkeleton";
 import { Progress } from "@/components/ui/progress";
 
 type CommunityDetail = {
@@ -68,7 +70,7 @@ export default function CommunityAnalyticsPageClient() {
         </Button>
 
         {communityPending ? (
-          <Card className="p-6 text-muted-foreground">Loading...</Card>
+          <DetailPageSkeleton />
         ) : !detail ? (
           <Card className="p-6 text-center sm:p-10">
             <p className="text-sm text-muted-foreground">
@@ -93,9 +95,10 @@ export default function CommunityAnalyticsPageClient() {
             </div>
 
             {isPending ? (
-              <Card className="p-6 text-muted-foreground">
-                Loading analytics...
-              </Card>
+              <div className="space-y-4" aria-hidden="true">
+                <Skeleton className="h-28 w-full rounded-lg" />
+                <Skeleton className="h-28 w-full rounded-lg" />
+              </div>
             ) : !progressData || progressData.length === 0 ? (
               <Card className="p-8 text-center">
                 <BookOpen className="mx-auto h-8 w-8 text-muted-foreground" />

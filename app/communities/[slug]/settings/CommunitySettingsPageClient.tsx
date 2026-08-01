@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import {
@@ -23,6 +23,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { FormPageSkeleton } from "@/components/CommunityCardSkeleton";
 import {
   Dialog,
   DialogContent,
@@ -239,6 +240,7 @@ function BrandColorInput({ defaultColor }: { defaultColor?: string }) {
 export default function CommunitySettingsPageClient() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -249,6 +251,8 @@ export default function CommunitySettingsPageClient() {
   const [maxUses, setMaxUses] = useState("1");
   const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
   const [inviteToRevoke, setInviteToRevoke] = useState<Invite | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   const { data: community, isPending } = useQuery({
     ...convexQuery(api.communities.getCommunityBySlug, { slug }),
@@ -323,6 +327,11 @@ export default function CommunitySettingsPageClient() {
     onSuccess: invalidateCommunity,
   });
 
+  const { mutateAsync: deleteCommunity, isPending: deleteCommunityPending } =
+    useMutation({
+      mutationFn: useConvexMutation(api.communities.deleteCommunity),
+    });
+
   const activeInvites = useMemo(
     () => ((inviteQuery.data as Invite[] | undefined) ?? []),
     [inviteQuery.data]
@@ -368,6 +377,41 @@ export default function CommunitySettingsPageClient() {
     }
   };
 
+  const isOwner = detail?.viewerRole === "owner";
+  const deleteConfirmed =
+    deleteConfirmText.trim().toLowerCase() ===
+    (detail?.name ?? "").trim().toLowerCase();
+
+  const closeDeleteDialog = () => {
+    setShowDeleteDialog(false);
+    setDeleteConfirmText("");
+  };
+
+  const handleDeleteCommunity = async () => {
+    if (!detail || !deleteConfirmed || deleteCommunityPending) return;
+    try {
+      await deleteCommunity({ communityId: detail._id });
+      queryClient.invalidateQueries({
+        queryKey: convexQuery(api.communities.discoverCommunities, {}).queryKey,
+      });
+      queryClient.invalidateQueries({
+        queryKey: convexQuery(api.communities.getMyCommunities, {}).queryKey,
+      });
+      toast({
+        title: "Community deleted",
+        description: `${detail.name} and all of its activity have been removed.`,
+      });
+      router.push("/communities");
+    } catch (caught) {
+      toast({
+        title: "Could not delete community",
+        description:
+          caught instanceof Error ? caught.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <>
       <Navigation />
@@ -380,7 +424,7 @@ export default function CommunitySettingsPageClient() {
         </Button>
 
         {isPending ? (
-          <Card className="p-6 text-muted-foreground">Loading settings...</Card>
+          <FormPageSkeleton fields={5} />
         ) : !detail ? (
           <Card className="p-6 text-center text-muted-foreground">
             Community not found.
@@ -841,6 +885,32 @@ export default function CommunitySettingsPageClient() {
                 </Card>
               </aside>
             </div>
+
+            {isOwner && (
+              <Card className="border-destructive/40 p-5">
+                <div className="flex items-start gap-2">
+                  <Trash2 className="mt-0.5 h-5 w-5 text-destructive" />
+                  <div className="flex-1">
+                    <h2 className="text-lg font-semibold text-foreground">
+                      Danger zone
+                    </h2>
+                    <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                      Deleting this community permanently removes its books,
+                      schedules, day labels, invites, and every member&apos;s
+                      access. This cannot be undone.
+                    </p>
+                    <Button
+                      variant="destructive"
+                      className="mt-4"
+                      onClick={() => setShowDeleteDialog(true)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete community
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )}
           </div>
         )}
       </main>
@@ -913,6 +983,57 @@ export default function CommunitySettingsPageClient() {
               }}
             >
               {disableInvitePending ? "Revoking..." : "Revoke link"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDialog();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this community?</DialogTitle>
+            <DialogDescription>
+              This permanently deletes{" "}
+              <span className="font-semibold text-foreground">
+                {detail?.name}
+              </span>
+              , including all community books, schedules, day labels, invites,
+              and memberships. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label
+              htmlFor="delete-confirm"
+              className="text-sm text-muted-foreground"
+            >
+              Type{" "}
+              <span className="font-semibold text-foreground">
+                {detail?.name}
+              </span>{" "}
+              to confirm.
+            </label>
+            <Input
+              id="delete-confirm"
+              value={deleteConfirmText}
+              onChange={(event) => setDeleteConfirmText(event.target.value)}
+              placeholder={detail?.name}
+              autoComplete="off"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDeleteDialog}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!deleteConfirmed || deleteCommunityPending}
+              onClick={handleDeleteCommunity}
+            >
+              {deleteCommunityPending ? "Deleting..." : "Delete community"}
             </Button>
           </DialogFooter>
         </DialogContent>

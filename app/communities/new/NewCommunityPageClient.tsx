@@ -11,6 +11,7 @@ import { api } from "@/convex/_generated/api";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { FormPageSkeleton } from "@/components/CommunityCardSkeleton";
 import { Input } from "@/components/ui/input";
 
 export default function NewCommunityPageClient() {
@@ -102,7 +103,7 @@ export default function NewCommunityPageClient() {
         </div>
 
         {!isLoaded ? (
-          <Card className="p-6 text-muted-foreground">Loading...</Card>
+          <FormPageSkeleton fields={4} />
         ) : !user ? (
           <Card className="p-6 text-center sm:p-10">
             <h2 className="text-xl font-semibold text-foreground">
@@ -117,7 +118,7 @@ export default function NewCommunityPageClient() {
             </SignInButton>
           </Card>
         ) : statusPending ? (
-          <Card className="p-6 text-muted-foreground">Loading...</Card>
+          <FormPageSkeleton fields={4} />
         ) : !creatorStatus?.canCreate &&
           creatorStatus?.requestStatus === "pending" ? (
           <Card className="p-6 text-center sm:p-10">

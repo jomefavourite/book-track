@@ -29,6 +29,8 @@ import Navigation from "@/components/Navigation";
 import CommunityThemeProvider from "@/components/CommunityThemeProvider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { DetailPageSkeleton } from "@/components/CommunityCardSkeleton";
 import {
   Dialog,
   DialogContent,
@@ -226,9 +228,7 @@ export default function CommunityDetailPageClient() {
         </Button>
 
         {isPending ? (
-          <Card className="p-6 text-muted-foreground">
-            Loading community...
-          </Card>
+          <DetailPageSkeleton />
         ) : !detail ? (
           <Card className="p-6 text-center sm:p-10">
             <h1 className="text-2xl font-bold text-foreground">
@@ -251,18 +251,25 @@ export default function CommunityDetailPageClient() {
                     "linear-gradient(135deg, var(--brand-soft), transparent 70%)",
                 }}
               >
-                <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-3 sm:gap-4">
                       {detail.logoUrl && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={detail.logoUrl}
                           alt={`${detail.name} logo`}
-                          className="h-12 w-12 rounded-lg object-cover"
-                          // style={{ borderColor: "var(--brand)" }}
+                          className="h-12 w-12 shrink-0 rounded-lg object-cover sm:h-14 sm:w-14"
                         />
                       )}
+                      <h1 className="min-w-0 break-words text-2xl font-bold text-foreground sm:text-3xl lg:text-4xl">
+                        {detail.name}
+                      </h1>
+                    </div>
+                    <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+                      {detail.description || "A reading community."}
+                    </p>
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
                       <span className="rounded-md border border-border px-2 py-1 text-xs font-medium capitalize text-muted-foreground">
                         {detail.visibility}
                       </span>
@@ -273,18 +280,13 @@ export default function CommunityDetailPageClient() {
                         </span>
                       )}
                     </div>
-                    <h1 className="mt-4 text-3xl font-bold text-foreground sm:text-5xl">
-                      {detail.name}
-                    </h1>
-                    <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                      {detail.description || "A reading community."}
-                    </p>
                   </div>
 
-                  <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:shrink-0 lg:justify-end">
                     {canManageBooks(detail.viewerRole) && (
                       <Button
                         asChild
+                        className="w-full sm:w-auto"
                         style={{
                           backgroundColor: "var(--brand)",
                           color: "var(--brand-foreground)",
@@ -301,6 +303,7 @@ export default function CommunityDetailPageClient() {
                         <Button
                           asChild
                           variant="outline"
+                          className="w-full sm:w-auto"
                         >
                           <Link href={`/communities/${detail.slug}/analytics`}>
                             <BarChart2 className="h-4 w-4" />
@@ -310,6 +313,7 @@ export default function CommunityDetailPageClient() {
                         <Button
                           asChild
                           variant="outline"
+                          className="w-full sm:w-auto"
                         >
                           <Link href={`/communities/${detail.slug}/settings`}>
                             <Settings className="h-4 w-4" />
@@ -353,8 +357,10 @@ export default function CommunityDetailPageClient() {
                     </div>
                   </Card>
                 ) : booksPending ? (
-                  <Card className="p-5 text-sm text-muted-foreground sm:p-6">
-                    Loading library...
+                  <Card className="space-y-4 p-5 sm:p-6" aria-hidden="true">
+                    <Skeleton className="h-6 w-32" />
+                    <Skeleton className="h-24 w-full rounded-md" />
+                    <Skeleton className="h-24 w-full rounded-md" />
                   </Card>
                 ) : books.length === 0 ? (
                   <Card className="p-5 sm:p-6">

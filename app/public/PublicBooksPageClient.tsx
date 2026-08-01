@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import BookCardSkeleton from "@/components/BookCardSkeleton";
 import PublicBookCard from "@/components/PublicBookCard";
 import Navigation from "@/components/Navigation";
 
@@ -108,10 +109,10 @@ export default function PublicBooksPage() {
         )}
 
         {isPending ? (
-          <div className="flex min-h-[400px] items-center justify-center">
-            <div className="text-lg text-muted-foreground">
-              Loading public books...
-            </div>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <BookCardSkeleton key={index} />
+            ))}
           </div>
         ) : booksWithProgress.length === 0 ? (
           <Card className="p-12 text-center">

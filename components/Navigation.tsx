@@ -72,12 +72,12 @@ export default function Navigation({
         <div className="flex items-center justify-between">
           <Link
             href="/"
-            className="text-2xl font-bold text-foreground hover:opacity-80 transition-opacity"
+            className="shrink-0 whitespace-nowrap text-xl font-bold text-foreground transition-opacity hover:opacity-80 sm:text-2xl"
           >
             Book-Trackr
           </Link>
-          {/* Desktop Navigation - visible on sm and up */}
-          <div className="hidden sm:flex items-center gap-4">
+          {/* Desktop Navigation - visible on lg and up (enough room for all items) */}
+          <div className="hidden lg:flex items-center gap-2 xl:gap-3">
             {/* Feedback/Contact Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -223,8 +223,8 @@ export default function Navigation({
             <ThemeSwitcher />
           </div>
 
-          {/* Mobile Hamburger Menu - visible on mobile only */}
-          <div className="sm:hidden flex items-center gap-2">
+          {/* Mobile/Tablet Hamburger Menu - visible below lg */}
+          <div className="lg:hidden flex items-center gap-2">
             {showAuth && isSignedIn && (
               <Button
                 variant="outline"

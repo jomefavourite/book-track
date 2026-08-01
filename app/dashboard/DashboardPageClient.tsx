@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BookOpen, Lock, Search, ShieldCheck, Users } from "lucide-react";
+import { getBrandTheme } from "@/lib/brandColor";
 
 type TabType = "active" | "archived";
 
@@ -46,12 +47,68 @@ type CommunityPreview = {
   memberCount: number;
   viewerRole?: "owner" | "admin" | "moderator" | "member";
   brandColor?: string;
+  logoUrl?: string | null;
   activeBook?: {
     _id: Id<"communityBooks">;
     name: string;
     trackedBookId?: Id<"books"> | null;
   } | null;
 };
+
+function CommunityLogo({
+  name,
+  logoUrl,
+  brandColor,
+}: {
+  name: string;
+  logoUrl?: string | null;
+  brandColor?: string;
+}) {
+  if (logoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logoUrl}
+        alt={`${name} logo`}
+        className="h-12 w-12 shrink-0 rounded-lg border border-border object-cover"
+      />
+    );
+  }
+  const brandTheme = getBrandTheme(brandColor);
+  return (
+    <span
+      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border text-lg font-semibold uppercase text-foreground"
+      style={
+        brandTheme
+          ? {
+              backgroundColor: brandTheme.brand,
+              color: brandTheme.brandForeground,
+            }
+          : undefined
+      }
+      aria-hidden="true"
+    >
+      {name.charAt(0)}
+    </span>
+  );
+}
+
+function VisibilityBadge({
+  visibility,
+}: {
+  visibility: "public" | "private";
+}) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium capitalize text-muted-foreground">
+      {visibility === "private" ? (
+        <Lock className="h-3 w-3" />
+      ) : (
+        <Search className="h-3 w-3" />
+      )}
+      {visibility}
+    </span>
+  );
+}
 
 function getActiveBookHref(community: CommunityPreview) {
   if (!community.activeBook) return null;
@@ -69,30 +126,19 @@ function CommunityDashboardCard({
   const activeBookHref = getActiveBookHref(community);
   return (
     <Card className="flex h-full flex-col p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              className="h-3 w-3 rounded-full border border-border"
-              style={{ backgroundColor: community.brandColor ?? "transparent" }}
-              aria-hidden="true"
-            />
-            <h3 className="truncate text-base font-semibold text-card-foreground sm:text-lg">
-              {community.name}
-            </h3>
-          </div>
-        </div>
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium capitalize text-muted-foreground">
-          {community.visibility === "private" ? (
-            <Lock className="h-3 w-3" />
-          ) : (
-            <Search className="h-3 w-3" />
-          )}
-          {community.visibility}
-        </span>
+      <div className="flex items-center gap-3">
+        <CommunityLogo
+          name={community.name}
+          logoUrl={community.logoUrl}
+          brandColor={community.brandColor}
+        />
+        <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-card-foreground sm:text-lg">
+          {community.name}
+        </h3>
       </div>
 
-      <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+      <div className="mt-3 space-y-1.5 text-sm text-muted-foreground">
+        <VisibilityBadge visibility={community.visibility} />
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4" />
           <span>
@@ -110,7 +156,7 @@ function CommunityDashboardCard({
         )}
       </div>
 
-      <div className="mt-5 flex gap-2">
+      <div className="mt-4 flex gap-2">
         <Button
           asChild
           size="sm"

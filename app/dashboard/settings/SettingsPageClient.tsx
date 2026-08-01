@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { FormPageSkeleton } from "@/components/CommunityCardSkeleton";
 
 const DEFAULT_REMINDER_TIME = "20:00";
 const DEFAULT_TIMEZONE = "Africa/Lagos";
@@ -357,7 +358,7 @@ export default function SettingsPage() {
       <>
         <Navigation />
         <div className="mx-auto max-w-6xl p-3 sm:p-6">
-          <p className="text-muted-foreground">Loading...</p>
+          <FormPageSkeleton fields={4} />
         </div>
       </>
     );

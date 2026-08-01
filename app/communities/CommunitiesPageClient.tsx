@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import Navigation from "@/components/Navigation";
+import { CommunityCardSkeletonGrid } from "@/components/CommunityCardSkeleton";
+import { getBrandTheme } from "@/lib/brandColor";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -30,40 +32,63 @@ type CommunityPreview = {
   isMember: boolean;
   isLocked: boolean;
   brandColor?: string;
+  logoUrl?: string | null;
 };
 
 function VisibilityBadge({ visibility }: { visibility: "public" | "private" }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium capitalize text-muted-foreground">
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium capitalize text-muted-foreground">
       {visibility === "private" ? <Lock className="h-3 w-3" /> : <Search className="h-3 w-3" />}
       {visibility}
     </span>
   );
 }
 
+function CommunityLogo({ community }: { community: CommunityPreview }) {
+  if (community.logoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={community.logoUrl}
+        alt={`${community.name} logo`}
+        className="h-14 w-14 shrink-0 rounded-lg border border-border object-cover"
+      />
+    );
+  }
+  const brandTheme = getBrandTheme(community.brandColor);
+  return (
+    <span
+      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-border text-xl font-semibold uppercase text-foreground"
+      style={
+        brandTheme
+          ? {
+              backgroundColor: brandTheme.brand,
+              color: brandTheme.brandForeground,
+            }
+          : undefined
+      }
+      aria-hidden="true"
+    >
+      {community.name.charAt(0)}
+    </span>
+  );
+}
+
 function CommunityCard({ community }: { community: CommunityPreview }) {
   return (
-    <Card className="flex h-full flex-col p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              className="h-3 w-3 rounded-full border border-border"
-              style={{ backgroundColor: community.brandColor ?? "transparent" }}
-              aria-hidden="true"
-            />
-            <h3 className="truncate text-lg font-semibold text-foreground">
-              {community.name}
-            </h3>
-          </div>
-          <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
-            {community.description || "A reading community."}
-          </p>
-        </div>
-        <VisibilityBadge visibility={community.visibility} />
+    <Card className="flex h-full flex-col p-4">
+      <div className="flex items-center gap-3">
+        <CommunityLogo community={community} />
+        <h3 className="min-w-0 flex-1 truncate text-lg font-semibold text-foreground">
+          {community.name}
+        </h3>
       </div>
+      <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
+        {community.description || "A reading community."}
+      </p>
 
-      <div className="mt-5 space-y-3 text-sm">
+      <div className="mt-3 space-y-1.5 text-sm">
+        <VisibilityBadge visibility={community.visibility} />
         {community.currentBookTitle && community.totalChapters && (
           <div className="rounded-md border border-border bg-muted/40 p-3 text-muted-foreground">
             <p className="font-medium text-foreground">
@@ -93,12 +118,12 @@ function CommunityCard({ community }: { community: CommunityPreview }) {
       </div>
 
       {community.isLocked && (
-        <div className="mt-5 rounded-md border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
+        <div className="mt-3 rounded-md border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
           Private activity is locked. Members join by invite only.
         </div>
       )}
 
-      <div className="mt-auto pt-5">
+      <div className="mt-auto pt-4">
         <Button asChild variant={community.isMember ? "default" : "outline"} className="w-full">
           <Link href={`/communities/${community.slug}`}>
             {community.isMember ? "Open community" : "View profile"}
@@ -161,9 +186,14 @@ export default function CommunitiesPageClient() {
         </div>
 
         {!isLoaded ? (
-          <Card className="p-6 text-center text-muted-foreground">
-            Loading communities...
-          </Card>
+          <section className="space-y-8">
+            <div>
+              <h2 className="mb-4 text-lg font-semibold text-foreground">
+                Your communities
+              </h2>
+              <CommunityCardSkeletonGrid count={2} />
+            </div>
+          </section>
         ) : !user ? (
           <Card className="p-6 text-center sm:p-10">
             <h2 className="text-xl font-semibold text-foreground">
@@ -184,7 +214,7 @@ export default function CommunitiesPageClient() {
                 Your communities
               </h2>
               {myPending ? (
-                <Card className="p-6 text-muted-foreground">Loading...</Card>
+                <CommunityCardSkeletonGrid count={2} />
               ) : ((myCommunities as CommunityPreview[] | undefined) ?? [])
                   .length === 0 ? (
                 <Card className="p-6 text-sm text-muted-foreground">
@@ -207,7 +237,7 @@ export default function CommunitiesPageClient() {
                 Discover communities
               </h2>
               {discoveryPending ? (
-                <Card className="p-6 text-muted-foreground">Loading...</Card>
+                <CommunityCardSkeletonGrid count={2} />
               ) : discoverableCommunities.length === 0 ? (
                 <Card className="p-6 text-sm text-muted-foreground">
                   No additional communities are discoverable yet.
