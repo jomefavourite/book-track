@@ -30,6 +30,7 @@ interface PublicBookCardProps {
     isArchived?: boolean;
     progressStyle?: "pages" | "chapters";
     ignorePages?: boolean;
+    tags?: string[];
   };
   progress?: number;
   /** When true, show "Public" or "Private" badge based on book.isPublic (e.g. on owner's profile). Default false shows "Public" only. */
@@ -96,6 +97,18 @@ export default function PublicBookCard({
               })()}
             </p>
           </div>
+          {book.tags && book.tags.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {book.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="mt-3">

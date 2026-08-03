@@ -35,6 +35,7 @@ interface BookCardProps {
     isPublic?: boolean;
     progressStyle?: "pages" | "chapters";
     ignorePages?: boolean;
+    tags?: string[];
     communityBookId?: Id<"communityBooks">;
     communityBookStatus?: "upcoming" | "active" | "completed";
   };
@@ -226,6 +227,18 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
                 })()}
               </p>
             </div>
+            {book.tags && book.tags.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {book.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary sm:text-xs"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mt-3">

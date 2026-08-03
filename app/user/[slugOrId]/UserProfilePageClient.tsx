@@ -17,9 +17,11 @@ import {
   Sparkles,
   Share2,
   Check,
+  Tag,
 } from "lucide-react";
 import { format } from "date-fns";
 import { parseDateFromStorage } from "@/lib/dateUtils";
+import { normalizeTagKey } from "@/lib/bookTags";
 import Navigation from "@/components/Navigation";
 import PublicBookCard from "@/components/PublicBookCard";
 import { Card } from "@/components/ui/card";
@@ -79,6 +81,46 @@ export default function UserProfilePage() {
       avgProgress: profileStats.avgProgress,
     };
   }, [profileStats]);
+
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+
+  // Group the visible books by tag with read (completed) / total counts.
+  const tagGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      { key: string; label: string; total: number; read: number }
+    >();
+    for (const book of books) {
+      const seenInBook = new Set<string>();
+      for (const tag of book.tags ?? []) {
+        const key = normalizeTagKey(tag);
+        if (!key || seenInBook.has(key)) continue;
+        seenInBook.add(key);
+        const existing = map.get(key) ?? {
+          key,
+          label: tag,
+          total: 0,
+          read: 0,
+        };
+        existing.total += 1;
+        if ((book.progress ?? 0) >= 100) existing.read += 1;
+        map.set(key, existing);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [books]);
+
+  const visibleBooks = useMemo(
+    () =>
+      selectedTag
+        ? books.filter((book) =>
+            (book.tags ?? []).some(
+              (tag) => normalizeTagKey(tag) === selectedTag
+            )
+          )
+        : books,
+    [books, selectedTag]
+  );
 
   const [copied, setCopied] = useState(false);
 
@@ -295,6 +337,49 @@ export default function UserProfilePage() {
           </div>
         )}
 
+        {tagGroups.length > 0 && (
+          <div className="mb-8">
+            <div className="mb-3 flex items-center gap-2">
+              <Tag className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-lg font-semibold text-foreground">By topic</h2>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedTag(null)}
+                className={
+                  selectedTag === null
+                    ? "rounded-full border border-primary bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary"
+                    : "rounded-full border border-input bg-background px-3 py-1.5 text-sm text-muted-foreground hover:border-ring hover:text-foreground"
+                }
+              >
+                All ({books.length})
+              </button>
+              {tagGroups.map((group) => (
+                <button
+                  key={group.key}
+                  type="button"
+                  onClick={() =>
+                    setSelectedTag((current) =>
+                      current === group.key ? null : group.key
+                    )
+                  }
+                  className={
+                    selectedTag === group.key
+                      ? "rounded-full border border-primary bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary"
+                      : "rounded-full border border-input bg-background px-3 py-1.5 text-sm text-muted-foreground hover:border-ring hover:text-foreground"
+                  }
+                >
+                  {group.label}{" "}
+                  <span className="text-muted-foreground">
+                    {group.read}/{group.total} read
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <h2 className="mb-4 text-lg font-semibold text-foreground">
           {isOwnProfile ? "Books" : "Public books"}
         </h2>
@@ -313,7 +398,7 @@ export default function UserProfilePage() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {books.map((book) => (
+            {visibleBooks.map((book) => (
               <PublicBookCard
                 key={book._id}
                 book={book}

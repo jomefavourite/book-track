@@ -21,6 +21,7 @@ import {
 } from "./communitySchedule";
 import { ensureDefaultLabels } from "./communityDayLabels";
 import { getBookProgressPercent } from "./bookProgress";
+import { sanitizeTags } from "../lib/bookTags";
 
 const communityRoleValidator = v.union(
   v.literal("owner"),
@@ -620,6 +621,7 @@ function buildCommunityBookPayload(args: {
   daysToRead?: number;
   startDate: string;
   endDate: string;
+  tags?: string[];
 }) {
   const progressStyle = args.progressStyle ?? "pages";
   const ignorePages =
@@ -649,6 +651,7 @@ function buildCommunityBookPayload(args: {
     daysToRead: args.daysToRead,
     startDate: args.startDate,
     endDate: args.endDate,
+    tags: sanitizeTags(args.tags),
     updatedAt: Date.now(),
   };
 }
@@ -679,6 +682,7 @@ async function syncTrackedBooks(
     daysToRead: payload.daysToRead,
     startDate: payload.startDate,
     endDate: payload.endDate,
+    tags: payload.tags,
   };
 
   const trackedBooks = await ctx.db
@@ -710,6 +714,7 @@ export const createCommunityBook = mutation({
     daysToRead: v.optional(v.number()),
     startDate: v.string(),
     endDate: v.string(),
+    tags: v.optional(v.array(v.string())),
     coverImageStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
@@ -755,6 +760,7 @@ export const updateCommunityBook = mutation({
     daysToRead: v.optional(v.number()),
     startDate: v.string(),
     endDate: v.string(),
+    tags: v.optional(v.array(v.string())),
     coverImageStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
