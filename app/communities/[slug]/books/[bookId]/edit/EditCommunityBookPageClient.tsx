@@ -20,6 +20,8 @@ import {
   parseDateFromStorage,
 } from "@/lib/dateUtils";
 import { calculateDailyPages } from "@/lib/readingCalculator";
+import TagInput from "@/components/TagInput";
+import { sanitizeTags } from "@/lib/bookTags";
 
 type Role = "owner" | "admin" | "moderator" | "member";
 
@@ -43,6 +45,7 @@ export default function EditCommunityBookPageClient() {
 
   const [name, setName] = useState("");
   const [author, setAuthor] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [totalPages, setTotalPages] = useState("");
   const [totalChapters, setTotalChapters] = useState("");
   const [progressStyle, setProgressStyle] = useState<"pages" | "chapters">("pages");
@@ -74,6 +77,7 @@ export default function EditCommunityBookPageClient() {
     if (!book || initialized) return;
     setName(book.name ?? "");
     setAuthor(book.author ?? "");
+    setTags(book.tags ?? []);
     setTotalPages(book.totalPages?.toString() ?? "");
     setTotalChapters(book.totalChapters?.toString() ?? "");
     setProgressStyle(book.progressStyle ?? "pages");
@@ -193,6 +197,7 @@ export default function EditCommunityBookPageClient() {
         coverImageStorageId,
         name,
         author: author.trim() || undefined,
+        tags: sanitizeTags(tags),
         totalPages:
           !chapterOnlyMode && totalPages ? parsedTotalPages : undefined,
         totalChapters:
@@ -292,6 +297,10 @@ export default function EditCommunityBookPageClient() {
                       placeholder="e.g., Octavia Butler"
                     />
                   </label>
+
+                  <div className="sm:col-span-2">
+                    <TagInput value={tags} onChange={setTags} />
+                  </div>
 
                   <div className="space-y-2 sm:col-span-2">
                     <span className="text-sm font-medium text-foreground">

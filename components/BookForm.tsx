@@ -23,6 +23,8 @@ import { Button } from "@/components/ui/button";
 import { Id } from "@/convex/_generated/dataModel";
 import { useEffect } from "react";
 import DatePicker from "@/components/DatePicker";
+import TagInput from "@/components/TagInput";
+import { sanitizeTags } from "@/lib/bookTags";
 
 interface BookFormProps {
   book?: {
@@ -45,6 +47,7 @@ interface BookFormProps {
     creatorName?: string;
     creatorEmail?: string;
     buyLink?: string;
+    tags?: string[];
     progressStyle?: "pages" | "chapters";
     ignorePages?: boolean;
   };
@@ -100,6 +103,7 @@ export default function BookForm({
   const [name, setName] = useState(initialBook?.name || "");
   const [author, setAuthor] = useState(initialBook?.author || "");
   const [buyLink, setBuyLink] = useState(initialBook?.buyLink || "");
+  const [tags, setTags] = useState<string[]>(initialBook?.tags ?? []);
   const [totalPages, setTotalPages] = useState(
     initialBook?.totalPages?.toString() || ""
   );
@@ -331,6 +335,7 @@ export default function BookForm({
 
       const authorValue = author.trim() || undefined;
       const buyLinkValue = buyLink.trim() || undefined;
+      const tagsValue = sanitizeTags(tags);
       const parsedTotalPages = Number(totalPages);
       const parsedTotalChapters = Number(totalChapters);
       const totalChaptersValue =
@@ -372,6 +377,7 @@ export default function BookForm({
           name,
           author: authorValue,
           buyLink: buyLinkValue,
+          tags: tagsValue,
           totalPages: totalPagesValue,
           readingMode,
           startDate: startDateValue,
@@ -405,6 +411,7 @@ export default function BookForm({
           name,
           author: authorValue,
           buyLink: buyLinkValue,
+          tags: tagsValue,
           totalPages: totalPagesValue,
           readingMode,
           startMonth: startMonthValue,
@@ -498,6 +505,8 @@ export default function BookForm({
             placeholder="https://example.com/book"
           />
         </div>
+
+        <TagInput value={tags} onChange={setTags} />
 
         {!chapterOnlyMode && (
           <div>

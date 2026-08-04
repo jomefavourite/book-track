@@ -12,6 +12,7 @@ import {
   getEffectivePagesReadForStats,
   isChapterOnlyBook,
 } from "./bookProgress";
+import { sanitizeTags } from "../lib/bookTags";
 
 const isValidPositiveInteger = (value: number | undefined): value is number =>
   value !== undefined && Number.isInteger(value) && value > 0;
@@ -46,6 +47,7 @@ export const createBook = mutation({
     creatorName: v.optional(v.string()),
     creatorEmail: v.optional(v.string()),
     buyLink: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
     progressStyle: v.optional(
       v.union(v.literal("pages"), v.literal("chapters"))
     ),
@@ -94,6 +96,7 @@ export const createBook = mutation({
       creatorName?: string;
       creatorEmail?: string;
       buyLink?: string;
+      tags?: string[];
       isArchived: boolean;
       shareMergedReflection: boolean;
     } = {
@@ -128,6 +131,11 @@ export const createBook = mutation({
     // Only include buy link if it's provided (not undefined)
     if (args.buyLink !== undefined) {
       bookData.buyLink = args.buyLink;
+    }
+
+    const sanitizedTags = sanitizeTags(args.tags);
+    if (sanitizedTags.length > 0) {
+      bookData.tags = sanitizedTags;
     }
 
     if (bookData.progressStyle === "chapters") {
@@ -277,6 +285,7 @@ export const updateBook = mutation({
     creatorName: v.optional(v.string()),
     creatorEmail: v.optional(v.string()),
     buyLink: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
     progressStyle: v.optional(
       v.union(v.literal("pages"), v.literal("chapters"))
     ),
@@ -317,6 +326,7 @@ export const updateBook = mutation({
       creatorName?: string;
       creatorEmail?: string;
       buyLink?: string;
+      tags?: string[];
       progressStyle?: "pages" | "chapters";
       ignorePages?: boolean;
     } = {};
@@ -374,6 +384,9 @@ export const updateBook = mutation({
     }
     if (args.buyLink !== undefined) {
       updates.buyLink = args.buyLink;
+    }
+    if (args.tags !== undefined) {
+      updates.tags = sanitizeTags(args.tags);
     }
     if (args.progressStyle !== undefined) {
       updates.progressStyle = args.progressStyle;

@@ -20,6 +20,8 @@ import {
   parseDateFromStorage,
 } from "@/lib/dateUtils";
 import { calculateDailyPages } from "@/lib/readingCalculator";
+import TagInput from "@/components/TagInput";
+import { sanitizeTags } from "@/lib/bookTags";
 
 type Role = "owner" | "admin" | "moderator" | "member";
 
@@ -53,6 +55,7 @@ export default function NewCommunityBookPageClient() {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [author, setAuthor] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [totalPages, setTotalPages] = useState("");
   const [totalChapters, setTotalChapters] = useState("");
   const [progressStyle, setProgressStyle] = useState<"pages" | "chapters">(
@@ -176,6 +179,7 @@ export default function NewCommunityBookPageClient() {
         communityId: detail._id,
         name,
         author: author.trim() || undefined,
+        tags: sanitizeTags(tags),
         totalPages:
           !chapterOnlyMode && totalPages ? parsedTotalPages : undefined,
         totalChapters:
@@ -271,6 +275,10 @@ export default function NewCommunityBookPageClient() {
                       placeholder="e.g., Octavia Butler"
                     />
                   </label>
+
+                  <div className="sm:col-span-2">
+                    <TagInput value={tags} onChange={setTags} />
+                  </div>
 
                   <div className="space-y-2 sm:col-span-2">
                     <span className="text-sm font-medium text-foreground">

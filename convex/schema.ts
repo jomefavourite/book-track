@@ -60,6 +60,8 @@ export default defineSchema({
     creatorEmail: v.optional(v.string()),
     /** Optional link where others can buy the book */
     buyLink: v.optional(v.string()),
+    /** Topic tags (e.g. "Finance", "Relationships") for grouping on the profile */
+    tags: v.optional(v.array(v.string())),
     isArchived: v.optional(v.boolean()),
     /** Set when the user marks the book complete without day-by-day tracking */
     markedCompleteAt: v.optional(v.number()),
@@ -121,6 +123,8 @@ export default defineSchema({
     endDate: v.string(),
     createdByClerkId: v.string(),
     creatorName: v.optional(v.string()),
+    /** Topic tags (e.g. "Finance", "Relationships") for grouping */
+    tags: v.optional(v.array(v.string())),
     createdAt: v.number(),
     updatedAt: v.number(),
     isArchived: v.optional(v.boolean()),

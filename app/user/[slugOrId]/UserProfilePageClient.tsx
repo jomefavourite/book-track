@@ -17,12 +17,21 @@ import {
   Sparkles,
   Share2,
   Check,
+  Tag,
 } from "lucide-react";
 import { format } from "date-fns";
 import { parseDateFromStorage } from "@/lib/dateUtils";
+import { normalizeTagKey } from "@/lib/bookTags";
 import Navigation from "@/components/Navigation";
 import PublicBookCard from "@/components/PublicBookCard";
 import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import BookCardSkeleton from "@/components/BookCardSkeleton";
 import { DetailPageSkeleton } from "@/components/CommunityCardSkeleton";
 import { Button } from "@/components/ui/button";
@@ -79,6 +88,91 @@ export default function UserProfilePage() {
       avgProgress: profileStats.avgProgress,
     };
   }, [profileStats]);
+
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+
+  // All 12 months of every year the library spans (from the earliest reading
+  // year to the latest), newest first. Full years so no month is skipped, and
+  // multiple years are handled when reading ranges cross a year boundary.
+  const monthOptions = useMemo(() => {
+    if (books.length === 0) return [];
+    let minYear = Infinity;
+    let maxYear = -Infinity;
+    for (const book of books) {
+      const startYear = parseDateFromStorage(book.startDate).getFullYear();
+      const endYear = parseDateFromStorage(book.endDate).getFullYear();
+      minYear = Math.min(minYear, startYear, endYear);
+      maxYear = Math.max(maxYear, startYear, endYear);
+    }
+    if (!Number.isFinite(minYear) || !Number.isFinite(maxYear)) return [];
+
+    const options: { key: string; label: string }[] = [];
+    for (let year = maxYear; year >= minYear; year--) {
+      for (let month = 11; month >= 0; month--) {
+        const date = new Date(year, month, 1);
+        options.push({
+          key: format(date, "yyyy-MM"),
+          label: format(date, "MMMM yyyy"),
+        });
+      }
+    }
+    return options;
+  }, [books]);
+
+  // Group the visible books by tag with read (completed) / total counts.
+  const tagGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      { key: string; label: string; total: number; read: number }
+    >();
+    for (const book of books) {
+      const seenInBook = new Set<string>();
+      for (const tag of book.tags ?? []) {
+        const key = normalizeTagKey(tag);
+        if (!key || seenInBook.has(key)) continue;
+        seenInBook.add(key);
+        const existing = map.get(key) ?? {
+          key,
+          label: tag,
+          total: 0,
+          read: 0,
+        };
+        existing.total += 1;
+        if ((book.progress ?? 0) >= 100) existing.read += 1;
+        map.set(key, existing);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [books]);
+
+  // Apply the tag and month filters together (a book must match both).
+  // A book counts for a month if its reading range overlaps that month.
+  const visibleBooks = useMemo(
+    () =>
+      books.filter((book) => {
+        if (
+          selectedTag &&
+          !(book.tags ?? []).some(
+            (tag) => normalizeTagKey(tag) === selectedTag
+          )
+        ) {
+          return false;
+        }
+        if (selectedMonth) {
+          const startKey = format(
+            parseDateFromStorage(book.startDate),
+            "yyyy-MM"
+          );
+          const endKey = format(parseDateFromStorage(book.endDate), "yyyy-MM");
+          if (!(startKey <= selectedMonth && selectedMonth <= endKey)) {
+            return false;
+          }
+        }
+        return true;
+      }),
+    [books, selectedTag, selectedMonth]
+  );
 
   const [copied, setCopied] = useState(false);
 
@@ -295,9 +389,77 @@ export default function UserProfilePage() {
           </div>
         )}
 
-        <h2 className="mb-4 text-lg font-semibold text-foreground">
-          {isOwnProfile ? "Books" : "Public books"}
-        </h2>
+        {tagGroups.length > 0 && (
+          <div className="mb-8">
+            <div className="mb-3 flex items-center gap-2">
+              <Tag className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-lg font-semibold text-foreground">By topic</h2>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedTag(null)}
+                className={
+                  selectedTag === null
+                    ? "rounded-full border border-primary bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary"
+                    : "rounded-full border border-input bg-background px-3 py-1.5 text-sm text-muted-foreground hover:border-ring hover:text-foreground"
+                }
+              >
+                All ({books.length})
+              </button>
+              {tagGroups.map((group) => (
+                <button
+                  key={group.key}
+                  type="button"
+                  onClick={() =>
+                    setSelectedTag((current) =>
+                      current === group.key ? null : group.key
+                    )
+                  }
+                  className={
+                    selectedTag === group.key
+                      ? "rounded-full border border-primary bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary"
+                      : "rounded-full border border-input bg-background px-3 py-1.5 text-sm text-muted-foreground hover:border-ring hover:text-foreground"
+                  }
+                >
+                  {group.label}{" "}
+                  <span className="text-muted-foreground">
+                    {group.read}/{group.total} read
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-foreground">
+            {isOwnProfile ? "Books" : "Public books"}
+          </h2>
+          {monthOptions.length > 0 && (
+            <Select
+              value={selectedMonth ?? "all"}
+              onValueChange={(value) =>
+                setSelectedMonth(value === "all" ? null : value)
+              }
+            >
+              <SelectTrigger className="h-9 w-[190px]">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <SelectValue placeholder="Filter by month" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All months</SelectItem>
+                {monthOptions.map((month) => (
+                  <SelectItem key={month.key} value={month.key}>
+                    {month.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
 
         {booksPending ? (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -311,9 +473,15 @@ export default function UserProfilePage() {
               {isOwnProfile ? "No books yet." : "No public books yet."}
             </p>
           </Card>
+        ) : visibleBooks.length === 0 ? (
+          <Card className="p-8 text-center">
+            <p className="text-muted-foreground">
+              No books match the selected filters.
+            </p>
+          </Card>
         ) : (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {books.map((book) => (
+            {visibleBooks.map((book) => (
               <PublicBookCard
                 key={book._id}
                 book={book}
