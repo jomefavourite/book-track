@@ -22,6 +22,7 @@ import {
 import { ensureDefaultLabels } from "./communityDayLabels";
 import { getBookProgressPercent } from "./bookProgress";
 import { sanitizeTags } from "../lib/bookTags";
+import { registerUserTags } from "./userTags";
 
 const communityRoleValidator = v.union(
   v.literal("owner"),
@@ -730,6 +731,7 @@ export const createCommunityBook = mutation({
     }
 
     const payload = buildCommunityBookPayload(args);
+    await registerUserTags(ctx, clerkId, payload.tags);
     return await ctx.db.insert("communityBooks", {
       communityId: args.communityId,
       ...payload,
@@ -776,6 +778,7 @@ export const updateCommunityBook = mutation({
     }
 
     const payload = buildCommunityBookPayload(args);
+    await registerUserTags(ctx, clerkId, payload.tags);
     await ctx.db.patch(args.communityBookId, {
       ...payload,
       ...(args.coverImageStorageId !== undefined
