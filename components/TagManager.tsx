@@ -68,7 +68,7 @@ export default function TagManager() {
         <CardTitle>Manage tags</CardTitle>
         <CardDescription>
           Tags you can reuse when creating or editing books. Add topics like
-          Finance or Bible Study here, or they&apos;ll be saved automatically the
+          Finance or Self-help here, or they&apos;ll be saved automatically the
           first time you use them. Removing a tag stops it from being suggested —
           books already tagged with it keep it.
         </CardDescription>
@@ -84,7 +84,7 @@ export default function TagManager() {
                 handleAdd();
               }
             }}
-            placeholder="e.g., Bible Study"
+            placeholder="e.g., Self-help"
             aria-label="New tag"
           />
           <Button type="button" onClick={handleAdd} disabled={!draft.trim()}>
