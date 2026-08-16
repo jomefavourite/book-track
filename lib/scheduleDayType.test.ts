@@ -6,6 +6,7 @@ import {
   behaviorCountsAsMissed,
   behaviorGivesCatchUpCapacity,
   buildDayBehaviorMap,
+  buildScheduleNoteMap,
   labelsById,
   resolveDayLabel,
   scheduleChapterTargets,
@@ -105,9 +106,21 @@ describe("behavior predicates", () => {
 
 describe("schedule maps", () => {
   const schedule = [
-    { date: "2026-07-08", dayLabelId: "l1", chapterNumber: 2, plannedPages: 20 },
+    {
+      date: "2026-07-08",
+      dayLabelId: "l1",
+      chapterNumber: 2,
+      plannedPages: 20,
+      notes: "  Discuss chapters 1–2  ",
+    },
     { date: "2026-07-09", dayLabelId: "l2", chapterNumber: 9, plannedPages: 99 },
-    { date: "2026-07-10", dayLabelId: "l3", chapterNumber: 9, plannedPages: 99 },
+    {
+      date: "2026-07-10",
+      dayLabelId: "l3",
+      chapterNumber: 9,
+      plannedPages: 99,
+      notes: "   ",
+    },
     { date: "2026-07-11", dayType: "reading", chapterNumber: 4, plannedPages: 30 },
   ];
 
@@ -128,6 +141,12 @@ describe("schedule maps", () => {
       ["2026-07-09", "off"],
       ["2026-07-10", "flex"],
       ["2026-07-11", "reading"],
+    ]);
+  });
+
+  it("exposes only non-empty admin notes and trims their display text", () => {
+    expect([...buildScheduleNoteMap(schedule)]).toEqual([
+      ["2026-07-08", "Discuss chapters 1–2"],
     ]);
   });
 });

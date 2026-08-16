@@ -148,6 +148,7 @@ export type ScheduleEntryLike = {
   dayType?: string | null;
   chapterNumber?: number | null;
   plannedPages?: number | null;
+  notes?: string | null;
 };
 
 export type ResolvedDayLabel = {
@@ -230,6 +231,20 @@ export function buildDayBehaviorMap(
   const map = new Map<string, DayBehavior>();
   (schedule ?? []).forEach((entry) => {
     map.set(entry.date, resolveDayBehavior(entry, byId));
+  });
+  return map;
+}
+
+/** date -> trimmed admin note for community schedule days that have one. */
+export function buildScheduleNoteMap(
+  schedule: ScheduleEntryLike[] | undefined
+): Map<string, string> {
+  const map = new Map<string, string>();
+  (schedule ?? []).forEach((entry) => {
+    const note = entry.notes?.trim();
+    if (note) {
+      map.set(entry.date, note);
+    }
   });
   return map;
 }

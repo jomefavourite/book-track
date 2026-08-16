@@ -37,12 +37,17 @@ import { ChevronDown, Timer } from "lucide-react";
 import { filterStaleSessions } from "@/lib/resetGeneration";
 import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
 import ReflectionNoteEditor from "./ReflectionNoteEditor";
+import {
+  CommunityScheduleNoteCallout,
+  CommunityScheduleNoteIndicator,
+} from "./CommunityScheduleNote";
 import { playTimerEndSound } from "@/lib/timerSound";
 import {
   DEFAULT_DAY_LABEL,
   behaviorAllowsLogging,
   buildDayBehaviorMap,
   buildDayLabelMap,
+  buildScheduleNoteMap,
   dayIconFor,
   scheduleChapterTargets,
   schedulePlannedPages,
@@ -108,6 +113,10 @@ export default function DaysView({
   const dayLabelByDate = useMemo(
     () => buildDayLabelMap(scheduleQuery, dayLabelsQuery),
     [scheduleQuery, dayLabelsQuery]
+  );
+  const scheduleNoteByDate = useMemo(
+    () => buildScheduleNoteMap(scheduleQuery),
+    [scheduleQuery]
   );
   type ReadingSessionDoc = Doc<"readingSessions">;
   const sessionsQueryKey = convexQuery(api.readingSessions.getSessionsForBook, {
@@ -1149,6 +1158,7 @@ export default function DaysView({
             const showDayTypeLabel =
               dayLabel.behavior !== "reading" && !isRead && !isMissed;
             const DayTypeIcon = dayIconFor(dayLabel.icon, dayLabel.behavior);
+            const scheduleNote = scheduleNoteByDate.get(dateKey);
             const targetChapter = chapterOnlyMode
               ? getDisplayTargetChapterForDate(
                   dateKey,
@@ -1170,7 +1180,7 @@ export default function DaysView({
             return (
               <div
                 key={dateKey}
-                className={`rounded border p-3 ${
+                className={`relative rounded border p-3 hover:z-20 focus-within:z-20 ${
                   isRead
                     ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-900 dark:text-green-50"
                     : isMissed
@@ -1182,6 +1192,13 @@ export default function DaysView({
                   <div className="flex-1">
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm font-medium">Day {dayNumber}</span>
+                      {scheduleNote ? (
+                        <CommunityScheduleNoteIndicator
+                          dateKey={dateKey}
+                          dateLabel={`Day ${dayNumber}, ${format(date, "MMMM d, yyyy")}`}
+                          note={scheduleNote}
+                        />
+                      ) : null}
                       {/* Timer — only for unread, non-missed days */}
                       {canEdit && !isRead && !isMissed && !isNonReadingDay && (
                         <button
@@ -1313,6 +1330,12 @@ export default function DaysView({
                     )}
                   </div>
                 </div>
+                {scheduleNote ? (
+                  <CommunityScheduleNoteCallout
+                    note={scheduleNote}
+                    className="mb-2 p-3 sm:hidden"
+                  />
+                ) : null}
                 {showDayTypeLabel ? (
                   <div className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
                     <DayTypeIcon className="h-3.5 w-3.5 shrink-0" />

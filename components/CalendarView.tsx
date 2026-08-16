@@ -26,6 +26,10 @@ import {
 import { BookOpenText, Timer } from "lucide-react";
 import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
 import ReflectionNoteEditor from "./ReflectionNoteEditor";
+import {
+  CommunityScheduleNoteCallout,
+  CommunityScheduleNoteIndicator,
+} from "./CommunityScheduleNote";
 import { playTimerEndSound } from "@/lib/timerSound";
 import {
   distributePagesAcrossDays,
@@ -66,6 +70,7 @@ import {
   behaviorAllowsLogging,
   buildDayBehaviorMap,
   buildDayLabelMap,
+  buildScheduleNoteMap,
   dayIconFor,
   scheduleChapterTargets,
   schedulePlannedPages,
@@ -135,6 +140,10 @@ export default function CalendarView({
   const dayLabelByDate = useMemo(
     () => buildDayLabelMap(scheduleQuery, dayLabelsQuery),
     [scheduleQuery, dayLabelsQuery]
+  );
+  const scheduleNoteByDate = useMemo(
+    () => buildScheduleNoteMap(scheduleQuery),
+    [scheduleQuery]
   );
   type ReadingSessionDoc = Doc<"readingSessions">;
   const sessionsQueryKey = convexQuery(api.readingSessions.getSessionsForBook, {
@@ -1380,6 +1389,7 @@ export default function CalendarView({
     const selectedIsMissed = selectedSession?.isMissed || false;
     const selectedDayLabel =
       dayLabelByDate.get(selectedDateKey) ?? DEFAULT_DAY_LABEL;
+    const selectedScheduleNote = scheduleNoteByDate.get(selectedDateKey);
     // Flexible days allow reading (read only); "off" days do not.
     const selectedIsNonReadingDay =
       !behaviorAllowsLogging(selectedDayLabel.behavior) &&
@@ -1405,6 +1415,7 @@ export default function CalendarView({
         isMissed={selectedIsMissed}
         isNonReadingDay={selectedIsNonReadingDay}
         dayLabel={selectedDayLabel}
+        scheduleNote={selectedScheduleNote}
         canEdit={canEdit}
         isActionPending={isMobileActionPending}
         onReadToggle={() => handleMobileReadToggle(selectedDay)}
@@ -1657,6 +1668,7 @@ export default function CalendarView({
             const showDayTypeLabel =
               dayLabel.behavior !== "reading" && !isRead && !isMissed;
             const DayTypeIcon = dayIconFor(dayLabel.icon, dayLabel.behavior);
+            const scheduleNote = scheduleNoteByDate.get(dateKey);
 
             return (
               <div
@@ -1664,7 +1676,7 @@ export default function CalendarView({
                 onClick={(e) => {
                   handleDayCellClick(day, e);
                 }}
-                className={`relative aspect-square rounded border transition-colors overflow-hidden ${
+                className={`relative aspect-square overflow-visible rounded border transition-colors hover:z-20 focus-within:z-20 ${
                   isToday && isRead
                     ? "border-primary bg-green-100 text-green-900 dark:border-primary dark:bg-green-900 dark:text-green-50"
                     : isToday && isMissed
@@ -1682,17 +1694,26 @@ export default function CalendarView({
                 <div className="flex h-full flex-col p-0.5 sm:p-2">
                   {/* Top row: Date and Checkboxes */}
                   <div className="flex min-h-0 flex-1 items-start justify-between gap-0.5 sm:mb-1">
-                    <span
-                      className={`text-[10px] font-semibold leading-tight sm:text-sm ${
-                        isRead
-                          ? "text-green-900 dark:text-green-50"
-                          : isMissed
-                            ? "text-red-900 dark:text-red-50"
-                            : "text-foreground"
-                      }`}
-                    >
-                      {format(day, "d")}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span
+                        className={`text-[10px] font-semibold leading-tight sm:text-sm ${
+                          isRead
+                            ? "text-green-900 dark:text-green-50"
+                            : isMissed
+                              ? "text-red-900 dark:text-red-50"
+                              : "text-foreground"
+                        }`}
+                      >
+                        {format(day, "d")}
+                      </span>
+                      {scheduleNote ? (
+                        <CommunityScheduleNoteIndicator
+                          dateKey={dateKey}
+                          dateLabel={format(day, "MMMM d, yyyy")}
+                          note={scheduleNote}
+                        />
+                      ) : null}
+                    </div>
                     {/* Checkboxes - Stacked vertically on mobile, horizontal on desktop */}
                     <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-1">
                       {/* Read Checkbox - only show if not missed and not a non-reading scheduled day */}
@@ -2192,6 +2213,7 @@ interface DayDetailModalProps {
   isMissed: boolean;
   isNonReadingDay: boolean;
   dayLabel: ResolvedDayLabel;
+  scheduleNote?: string;
   canEdit: boolean;
   isActionPending: boolean;
   onReadToggle: () => Promise<void>;
@@ -2223,6 +2245,7 @@ function DayDetailModal({
   isMissed,
   isNonReadingDay,
   dayLabel,
+  scheduleNote,
   canEdit,
   isActionPending,
   onReadToggle,
@@ -2391,6 +2414,10 @@ function DayDetailModal({
           </div>
         </div>
         )}
+
+        {scheduleNote ? (
+          <CommunityScheduleNoteCallout note={scheduleNote} />
+        ) : null}
 
         {/* Pages Section */}
         {!isNonReadingDay && (
