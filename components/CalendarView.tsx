@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   format,
   startOfMonth,
@@ -23,7 +23,7 @@ import {
   formatTimerDuration,
   formatCountdown,
 } from "@/lib/dateUtils";
-import { BookOpenText, Timer } from "lucide-react";
+import { BookOpenText, Check, Copy, Share2, Timer } from "lucide-react";
 import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
 import ReflectionNoteEditor from "./ReflectionNoteEditor";
 import {
@@ -54,6 +54,7 @@ import {
   isUnsupportedStopPageError,
 } from "@/lib/pageTracking";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -2237,6 +2238,33 @@ interface DayDetailModalProps {
   savedTimerDurationSec?: number;
 }
 
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Fall through to the legacy copy path for restricted mobile browsers.
+    }
+  }
+
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.setAttribute("readonly", "");
+  textArea.style.position = "fixed";
+  textArea.style.left = "-999999px";
+  document.body.appendChild(textArea);
+  textArea.select();
+
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("Copy command failed");
+    }
+  } finally {
+    document.body.removeChild(textArea);
+  }
+}
+
 function DayDetailModal({
   day,
   plannedPages,
@@ -2268,6 +2296,74 @@ function DayDetailModal({
   onTimerOpen,
   savedTimerDurationSec,
 }: DayDetailModalProps) {
+  const [copiedNote, setCopiedNote] = useState(false);
+  const copiedResetTimeoutRef = useRef<number | null>(null);
+  const savedNoteText = reflectionNote?.trim() ?? "";
+
+  useEffect(
+    () => () => {
+      if (copiedResetTimeoutRef.current !== null) {
+        window.clearTimeout(copiedResetTimeoutRef.current);
+      }
+    },
+    []
+  );
+
+  const handleCopyNote = async () => {
+    if (!savedNoteText) return;
+
+    try {
+      await copyTextToClipboard(savedNoteText);
+      setCopiedNote(true);
+
+      if (copiedResetTimeoutRef.current !== null) {
+        window.clearTimeout(copiedResetTimeoutRef.current);
+      }
+      copiedResetTimeoutRef.current = window.setTimeout(() => {
+        setCopiedNote(false);
+        copiedResetTimeoutRef.current = null;
+      }, 2000);
+    } catch {
+      toast({
+        title: "Could not copy note",
+        description: "Please select and copy the note manually.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleShareNote = async () => {
+    if (!savedNoteText) return;
+
+    if (typeof navigator.share !== "function") {
+      toast({
+        title: "Sharing is not supported",
+        description: "Use Copy to share this note manually.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await navigator.share({ text: savedNoteText });
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "name" in error &&
+        error.name === "AbortError"
+      ) {
+        return;
+      }
+
+      toast({
+        title: "Could not share note",
+        description: "Please try again or use Copy instead.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <DialogHeader>
@@ -2588,16 +2684,67 @@ function DayDetailModal({
                 <label className="mb-1 block text-sm font-medium text-foreground">
                   Reflection Note
                 </label>
-                <ReflectionNoteEditor
-                  dayLabel={format(day, "MMMM d, yyyy")}
-                  note={reflectionNote}
-                  canEdit={canEdit}
-                  onSave={onReflectionNoteSave}
-                />
-                {reflectionNote?.trim() && (
-                  <p className="mt-2 whitespace-pre-wrap rounded-md border border-input bg-muted p-3 text-sm text-foreground">
-                    {reflectionNote}
+                {savedNoteText && (
+                  <p className="whitespace-pre-wrap rounded-md border border-input bg-muted p-3 text-sm text-foreground">
+                    {savedNoteText}
                   </p>
+                )}
+                {canEdit && (
+                  <div
+                    className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3"
+                    role="group"
+                    aria-label="Reflection note actions"
+                  >
+                    <ReflectionNoteEditor
+                      dayLabel={format(day, "MMMM d, yyyy")}
+                      note={reflectionNote}
+                      canEdit={canEdit}
+                      onSave={onReflectionNoteSave}
+                      trigger={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          aria-label={
+                            savedNoteText
+                              ? "Edit reflection note"
+                              : "Add reflection note"
+                          }
+                          className="h-auto min-h-16 w-full flex-col gap-1 px-2 py-2 text-xs [&_svg]:size-5"
+                        >
+                          <BookOpenText />
+                          <span>Note</span>
+                        </Button>
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!savedNoteText}
+                      onClick={() => void handleCopyNote()}
+                      aria-label={
+                        copiedNote
+                          ? "Reflection note copied"
+                          : "Copy reflection note"
+                      }
+                      className="h-auto min-h-16 w-full flex-col gap-1 px-2 py-2 text-xs [&_svg]:size-5"
+                    >
+                      {copiedNote ? <Check /> : <Copy />}
+                      <span aria-live="polite">
+                        {copiedNote ? "Copied" : "Copy"}
+                      </span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!savedNoteText}
+                      onClick={() => void handleShareNote()}
+                      aria-label="Share reflection note"
+                      className="h-auto min-h-16 w-full flex-col gap-1 px-2 py-2 text-xs [&_svg]:size-5"
+                    >
+                      <Share2 />
+                      <span>Share</span>
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>
