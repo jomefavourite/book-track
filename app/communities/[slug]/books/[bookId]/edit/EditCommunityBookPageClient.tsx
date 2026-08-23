@@ -22,6 +22,7 @@ import {
 import { calculateDailyPages } from "@/lib/readingCalculator";
 import TagInput from "@/components/TagInput";
 import { sanitizeTags } from "@/lib/bookTags";
+import { useUser } from "@clerk/nextjs";
 
 type Role = "owner" | "admin" | "moderator" | "member";
 
@@ -93,6 +94,11 @@ export default function EditCommunityBookPageClient() {
   }, [book, initialized]);
 
   const generateUploadUrl = useConvexMutation(api.communities.generateUploadUrl);
+  const { user } = useUser();
+  const { data: savedTags = [] } = useQuery({
+    ...convexQuery(api.userTags.getUserTags, { userId: user?.id ?? "" }),
+    enabled: !!user?.id,
+  });
 
   const { mutateAsync: updateCommunityBook, isPending: updatePending } =
     useMutation({
@@ -299,7 +305,11 @@ export default function EditCommunityBookPageClient() {
                   </label>
 
                   <div className="sm:col-span-2">
-                    <TagInput value={tags} onChange={setTags} />
+                    <TagInput
+                      value={tags}
+                      onChange={setTags}
+                      suggestions={savedTags.map((t) => t.label)}
+                    />
                   </div>
 
                   <div className="space-y-2 sm:col-span-2">
