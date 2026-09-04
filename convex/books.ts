@@ -13,6 +13,7 @@ import {
   isChapterOnlyBook,
 } from "./bookProgress";
 import { sanitizeTags } from "../lib/bookTags";
+import { registerUserTags } from "./userTags";
 
 const isValidPositiveInteger = (value: number | undefined): value is number =>
   value !== undefined && Number.isInteger(value) && value > 0;
@@ -137,6 +138,7 @@ export const createBook = mutation({
     if (sanitizedTags.length > 0) {
       bookData.tags = sanitizedTags;
     }
+    await registerUserTags(ctx, userId, sanitizedTags);
 
     if (bookData.progressStyle === "chapters") {
       bookData.totalChapters = args.totalChapters;
@@ -387,6 +389,7 @@ export const updateBook = mutation({
     }
     if (args.tags !== undefined) {
       updates.tags = sanitizeTags(args.tags);
+      await registerUserTags(ctx, userId, updates.tags);
     }
     if (args.progressStyle !== undefined) {
       updates.progressStyle = args.progressStyle;

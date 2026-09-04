@@ -22,6 +22,7 @@ import type * as dayBehavior from "../dayBehavior.js";
 import type * as readingSessions from "../readingSessions.js";
 import type * as reminders from "../reminders.js";
 import type * as remindersSend from "../remindersSend.js";
+import type * as userTags from "../userTags.js";
 import type * as users from "../users.js";
 
 import type {
@@ -45,6 +46,7 @@ declare const fullApi: ApiFromModules<{
   readingSessions: typeof readingSessions;
   reminders: typeof reminders;
   remindersSend: typeof remindersSend;
+  userTags: typeof userTags;
   users: typeof users;
 }>;
 

@@ -12,18 +12,37 @@ import {
 interface TagInputProps {
   value: string[];
   onChange: (tags: string[]) => void;
+  /** The user's previously-used tags, shown as reusable chips after presets. */
+  suggestions?: string[];
 }
 
 /**
- * Controlled tag picker: tap curated preset chips and/or type custom tags.
- * All mutations run through `sanitizeTags` so casing/dupe/limit rules are
- * enforced consistently (and mirror the server-side sanitation).
+ * Controlled tag picker: tap curated preset chips or your own saved tags, and/or
+ * type new custom tags. All mutations run through `sanitizeTags` so
+ * casing/dupe/limit rules are enforced consistently (mirroring the server).
  */
-export default function TagInput({ value, onChange }: TagInputProps) {
+export default function TagInput({
+  value,
+  onChange,
+  suggestions = [],
+}: TagInputProps) {
   const [draft, setDraft] = useState("");
 
   const selectedKeys = new Set(value.map(normalizeTagKey));
   const atLimit = value.length >= MAX_TAGS_PER_BOOK;
+
+  // Presets first, then the user's own tags, de-duped by normalized key.
+  const suggestedTags = (() => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const tag of [...PRESET_TAGS, ...suggestions]) {
+      const key = normalizeTagKey(tag);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      result.push(tag);
+    }
+    return result;
+  })();
 
   const addTag = (tag: string) => {
     onChange(sanitizeTags([...value, tag]));
@@ -106,9 +125,9 @@ export default function TagInput({ value, onChange }: TagInputProps) {
         }
       />
 
-      {/* Preset suggestions */}
+      {/* Preset + saved-tag suggestions */}
       <div className="mt-2 flex flex-wrap gap-2">
-        {PRESET_TAGS.map((tag) => {
+        {suggestedTags.map((tag) => {
           const isSelected = selectedKeys.has(normalizeTagKey(tag));
           return (
             <button
