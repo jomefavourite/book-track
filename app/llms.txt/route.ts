@@ -8,16 +8,16 @@ export const revalidate = 3600;
 export function GET(): Response {
   const siteUrl = getSiteUrl();
 
-  const body = `# Book-Trackr
+  const body = `# BookTrackr
 
-> Book-Trackr is a Progressive Web App for tracking your reading progress. Plan a book across a calendar month range or a fixed number of days, mark days as read, track actual pages read, and get catch-up suggestions when you fall behind. Share your reading journey publicly and read alongside communities.
+> BookTrackr is a Progressive Web App for tracking your reading progress. Plan a book across a calendar month range or a fixed number of days, mark days as read, track actual pages read, and get catch-up suggestions when you fall behind. Share your reading journey publicly and read alongside communities.
 
 ## Key pages
 
 - [Home](${siteUrl}/): Landing page and reading-tracker overview.
 - [Public library](${siteUrl}/public): Browse public reading journeys and see how readers are tracking their books.
-- [Live Room](${siteUrl}/live): Watch readers arrive on Book-Trackr in real time.
-- [Communities](${siteUrl}/communities): Discover and join Book-Trackr reading communities.
+- [Live Room](${siteUrl}/live): Watch readers arrive on BookTrackr in real time.
+- [Communities](${siteUrl}/communities): Discover and join BookTrackr reading communities.
 - [Dashboard](${siteUrl}/dashboard): Signed-in home for managing your books and progress (requires authentication).
 
 ## Features
@@ -33,7 +33,7 @@ export function GET(): Response {
 
 ## Documentation
 
-- Overview: Book-Trackr is built with Next.js, Convex, and Tailwind CSS. Project overview, feature list, tech stack, and setup instructions live in the repository README.md.
+- Overview: BookTrackr is built with Next.js, Convex, and Tailwind CSS. Project overview, feature list, tech stack, and setup instructions live in the repository README.md.
 
 ## Contact
 

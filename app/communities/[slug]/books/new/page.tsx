@@ -4,7 +4,7 @@ import NewCommunityBookPageClient from "./NewCommunityBookPageClient";
 
 export const metadata: Metadata = createPageMetadata({
   title: "Add Community Book",
-  description: "Create a shared book for a Book-Trackr community.",
+  description: "Create a shared book for a BookTrackr community.",
   path: "/communities",
   noIndex: true,
 });

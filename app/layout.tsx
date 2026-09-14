@@ -78,7 +78,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Book-Trackr",
+    title: "BookTrackr",
   },
 };
 

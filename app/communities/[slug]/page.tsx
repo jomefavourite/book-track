@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = createPageMetadata({
   title: "Community",
-  description: "View a Book-Trackr reading community.",
+  description: "View a BookTrackr reading community.",
   path: "/communities",
   noIndex: true,
 });
