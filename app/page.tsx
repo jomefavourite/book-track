@@ -10,9 +10,10 @@ import {
 } from "@/lib/metadata";
 
 export const metadata: Metadata = createPageMetadata({
-  title: "Track Your Reading Journey",
+  title: `${SITE_NAME} — Track Your Reading Journey`,
   description: "Plan, track and share reading progress.",
   path: "/",
+  absoluteTitle: true,
 });
 
 export default function Home() {

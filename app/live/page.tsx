@@ -4,7 +4,7 @@ import { createPageMetadata } from "@/lib/metadata";
 
 export const metadata: Metadata = createPageMetadata({
   title: "Live Room",
-  description: "Watch readers arrive on Book-Trackr in real time.",
+  description: "Watch readers arrive on BookTrackr in real time.",
   path: "/live",
 });
 

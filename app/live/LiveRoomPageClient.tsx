@@ -23,7 +23,7 @@ export default function LiveRoomPageClient() {
               Live Room
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Watch readers arrive on Book-Trackr in real time. Only
+              Watch readers arrive on BookTrackr in real time. Only
               country-level locations and recent page visits are shown.
             </p>
           </div>

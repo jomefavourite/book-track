@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = createPageMetadata({
   title: "Community Settings",
-  description: "Manage a Book-Trackr community.",
+  description: "Manage a BookTrackr community.",
   path: "/communities",
   noIndex: true,
 });

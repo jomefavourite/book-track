@@ -72,7 +72,7 @@ function getPushUnsupportedMessage() {
     return "Push notifications require HTTPS.";
   }
   if (isIosSafariLikeDevice() && !isInStandaloneMode()) {
-    return "On iPhone and iPad, Safari only allows push after you install Book-Trackr to the Home Screen.";
+    return "On iPhone and iPad, Safari only allows push after you install BookTrackr to the Home Screen.";
   }
   return "This browser does not support web push notifications.";
 }

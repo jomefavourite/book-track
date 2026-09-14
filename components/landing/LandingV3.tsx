@@ -357,7 +357,7 @@ export default function LandingV3() {
                   </div>
                 </div>
                 <span className="text-xs font-medium text-muted-foreground">
-                  book-trackr.app/user/favourite
+                  booktrackr.app/user/favourite
                 </span>
               </div>
             </div>

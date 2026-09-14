@@ -22,7 +22,7 @@ export async function generateMetadata({
   if (!community) {
     return createPageMetadata({
       title: "Join Community",
-      description: "Accept a Book-Trackr community invite.",
+      description: "Accept a BookTrackr community invite.",
       path: `/join/${token}`,
       noIndex: true,
     });

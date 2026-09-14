@@ -3,15 +3,18 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
-export const SITE_NAME = "Book-Trackr";
+export const SITE_NAME = "BookTrackr";
 export const DEFAULT_DESCRIPTION =
   "Track your reading progress, plan your schedule, and share your reading journey.";
 export const DEFAULT_OG_IMAGE = "/og-image.png";
 export const DEFAULT_OG_IMAGE_WIDTH = 1200;
 export const DEFAULT_OG_IMAGE_HEIGHT = 630;
 export const DEFAULT_OG_IMAGE_ALT =
-  "Book-Trackr reading progress tracker preview";
-const DEFAULT_SITE_URL = "https://booktrackr.app";
+  "BookTrackr reading progress tracker preview";
+// Canonical host. The production site is served on the www subdomain (the apex
+// permanently redirects to it), so canonical tags, the sitemap, and JSON-LD must
+// all point at www to avoid split ranking signals. Override with NEXT_PUBLIC_APP_URL.
+const DEFAULT_SITE_URL = "https://www.booktrackr.app";
 
 export function getSiteUrl(): string {
   const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
@@ -36,6 +39,10 @@ type MetadataInput = {
   image?: string | null;
   noIndex?: boolean;
   openGraphType?: "website" | "article" | "book" | "profile";
+  // When true, bypass the root layout's `%s | BookTrackr` template and use
+  // `title` verbatim. Used for the homepage, whose title already carries the
+  // brand ("BookTrackr — Track Your Reading Journey").
+  absoluteTitle?: boolean;
 };
 
 export function createPageMetadata({
@@ -45,6 +52,7 @@ export function createPageMetadata({
   image,
   noIndex = false,
   openGraphType = "website",
+  absoluteTitle = false,
 }: MetadataInput): Metadata {
   const resolvedImage = image ?? absoluteUrl(DEFAULT_OG_IMAGE);
   const resolvedImageMetadata = resolvedImage
@@ -59,7 +67,7 @@ export function createPageMetadata({
     : undefined;
 
   return {
-    title,
+    title: absoluteTitle ? { absolute: title } : title,
     description,
     alternates: {
       canonical: path,

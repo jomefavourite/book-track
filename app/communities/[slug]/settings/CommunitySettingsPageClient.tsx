@@ -578,7 +578,7 @@ export default function CommunitySettingsPageClient() {
                       >
                         <div className="min-w-0">
                           <p className="font-medium text-foreground">
-                            {member.name || member.email || "Book-Trackr member"}
+                            {member.name || member.email || "BookTrackr member"}
                           </p>
                           <p className="truncate text-xs text-muted-foreground">
                             {member.email || member.clerkId}
