@@ -175,11 +175,22 @@ export default function CommunitiesPageClient() {
               their activity stays locked unless you are a member.
             </p>
           </div>
-          {creatorStatus?.canCreate && (
+          {user && creatorStatus?.canCreate ? (
             <Button asChild>
               <Link href="/communities/new">
                 <Plus className="h-4 w-4" />
                 Create Community
+              </Link>
+            </Button>
+          ) : user && creatorStatus?.requestStatus === "pending" ? (
+            <Button asChild variant="outline">
+              <Link href="/communities/new">Request pending</Link>
+            </Button>
+          ) : (
+            <Button asChild variant="outline">
+              <Link href="/communities/new">
+                <Plus className="h-4 w-4" />
+                Request to create a community
               </Link>
             </Button>
           )}
