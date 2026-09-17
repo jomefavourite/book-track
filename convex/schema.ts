@@ -79,6 +79,20 @@ export default defineSchema({
     .index("by_public", ["isPublic"])
     .index("by_community_book_id", ["communityBookId"]),
 
+  /**
+   * A user's reusable tag vocabulary. Auto-seeded when tags are used on a book
+   * and manageable from settings. `key` is the normalized (lowercased) label,
+   * used to keep the vocabulary unique per user regardless of casing.
+   */
+  userTags: defineTable({
+    userId: v.string(),
+    label: v.string(),
+    key: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_and_key", ["userId", "key"]),
+
   communities: defineTable({
     name: v.string(),
     slug: v.string(),

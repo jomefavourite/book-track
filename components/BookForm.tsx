@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useConvexMutation, convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import {
@@ -62,6 +62,10 @@ export default function BookForm({
   const isEditMode = !!initialBook;
   const router = useRouter();
   const { user } = useUser();
+  const { data: savedTags = [] } = useQuery({
+    ...convexQuery(api.userTags.getUserTags, { userId: user?.id ?? "" }),
+    enabled: !!user?.id,
+  });
   const queryClient = useQueryClient();
   const { mutateAsync: createBook } = useMutation({
     mutationFn: useConvexMutation(api.books.createBook),
@@ -506,7 +510,11 @@ export default function BookForm({
           />
         </div>
 
-        <TagInput value={tags} onChange={setTags} />
+        <TagInput
+          value={tags}
+          onChange={setTags}
+          suggestions={savedTags.map((t) => t.label)}
+        />
 
         {!chapterOnlyMode && (
           <div>

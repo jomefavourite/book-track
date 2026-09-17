@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { FormPageSkeleton } from "@/components/CommunityCardSkeleton";
+import TagManager from "@/components/TagManager";
 
 const DEFAULT_REMINDER_TIME = "20:00";
 const DEFAULT_TIMEZONE = "Africa/Lagos";
@@ -578,6 +579,10 @@ export default function SettingsPage() {
             </form>
           </CardContent>
         </Card>
+
+        <div className="mt-6">
+          <TagManager />
+        </div>
       </div>
     </>
   );

@@ -132,7 +132,7 @@ export default function Navigation({
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <a
-                    href="mailto:jfjomefavourite@gmail.com"
+                    href="mailto:hello@favouritejome.com"
                     className="flex items-center cursor-pointer"
                   >
                     <svg
@@ -150,7 +150,7 @@ export default function Navigation({
                       />
                     </svg>
                     <span className="flex-1 text-sm break-all">
-                      jfjomefavourite@gmail.com
+                      hello@favouritejome.com
                     </span>
                   </a>
                 </DropdownMenuItem>
@@ -307,7 +307,7 @@ export default function Navigation({
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <a
-                    href="mailto:jfjomefavourite@gmail.com"
+                    href="mailto:hello@favouritejome.com"
                     className="flex items-center cursor-pointer py-3 pl-8"
                   >
                     <svg
@@ -326,7 +326,7 @@ export default function Navigation({
                     </svg>
                     <div className="flex-1 min-w-0">
                       <span className="text-sm break-all block">
-                        jfjomefavourite@gmail.com
+                        hello@favouritejome.com
                       </span>
                     </div>
                   </a>
