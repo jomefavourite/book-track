@@ -401,11 +401,28 @@ export default function LandingV3() {
                     </li>
                   ))}
                 </ul>
-                <SignInButton mode="modal">
-                  <Button variant="secondary" size="lg" className="mt-10 px-8">
-                    Start a reading circle
+                <div className="mt-10 flex flex-wrap items-center gap-4">
+                  <SignInButton
+                    mode="modal"
+                    forceRedirectUrl="/communities/new"
+                    signUpForceRedirectUrl="/communities/new"
+                  >
+                    <Button variant="secondary" size="lg" className="px-8">
+                      Start a reading circle
+                    </Button>
+                  </SignInButton>
+                  <Button
+                    variant="ghost"
+                    size="lg"
+                    className="group px-4 text-background hover:bg-background/10 hover:text-background"
+                    asChild
+                  >
+                    <Link href="/communities">
+                      Browse communities
+                      <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+                    </Link>
                   </Button>
-                </SignInButton>
+                </div>
               </Reveal>
             </div>
 
