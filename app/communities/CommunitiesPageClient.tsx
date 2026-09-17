@@ -185,35 +185,30 @@ export default function CommunitiesPageClient() {
           )}
         </div>
 
-        {!isLoaded ? (
-          <section className="space-y-8">
+        <section className="space-y-8">
+          {isLoaded && !user && (
+            <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-foreground">
+                  Sign in to join communities
+                </h2>
+                <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+                  Browse public and private communities below. Sign in to join
+                  by invite or manage your own groups.
+                </p>
+              </div>
+              <SignInButton mode="modal">
+                <Button className="shrink-0">Sign In</Button>
+              </SignInButton>
+            </Card>
+          )}
+
+          {(!isLoaded || user) && (
             <div>
               <h2 className="mb-4 text-lg font-semibold text-foreground">
                 Your communities
               </h2>
-              <CommunityCardSkeletonGrid count={2} />
-            </div>
-          </section>
-        ) : !user ? (
-          <Card className="p-6 text-center sm:p-10">
-            <h2 className="text-xl font-semibold text-foreground">
-              Sign in to join communities
-            </h2>
-            <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-              You can discover public and private communities here, but you need
-              an account to join by invite or manage your groups.
-            </p>
-            <SignInButton mode="modal">
-              <Button className="mt-5">Sign In</Button>
-            </SignInButton>
-          </Card>
-        ) : (
-          <section className="space-y-8">
-            <div>
-              <h2 className="mb-4 text-lg font-semibold text-foreground">
-                Your communities
-              </h2>
-              {myPending ? (
+              {!isLoaded || myPending ? (
                 <CommunityCardSkeletonGrid count={2} />
               ) : ((myCommunities as CommunityPreview[] | undefined) ?? [])
                   .length === 0 ? (
@@ -231,27 +226,27 @@ export default function CommunitiesPageClient() {
                 </div>
               )}
             </div>
+          )}
 
-            <div>
-              <h2 className="mb-4 text-lg font-semibold text-foreground">
-                Discover communities
-              </h2>
-              {discoveryPending ? (
-                <CommunityCardSkeletonGrid count={2} />
-              ) : discoverableCommunities.length === 0 ? (
-                <Card className="p-6 text-sm text-muted-foreground">
-                  No additional communities are discoverable yet.
-                </Card>
-              ) : (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {discoverableCommunities.map((community) => (
-                    <CommunityCard key={community._id} community={community} />
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-        )}
+          <div>
+            <h2 className="mb-4 text-lg font-semibold text-foreground">
+              Discover communities
+            </h2>
+            {discoveryPending ? (
+              <CommunityCardSkeletonGrid count={2} />
+            ) : discoverableCommunities.length === 0 ? (
+              <Card className="p-6 text-sm text-muted-foreground">
+                No additional communities are discoverable yet.
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {discoverableCommunities.map((community) => (
+                  <CommunityCard key={community._id} community={community} />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
       </main>
     </>
   );
