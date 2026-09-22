@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
@@ -13,6 +14,9 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DetailPageSkeleton } from "@/components/CommunityCardSkeleton";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+type BookTab = "current" | "completed";
 
 type CommunityDetail = {
   _id: Id<"communities">;
@@ -57,6 +61,23 @@ export default function CommunityAnalyticsPageClient() {
   );
 
   const isPending = communityPending || (canViewAnalytics && progressPending);
+
+  const [activeTab, setActiveTab] = useState<BookTab>("current");
+
+  const { currentBooks, completedBooks } = useMemo(() => {
+    const current: NonNullable<typeof progressData> = [];
+    const completed: NonNullable<typeof progressData> = [];
+    for (const entry of progressData ?? []) {
+      if (entry.communityBook.status === "completed") {
+        completed.push(entry);
+      } else {
+        current.push(entry);
+      }
+    }
+    return { currentBooks: current, completedBooks: completed };
+  }, [progressData]);
+
+  const visibleBooks = activeTab === "completed" ? completedBooks : currentBooks;
 
   return (
     <>
@@ -113,8 +134,39 @@ export default function CommunityAnalyticsPageClient() {
                 </Button>
               </Card>
             ) : (
-              <div className="space-y-8">
-                {progressData.map(({ communityBook, members }) => (
+              <div className="space-y-6">
+                <Tabs
+                  value={activeTab}
+                  onValueChange={(value: string) =>
+                    setActiveTab(value as BookTab)
+                  }
+                  className="w-full"
+                >
+                  <TabsList className="w-full sm:w-auto">
+                    <TabsTrigger value="current" className="flex-1 sm:flex-none">
+                      Current ({currentBooks.length})
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="completed"
+                      className="flex-1 sm:flex-none"
+                    >
+                      Completed ({completedBooks.length})
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+
+                {visibleBooks.length === 0 ? (
+                  <Card className="p-8 text-center">
+                    <BookOpen className="mx-auto h-8 w-8 text-muted-foreground" />
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      {activeTab === "completed"
+                        ? "No completed books yet."
+                        : "No current books. Books appear here while they're upcoming or active."}
+                    </p>
+                  </Card>
+                ) : (
+                  <div className="space-y-8">
+                    {visibleBooks.map(({ communityBook, members }) => (
                   <Card
                     key={communityBook._id}
                     className="overflow-hidden p-5 sm:p-6"
@@ -176,7 +228,9 @@ export default function CommunityAnalyticsPageClient() {
                       )}
                     </div>
                   </Card>
-                ))}
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

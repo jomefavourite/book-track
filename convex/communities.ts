@@ -1576,7 +1576,11 @@ export const getCommunityMemberProgress = query({
       .query("communityBooks")
       .withIndex("by_community", (q) => q.eq("communityId", args.communityId))
       .collect();
-    const activeBooks = communityBooks.filter((b) => b.isArchived !== true);
+    // Only surface books that have started (active) or finished (completed);
+    // upcoming books stay hidden from analytics until they become active.
+    const activeBooks = communityBooks.filter(
+      (b) => b.isArchived !== true && b.status !== "upcoming"
+    );
 
     const memberDocs = await ctx.db
       .query("communityMembers")
@@ -1660,6 +1664,7 @@ export const getCommunityMemberProgress = query({
             endDate: communityBook.endDate,
             readingMode: communityBook.readingMode,
             daysToRead: communityBook.daysToRead,
+            status: communityBook.status ?? "upcoming",
           },
           members: memberProgress.sort((a, b) => b.progress - a.progress),
         };
