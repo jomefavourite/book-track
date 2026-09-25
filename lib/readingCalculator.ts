@@ -156,6 +156,54 @@ export function distributePagesAcrossDays(
   return distribution;
 }
 
+export interface PageRedistributionSession {
+  plannedPages: number;
+  actualPages?: number;
+  isRead: boolean;
+  isMissed?: boolean;
+}
+
+/**
+ * Replans every unread day from the reader's current progress.
+ *
+ * The newly missed date is passed separately because client query state may
+ * still contain its pre-mutation value while the write is in flight. Read and
+ * previously missed days remain fixed; the full unread balance is spread over
+ * the remaining eligible dates. Omitting it recalculates from fully settled
+ * session state, which also repairs plans saved before missed-day rebalancing.
+ */
+export function distributeRemainingPagesAcrossUnreadDays(
+  totalPages: number,
+  orderedDateKeys: string[],
+  sessionsByDate: Map<string, PageRedistributionSession>,
+  newlyMissedDateKey?: string
+): Map<string, number> {
+  const totalPagesRead = orderedDateKeys.reduce((sum, dateKey) => {
+    if (dateKey === newlyMissedDateKey) return sum;
+    const session = sessionsByDate.get(dateKey);
+    if (!session?.isRead || session.isMissed) return sum;
+    return sum + (session.actualPages ?? session.plannedPages ?? 0);
+  }, 0);
+
+  const eligibleDateKeys = orderedDateKeys.filter((dateKey) => {
+    if (dateKey === newlyMissedDateKey) return false;
+    const session = sessionsByDate.get(dateKey);
+    return !session?.isRead && !session?.isMissed;
+  });
+  const remainingPages = Math.max(0, totalPages - totalPagesRead);
+  const distribution = distributeAcrossReadingDays(
+    remainingPages,
+    eligibleDateKeys.length
+  );
+
+  return new Map(
+    eligibleDateKeys.map((dateKey, index) => [
+      dateKey,
+      distribution[index] ?? 0,
+    ])
+  );
+}
+
 export function distributeChaptersAcrossDays(
   totalChapters: number,
   startDate: Date,

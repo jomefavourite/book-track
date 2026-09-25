@@ -3,6 +3,7 @@ import {
   distributeAcrossReadingDays,
   balancePageTargets,
   balanceChapterTargets,
+  distributeRemainingPagesAcrossUnreadDays,
   type BalanceDay,
 } from "./readingCalculator";
 
@@ -18,6 +19,58 @@ describe("distributeAcrossReadingDays", () => {
 
   it("returns an empty array when there are no reading days", () => {
     expect(distributeAcrossReadingDays(10, 0)).toEqual([]);
+  });
+});
+
+describe("distributeRemainingPagesAcrossUnreadDays", () => {
+  it("spreads the unread balance across the remaining days after a missed day", () => {
+    const dateKeys = Array.from(
+      { length: 30 },
+      (_, index) => `2026-09-${String(index + 1).padStart(2, "0")}`
+    );
+    const completedPages = [22, 21, 8, 20, 11];
+    const completedDates = [1, 2, 3, 4, 6];
+    const sessions = new Map(
+      dateKeys.map((dateKey, index) => [
+        dateKey,
+        {
+          plannedPages: index < 18 ? 12 : 11,
+          actualPages: completedDates.includes(index + 1)
+            ? completedPages[completedDates.indexOf(index + 1)]
+            : undefined,
+          isRead: completedDates.includes(index + 1),
+          isMissed:
+            !completedDates.includes(index + 1) &&
+            index + 1 >= 5 &&
+            index + 1 <= 24,
+        },
+      ])
+    );
+
+    // The client snapshot still has Sep 24 as unread while its mutation is in
+    // flight, so the explicit newly-missed key must take precedence.
+    sessions.get("2026-09-24")!.isMissed = false;
+
+    const result = distributeRemainingPagesAcrossUnreadDays(
+      358,
+      dateKeys,
+      sessions,
+      "2026-09-24"
+    );
+
+    expect([...result.entries()]).toEqual(
+      dateKeys.slice(24).map((dateKey) => [dateKey, 46])
+    );
+
+    sessions.get("2026-09-24")!.isMissed = true;
+    const settledResult = distributeRemainingPagesAcrossUnreadDays(
+      358,
+      dateKeys,
+      sessions
+    );
+    expect([...settledResult.entries()]).toEqual(
+      dateKeys.slice(24).map((dateKey) => [dateKey, 46])
+    );
   });
 });
 

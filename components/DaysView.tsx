@@ -12,6 +12,7 @@ import { formatDateForStorage, parseDateFromStorage, formatTimerDuration, format
 import {
   calculateDailyPages,
   distributeChaptersAcrossDays,
+  distributeRemainingPagesAcrossUnreadDays,
 } from "@/lib/readingCalculator";
 import {
   getHighestChapterRead,
@@ -435,6 +436,15 @@ export default function DaysView({
     });
   }, [startDate, totalDays]);
 
+  const adaptivePageDistribution = useMemo(() => {
+    if (chapterOnlyMode || communityBookId) return new Map<string, number>();
+    return distributeRemainingPagesAcrossUnreadDays(
+      book.totalPages ?? 0,
+      days.map((day) => day.dateKey),
+      sessionsMap
+    );
+  }, [book.totalPages, chapterOnlyMode, communityBookId, days, sessionsMap]);
+
   // Community books follow the admin's schedule verbatim (its per-day chapter
   // targets), instead of a locally recomputed even distribution.
   const communityChapterTargets = useMemo(
@@ -540,7 +550,9 @@ export default function DaysView({
   const handleDayToggle = async (dateKey: string) => {
     if (!canEdit || !user?.id) return;
     const existingSession = sessionsMap.get(dateKey);
-    const defaultPlannedPages = chapterOnlyMode ? 0 : pagesPerDay;
+    const defaultPlannedPages = chapterOnlyMode
+      ? 0
+      : adaptivePageDistribution.get(dateKey) ?? pagesPerDay;
 
     if (existingSession) {
       // If already read, toggle to unrecorded
@@ -566,7 +578,10 @@ export default function DaysView({
           : getDefaultStopPageForDate({
               sessions,
               dateKey,
-              plannedPages: existingSession.plannedPages ?? pagesPerDay,
+              plannedPages:
+                adaptivePageDistribution.get(dateKey) ??
+                existingSession.plannedPages ??
+                pagesPerDay,
               totalPages: book.totalPages,
             });
         const chapterFields = chapterMode
@@ -720,8 +735,7 @@ export default function DaysView({
           isMissed: true,
           actualPages: existingSession.actualPages,
         });
-        // No redistribution needed when marking as missed - missed days are excluded from redistribution
-        return; // Exit early - no redistribution needed for missed days
+        await redistributePagesAfterMissed(dateKey);
       }
     } else {
       // No session exists - create one as missed
@@ -729,14 +743,48 @@ export default function DaysView({
         bookId,
         userId: user.id,
         date: dateKey,
-        plannedPages: chapterOnlyMode ? 0 : pagesPerDay,
+        plannedPages: chapterOnlyMode
+          ? 0
+          : adaptivePageDistribution.get(dateKey) ?? pagesPerDay,
         isRead: false,
         isMissed: true,
       });
-
-      // No redistribution needed when marking as missed - missed days are excluded from redistribution
-      return; // Exit early - no redistribution needed for missed days
+      await redistributePagesAfterMissed(dateKey);
     }
+  };
+
+  const redistributePagesAfterMissed = async (dateKey: string) => {
+    if (chapterOnlyMode || communityBookId || !user?.id) return;
+
+    const redistributedPages = distributeRemainingPagesAcrossUnreadDays(
+      book.totalPages ?? 0,
+      days.map((day) => day.dateKey),
+      sessionsMap,
+      dateKey
+    );
+
+    await Promise.all(
+      [...redistributedPages.entries()].map(([targetDateKey, plannedPages]) => {
+        const session = sessionsMap.get(targetDateKey);
+        if (session) {
+          return updateSession({
+            sessionId: session._id,
+            userId: user.id,
+            isRead: false,
+            isMissed: false,
+            plannedPages,
+          });
+        }
+        return createSession({
+          bookId,
+          userId: user.id,
+          date: targetDateKey,
+          plannedPages,
+          isRead: false,
+          isMissed: false,
+        });
+      })
+    );
   };
 
   const redistributePagesAfterUnread = async (dateKey: string) => {
@@ -1147,6 +1195,10 @@ export default function DaysView({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {days.map(({ dayNumber, date, dateKey }) => {
             const session = sessionsMap.get(dateKey);
+            const plannedPages =
+              adaptivePageDistribution.get(dateKey) ??
+              session?.plannedPages ??
+              pagesPerDay;
             const isRead = session?.isRead || false;
             const isMissed = session?.isMissed || false;
             const dayLabel = dayLabelByDate.get(dateKey) ?? DEFAULT_DAY_LABEL;
@@ -1346,7 +1398,7 @@ export default function DaysView({
                     <div className="mb-2 text-xs">
                       {chapterOnlyMode
                         ? `Target: Chapter ${targetChapter}`
-                        : `Plan: ${session?.plannedPages ?? pagesPerDay} pages`}
+                        : `Plan: ${plannedPages} pages`}
                     </div>
                   )
                 )}
@@ -1359,7 +1411,7 @@ export default function DaysView({
                   <div className="mb-2 text-xs">
                     {`Read: ${getPagesReadForDate(
                       dateKey,
-                      session?.plannedPages ?? pagesPerDay,
+                      plannedPages,
                       session
                     )} pages`}
                   </div>
@@ -1440,7 +1492,7 @@ export default function DaysView({
                               inputValues.get(dateKey) ??
                               getStopPageInputValue(
                                 dateKey,
-                                session?.plannedPages ?? pagesPerDay
+                                plannedPages
                               )
                             }
                             onChange={(e) =>
@@ -1545,7 +1597,7 @@ export default function DaysView({
                                   inputValues.get(dateKey) ??
                                   getStopPageInputValue(
                                     dateKey,
-                                    session?.plannedPages ?? pagesPerDay
+                                    plannedPages
                                   )
                                 }
                                 onChange={(e) =>

@@ -34,6 +34,7 @@ import { playTimerEndSound } from "@/lib/timerSound";
 import {
   distributePagesAcrossDays,
   distributeChaptersAcrossDays,
+  distributeRemainingPagesAcrossUnreadDays,
 } from "@/lib/readingCalculator";
 import {
   getHighestChapterRead,
@@ -655,6 +656,21 @@ export default function CalendarView({
     [readingPeriod]
   );
 
+  const adaptivePageDistribution = useMemo(() => {
+    if (chapterOnlyMode || communityBookId) return new Map<string, number>();
+    return distributeRemainingPagesAcrossUnreadDays(
+      book.totalPages ?? 0,
+      readingPeriodDays.map(formatDateForStorage),
+      sessionsMap
+    );
+  }, [
+    book.totalPages,
+    chapterOnlyMode,
+    communityBookId,
+    readingPeriodDays,
+    sessionsMap,
+  ]);
+
   const chapterSuggestions = useMemo(
     () =>
       // For community books, the admin's schedule is fixed — don't adaptively
@@ -729,7 +745,9 @@ export default function CalendarView({
     const existingSession = sessionsMap.get(dateKey);
     const plannedPages = chapterOnlyMode
       ? 0
-      : pageDistribution.get(dateKey) || 0;
+      : adaptivePageDistribution.get(dateKey) ??
+        pageDistribution.get(dateKey) ??
+        0;
 
     if (existingSession) {
       // If already read, toggle to unrecorded (remove session)
@@ -809,7 +827,7 @@ export default function CalendarView({
           : getDefaultStopPageForDate({
               sessions,
               dateKey,
-              plannedPages: existingSession.plannedPages ?? plannedPages,
+              plannedPages,
               totalPages: book.totalPages,
             });
         const chapterFields = chapterMode
@@ -895,7 +913,9 @@ export default function CalendarView({
     const existingSession = sessionsMap.get(dateKey);
     const plannedPages = chapterOnlyMode
       ? 0
-      : pageDistribution.get(dateKey) || 0;
+      : adaptivePageDistribution.get(dateKey) ??
+        pageDistribution.get(dateKey) ??
+        0;
 
     if (existingSession) {
       // If already missed, toggle to unrecorded
@@ -913,27 +933,63 @@ export default function CalendarView({
         }, 0);
       } else {
         // Not missed - mark as missed
-        updateSession({
+        await updateSession({
           sessionId: existingSession._id,
           userId: user.id,
           isRead: false,
           isMissed: true,
           actualPages: existingSession.actualPages,
-        }).catch(console.error);
-        // No redistribution needed when marking as missed - missed days are excluded from redistribution
+        });
+        await redistributePagesAfterMissed(dateKey);
       }
     } else {
       // No session exists - create one as missed
-      createSession({
+      await createSession({
         bookId,
         userId: user.id,
         date: dateKey,
         plannedPages,
         isRead: false,
         isMissed: true,
-      }).catch(console.error);
-      // No redistribution needed when marking as missed - missed days are excluded from redistribution
+      });
+      await redistributePagesAfterMissed(dateKey);
     }
+  };
+
+  const redistributePagesAfterMissed = async (dateKey: string) => {
+    if (chapterOnlyMode || communityBookId || !user?.id) return;
+
+    const redistributedPages = distributeRemainingPagesAcrossUnreadDays(
+      book.totalPages ?? 0,
+      getAllDaysInRange(readingPeriod.start, readingPeriod.end).map(
+        formatDateForStorage
+      ),
+      sessionsMap,
+      dateKey
+    );
+
+    await Promise.all(
+      [...redistributedPages.entries()].map(([targetDateKey, plannedPages]) => {
+        const session = sessionsMap.get(targetDateKey);
+        if (session) {
+          return updateSession({
+            sessionId: session._id,
+            userId: user.id,
+            isRead: false,
+            isMissed: false,
+            plannedPages,
+          });
+        }
+        return createSession({
+          bookId,
+          userId: user.id,
+          date: targetDateKey,
+          plannedPages,
+          isRead: false,
+          isMissed: false,
+        });
+      })
+    );
   };
 
   const redistributePagesAfterUnread = async (dateKey: string) => {
@@ -1588,7 +1644,9 @@ export default function CalendarView({
             const session = sessionsMap.get(dateKey);
             // Use session's plannedPages if available (dynamically calculated), otherwise use initial distribution
             const plannedPages =
-              session?.plannedPages ?? (pageDistribution.get(dateKey) || 0);
+              adaptivePageDistribution.get(dateKey) ??
+              session?.plannedPages ??
+              (pageDistribution.get(dateKey) || 0);
             const targetChapter = chapterOnlyMode
               ? getDisplayTargetChapterForDate(
                   dateKey,
