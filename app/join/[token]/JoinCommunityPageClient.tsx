@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { Lock, Users } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+import { trackActionFailed, trackEvent } from "@/lib/analytics";
 import Navigation from "@/components/Navigation";
 import CommunityThemeProvider from "@/components/CommunityThemeProvider";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,7 @@ export default function JoinCommunityPageClient() {
 
   const { mutateAsync: acceptInvite, isPending: acceptPending } = useMutation({
     mutationFn: useConvexMutation(api.communities.acceptInvite),
-    onSuccess: (result: { slug: string }) => {
+    onSuccess: (result: { slug: string; alreadyMember?: boolean }) => {
       queryClient.invalidateQueries({
         queryKey: convexQuery(api.communities.getMyCommunities, {}).queryKey,
       });
@@ -159,8 +160,13 @@ export default function JoinCommunityPageClient() {
                   if (acceptPending) return;
                   setError(null);
                   try {
-                    await acceptInvite({ token });
+                    const result = await acceptInvite({ token });
+                    trackEvent("invite_accepted", {
+                      already_member: Boolean(result.alreadyMember),
+                      visibility: preview.community.visibility,
+                    });
                   } catch (caught) {
+                    trackActionFailed("invite_accept", caught);
                     setError(
                       caught instanceof Error
                         ? caught.message

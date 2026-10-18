@@ -19,6 +19,7 @@ import {
   Users,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+import { trackActionFailed, trackEvent } from "@/lib/analytics";
 import type { Id } from "@/convex/_generated/dataModel";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -161,12 +162,14 @@ function LogoUploader({
       if (!response.ok) throw new Error("Upload failed");
       const { storageId } = await response.json();
       await saveCommunityLogo({ communityId, storageId });
+      trackEvent("community_image_uploaded", { kind: "logo" });
       onUploaded();
       toast({
         title: "Logo updated",
         description: "Your community logo has been saved.",
       });
-    } catch {
+    } catch (error) {
+      trackActionFailed("image_upload", error);
       toast({ title: "Logo upload failed", variant: "destructive" });
     } finally {
       setUploading(false);
@@ -683,6 +686,17 @@ export default function CommunitySettingsPageClient() {
                             usageMode === "limited"
                               ? Number(maxUses) || undefined
                               : undefined,
+                        });
+                        trackEvent("invite_created", {
+                          role: roleToGrant,
+                          expires_in_days:
+                            expirationMode === "limited"
+                              ? Number(expiresInDays) || null
+                              : null,
+                          max_uses:
+                            usageMode === "limited"
+                              ? Number(maxUses) || null
+                              : null,
                         });
                         toast({
                           title: "Invite link created",

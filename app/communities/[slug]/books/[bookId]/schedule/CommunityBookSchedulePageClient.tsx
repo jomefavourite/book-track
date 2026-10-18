@@ -8,6 +8,7 @@ import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { format, getDay } from "date-fns";
 import { ArrowLeft, Loader2, Tags } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+import { trackEvent } from "@/lib/analytics";
 import type { Id } from "@/convex/_generated/dataModel";
 import Navigation from "@/components/Navigation";
 import CommunityThemeProvider from "@/components/CommunityThemeProvider";
@@ -590,6 +591,7 @@ export default function CommunityBookSchedulePageClient() {
           };
         }),
       });
+      trackEvent("community_schedule_saved", { day_count: draft.length });
       toast({
         title: "Schedule saved",
         description:

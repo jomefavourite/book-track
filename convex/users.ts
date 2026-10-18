@@ -92,7 +92,7 @@ export const syncUser = mutation({
         });
       }
 
-      return existing._id;
+      return { userId: existing._id, isNew: false };
     }
 
     const userId = await ctx.db.insert("users", {
@@ -104,7 +104,7 @@ export const syncUser = mutation({
       createdAt: now,
       updatedAt: now,
     });
-    return userId;
+    return { userId, isNew: true };
   },
 });
 

@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { ArrowLeft, Lock, Search } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+import { trackActionFailed, trackEvent } from "@/lib/analytics";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -75,7 +76,14 @@ export default function NewCommunityPageClient() {
         tiktokUrl,
         websiteUrl,
       });
+      trackEvent("community_created", {
+        visibility,
+        has_social_links: Boolean(
+          instagramUrl.trim() || tiktokUrl.trim() || websiteUrl.trim()
+        ),
+      });
     } catch (caught) {
+      trackActionFailed("community_create", caught);
       setIsSubmitting(false);
       setError(caught instanceof Error ? caught.message : "Unable to create community.");
     }
@@ -150,6 +158,7 @@ export default function NewCommunityPageClient() {
                 setIsRequesting(true);
                 try {
                   await requestAccess({ reason });
+                  trackEvent("community_creator_requested");
                 } finally {
                   setIsRequesting(false);
                 }

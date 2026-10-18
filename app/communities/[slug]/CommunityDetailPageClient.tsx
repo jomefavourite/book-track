@@ -24,6 +24,7 @@ import {
   Users,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+import { trackEvent } from "@/lib/analytics";
 import type { Id } from "@/convex/_generated/dataModel";
 import Navigation from "@/components/Navigation";
 import CommunityThemeProvider from "@/components/CommunityThemeProvider";
@@ -202,6 +203,7 @@ export default function CommunityDetailPageClient() {
         return;
       }
       setActiveConflict(null);
+      trackEvent("community_book_status_changed", { status });
     } catch {
       toast({
         title: "Could not update book status",

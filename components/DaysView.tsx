@@ -36,6 +36,7 @@ import CatchUpSuggestion from "./CatchUpSuggestion";
 import { Input } from "./ui/input";
 import { ChevronDown, Timer } from "lucide-react";
 import { filterStaleSessions } from "@/lib/resetGeneration";
+import { trackEvent } from "@/lib/analytics";
 import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
 import ReflectionNoteEditor from "./ReflectionNoteEditor";
 import {
@@ -547,6 +548,14 @@ export default function DaysView({
     });
   };
 
+  const trackDayLogged = (status: "read" | "missed") =>
+    trackEvent("reading_day_logged", {
+      status,
+      view: "days",
+      progress_style: book.progressStyle ?? "pages",
+      is_community_book: Boolean(communityBookId),
+    });
+
   const handleDayToggle = async (dateKey: string) => {
     if (!canEdit || !user?.id) return;
     const existingSession = sessionsMap.get(dateKey);
@@ -605,7 +614,9 @@ export default function DaysView({
           isMissed: false,
           ...(chapterOnlyMode ? {} : markPages),
           ...chapterFields,
-        }).catch(console.error);
+        })
+          .then(() => trackDayLogged("read"))
+          .catch(console.error);
         if (!chapterOnlyMode) {
           // Redistribute after marking as read (non-blocking)
           setTimeout(() => {
@@ -647,7 +658,9 @@ export default function DaysView({
         isRead: true,
         isMissed: false,
         ...chapterFields,
-      }).catch(console.error);
+      })
+        .then(() => trackDayLogged("read"))
+        .catch(console.error);
 
       if (!chapterOnlyMode) {
         // Redistribute after marking as read (non-blocking)
@@ -735,6 +748,7 @@ export default function DaysView({
           isMissed: true,
           actualPages: existingSession.actualPages,
         });
+        trackDayLogged("missed");
         await redistributePagesAfterMissed(dateKey);
       }
     } else {
@@ -749,6 +763,7 @@ export default function DaysView({
         isRead: false,
         isMissed: true,
       });
+      trackDayLogged("missed");
       await redistributePagesAfterMissed(dateKey);
     }
   };
@@ -952,6 +967,12 @@ export default function DaysView({
       userId: user.id,
       reflectionNote: note,
     });
+    if (note.trim()) {
+      trackEvent("reflection_saved", {
+        view: "days",
+        note_length: note.trim().length,
+      });
+    }
   };
 
   const updateFollowingExplicitStopPages = async (

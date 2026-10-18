@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { formatCountdown } from "@/lib/dateUtils";
+import { trackEvent } from "@/lib/analytics";
 
 // Exported so parents can hold timer state
 export type TimerPhase =
@@ -118,6 +119,7 @@ export default function ReadingTimer({
     } finally {
       setSaving(false);
     }
+    trackEvent("reading_timer_started", { duration_sec: totalSec });
     onStart(totalSec);
   }
 

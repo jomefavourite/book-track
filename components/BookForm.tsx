@@ -25,6 +25,7 @@ import { useEffect } from "react";
 import DatePicker from "@/components/DatePicker";
 import TagInput from "@/components/TagInput";
 import { sanitizeTags } from "@/lib/bookTags";
+import { trackActionFailed, trackEvent } from "@/lib/analytics";
 
 interface BookFormProps {
   book?: {
@@ -441,9 +442,17 @@ export default function BookForm({
           totalChapters: totalChaptersValue,
         });
 
+        trackEvent("book_created", {
+          reading_mode: readingMode,
+          progress_style: progressStyle,
+          is_public: Boolean(isPublic),
+          total_days: daysToReadValue ?? totalDays ?? null,
+          tag_count: tagsValue?.length ?? 0,
+        });
         router.push(`/books/${bookId}`);
       }
     } catch (error) {
+      trackActionFailed(isEditMode ? "book_update" : "book_create", error);
       console.error(
         `Error ${isEditMode ? "updating" : "creating"} book:`,
         error

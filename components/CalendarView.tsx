@@ -79,6 +79,7 @@ import {
   type ResolvedDayLabel,
 } from "@/lib/scheduleDayType";
 import type { CatchUpSchedule } from "@/lib/catchUpPlanning";
+import { trackEvent } from "@/lib/analytics";
 
 interface CalendarViewProps {
   bookId: Id<"books">;
@@ -739,6 +740,14 @@ export default function CalendarView({
     });
   };
 
+  const trackDayLogged = (status: "read" | "missed") =>
+    trackEvent("reading_day_logged", {
+      status,
+      view: "calendar",
+      progress_style: book.progressStyle ?? "pages",
+      is_community_book: Boolean(communityBookId),
+    });
+
   const handleDayToggle = async (date: Date) => {
     if (!canEdit || !user?.id) return;
     const dateKey = formatDateForStorage(date);
@@ -852,6 +861,7 @@ export default function CalendarView({
           ...(chapterOnlyMode ? {} : markPages),
           ...chapterFields,
         });
+        trackDayLogged("read");
         if (!chapterOnlyMode) {
           // Redistribute after marking as read
           await redistributePages(
@@ -895,6 +905,7 @@ export default function CalendarView({
         isMissed: false,
         ...chapterFields,
       });
+      trackDayLogged("read");
 
       if (!chapterOnlyMode) {
         // Redistribute after marking as read
@@ -940,6 +951,7 @@ export default function CalendarView({
           isMissed: true,
           actualPages: existingSession.actualPages,
         });
+        trackDayLogged("missed");
         await redistributePagesAfterMissed(dateKey);
       }
     } else {
@@ -952,6 +964,7 @@ export default function CalendarView({
         isRead: false,
         isMissed: true,
       });
+      trackDayLogged("missed");
       await redistributePagesAfterMissed(dateKey);
     }
   };
@@ -1170,6 +1183,12 @@ export default function CalendarView({
       userId: user.id,
       reflectionNote: note,
     });
+    if (note.trim()) {
+      trackEvent("reflection_saved", {
+        view: "calendar",
+        note_length: note.trim().length,
+      });
+    }
   };
 
   const updateFollowingExplicitStopPages = async (
