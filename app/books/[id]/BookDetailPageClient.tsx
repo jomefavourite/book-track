@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
@@ -13,6 +13,7 @@ import {
   filterStaleSessions,
 } from "@/lib/resetGeneration";
 import { computeReadingProgressSummary } from "@/lib/readingProgressSummary";
+import { trackEvent } from "@/lib/analytics";
 import {
   buildDayBehaviorMap,
   scheduleChapterTargets,
@@ -83,7 +84,7 @@ export default function BookDetailPage() {
   });
 
   // Get reading sessions for progress calculation
-  const { data: sessions = [] } = useQuery({
+  const { data: sessions = [], isSuccess: sessionsLoaded } = useQuery({
     ...convexQuery(api.readingSessions.getSessionsForBook, {
       bookId,
       userId: user?.id,
@@ -147,6 +148,7 @@ export default function BookDetailPage() {
       await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      trackEvent("book_link_copied");
     } catch {
       // Fallback for browsers that don't support clipboard API
       const textArea = document.createElement("textarea");
@@ -157,6 +159,7 @@ export default function BookDetailPage() {
       textArea.select();
       try {
         document.execCommand("copy");
+        trackEvent("book_link_copied");
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       } catch {
@@ -230,6 +233,18 @@ export default function BookDetailPage() {
     }, 0);
     return (totalPagesRead / book.totalPages) * 100;
   }, [book, activeSessions, chapterOnlyMode]);
+
+  // Fire book_completed once when logged progress crosses 100% during this visit,
+  // not when opening a book that was already finished.
+  const previousProgressRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!book || !sessionsLoaded || !canEdit) return;
+    const previous = previousProgressRef.current;
+    previousProgressRef.current = sessionProgressPercent;
+    if (previous !== null && previous < 100 && sessionProgressPercent >= 100) {
+      trackEvent("book_completed", { method: "progress" });
+    }
+  }, [book, sessionsLoaded, canEdit, sessionProgressPercent]);
 
   const invalidateBookProgressQueries = async () => {
     await queryClient.invalidateQueries({
@@ -806,10 +821,15 @@ export default function BookDetailPage() {
                       disabled={shareReflectionPending || !book.isPublic}
                       onClick={() => {
                         if (!user?.id) return;
+                        const shareMergedReflection = !book.shareMergedReflection;
                         void setMergedReflectionSharing({
                           bookId,
                           userId: user.id,
-                          shareMergedReflection: !book.shareMergedReflection,
+                          shareMergedReflection,
+                        }).then(() => {
+                          if (shareMergedReflection) {
+                            trackEvent("reflections_shared");
+                          }
                         });
                       }}
                       title={
@@ -981,6 +1001,7 @@ export default function BookDetailPage() {
                 if (!user?.id) return;
                 try {
                   await markBookCompleted({ bookId, userId: user.id });
+                  trackEvent("book_completed", { method: "manual" });
                   setMarkCompleteOpen(false);
                 } catch (e) {
                   console.error(e);
@@ -1070,6 +1091,7 @@ export default function BookDetailPage() {
                     userId: user.id,
                     startDate: formatDateForStorage(new Date()),
                   });
+                  trackEvent("book_restarted");
                   setResetOpen(false);
                   router.push(`/books/${bookId}/edit?reset=1`);
                 } catch (e) {

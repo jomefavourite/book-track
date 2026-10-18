@@ -3,6 +3,7 @@
 import { useUser, SignInButton, SignOutButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { trackEvent } from "@/lib/analytics";
 
 export default function AuthButton() {
   const { isLoaded, isSignedIn } = useUser();
@@ -14,7 +15,11 @@ export default function AuthButton() {
   if (isSignedIn) {
     return (
       <SignOutButton>
-        <Button variant="default" size="sm">
+        <Button
+          variant="default"
+          size="sm"
+          onClick={() => trackEvent("logout", { location: "header" })}
+        >
           Sign Out
         </Button>
       </SignOutButton>

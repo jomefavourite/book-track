@@ -11,6 +11,7 @@ import { Bell, Settings as SettingsIcon, User, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
 import AuthButton from "@/components/AuthButton";
+import { trackEvent } from "@/lib/analytics";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -411,7 +412,10 @@ export default function Navigation({
                           </Link>
                         </DropdownMenuItem>
                         <SignOutButton>
-                        <DropdownMenuItem className="cursor-pointer py-3">
+                        <DropdownMenuItem
+                          className="cursor-pointer py-3"
+                          onClick={() => trackEvent("logout", { location: "nav_menu" })}
+                        >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             className="mr-2 h-4 w-4"

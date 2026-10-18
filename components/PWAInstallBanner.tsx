@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X, Share, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { trackEvent } from "@/lib/analytics";
 
 type InstallMode = "chrome" | "ios" | null;
 
@@ -54,7 +55,10 @@ export default function PWAInstallBanner() {
     if (!deferredPrompt) return;
     await deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === "accepted") setVisible(false);
+    if (outcome === "accepted") {
+      trackEvent("pwa_installed");
+      setVisible(false);
+    }
     setDeferredPrompt(null);
   }
 

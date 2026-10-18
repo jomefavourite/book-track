@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useAction, useMutation as useConvexMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { trackActionFailed, trackEvent } from "@/lib/analytics";
 import { useUser, useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import Navigation from "@/components/Navigation";
@@ -314,10 +315,15 @@ export default function SettingsPage() {
         await persistPushSubscription(subscription);
       }
 
+      trackEvent("reminders_saved", {
+        enabled,
+        reminder_count: reminder2Enabled ? 2 : 1,
+      });
       setSavePending(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err) {
+      trackActionFailed("reminder_save", err);
       setSavePending(false);
       setSaveError(
         err instanceof Error ? err.message : "Failed to save settings"

@@ -8,6 +8,7 @@ import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { ArrowLeft, ImagePlus, X } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { api } from "@/convex/_generated/api";
+import { trackEvent } from "@/lib/analytics";
 import type { Id } from "@/convex/_generated/dataModel";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -200,6 +201,11 @@ export default function NewCommunityBookPageClient() {
         daysToRead: daysToReadValue,
         startDate: startDateValue,
         endDate: endDateValue,
+      });
+      trackEvent("community_book_created", {
+        reading_mode: readingMode,
+        progress_style: progressStyle,
+        has_cover: Boolean(coverImageStorageId),
       });
     } catch (caught) {
       setIsSubmitting(false);

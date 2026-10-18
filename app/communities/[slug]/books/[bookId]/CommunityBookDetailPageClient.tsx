@@ -18,6 +18,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+import { trackActionFailed, trackEvent } from "@/lib/analytics";
 import type { Id } from "@/convex/_generated/dataModel";
 import Navigation from "@/components/Navigation";
 import CommunityThemeProvider from "@/components/CommunityThemeProvider";
@@ -190,8 +191,10 @@ export default function CommunityBookDetailPageClient() {
     setTrackError(null);
     try {
       const bookId = await trackBook({ communityBookId });
+      trackEvent("community_book_tracked");
       router.push(`/books/${bookId}`);
     } catch (caught) {
+      trackActionFailed("community_book_track", caught);
       setTrackError(
         caught instanceof Error ? caught.message : "Unable to start tracking."
       );
@@ -211,13 +214,15 @@ export default function CommunityBookDetailPageClient() {
       if (!response.ok) throw new Error("Upload failed");
       const { storageId } = await response.json();
       await saveCover({ communityBookId, storageId });
+      trackEvent("community_image_uploaded", { kind: "cover" });
       queryClient.invalidateQueries({
         queryKey: convexQuery(api.communities.getCommunityBook, {
           communityBookId,
         }).queryKey,
       });
       toast({ title: "Cover updated" });
-    } catch {
+    } catch (error) {
+      trackActionFailed("image_upload", error);
       toast({ title: "Cover upload failed", variant: "destructive" });
     } finally {
       setCoverUploading(false);
