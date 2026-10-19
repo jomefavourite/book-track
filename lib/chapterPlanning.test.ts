@@ -260,3 +260,37 @@ describe("getDisplayTargetChapterForDate", () => {
     ).toBe(unreadTarget);
   });
 });
+
+describe("computeChapterSuggestions (chapter + pages tracking)", () => {
+  const days = [
+    new Date(2026, 9, 13),
+    new Date(2026, 9, 14),
+    new Date(2026, 9, 15),
+  ];
+
+  it("moves to the next chapter after a completed day", () => {
+    const sessions = new Map<string, ChapterSessionLike>([
+      ["2026-10-13", { isRead: true, chapterNumber: 7 }],
+    ]);
+    const s = computeChapterSuggestions(days, (k) => sessions.get(k), 15, new Map(), false);
+    expect(s.get("2026-10-13")).toBe(7);
+    expect(s.get("2026-10-14")).toBe(8);
+    expect(s.get("2026-10-15")).toBe(8);
+  });
+
+  it("carries the chapter forward when the day is not marked read", () => {
+    const sessions = new Map<string, ChapterSessionLike>([
+      ["2026-10-13", { isRead: false, chapterNumber: 7 }],
+    ]);
+    const s = computeChapterSuggestions(days, (k) => sessions.get(k), 15, new Map(), false);
+    expect(s.get("2026-10-14")).toBe(7);
+  });
+
+  it("does not go past the last chapter", () => {
+    const sessions = new Map<string, ChapterSessionLike>([
+      ["2026-10-13", { isRead: true, chapterNumber: 15 }],
+    ]);
+    const s = computeChapterSuggestions(days, (k) => sessions.get(k), 15, new Map(), false);
+    expect(s.get("2026-10-14")).toBe(15);
+  });
+});

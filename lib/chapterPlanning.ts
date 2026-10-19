@@ -68,23 +68,36 @@ export function computeChapterSuggestions(
     return suggestions;
   }
 
-  let lastKnownChapter = 1;
+  // Chapter + pages tracking: carry the last logged chapter forward. Once a
+  // day is marked read, the following days move on to the next chapter.
+  const clamp = (chapter: number) =>
+    Math.max(
+      1,
+      chapterDropdownMax !== null
+        ? Math.min(chapter, chapterDropdownMax)
+        : chapter
+    );
+
+  let nextChapter = 1;
   readingPeriodDays.forEach((day) => {
     const dateKey = formatDateForStorage(day);
-    const sessionChapter = getSessionForDate(dateKey)?.chapterNumber;
+    const session = getSessionForDate(dateKey);
+    const sessionChapter = session?.chapterNumber;
+
     if (
       sessionChapter !== undefined &&
       sessionChapter !== null &&
       sessionChapter >= 1
     ) {
-      lastKnownChapter = sessionChapter;
+      suggestions.set(dateKey, clamp(sessionChapter));
+      nextChapter =
+        session?.isRead && !session?.isMissed
+          ? sessionChapter + 1
+          : sessionChapter;
+      return;
     }
 
-    if (chapterDropdownMax !== null) {
-      lastKnownChapter = Math.min(lastKnownChapter, chapterDropdownMax);
-    }
-
-    suggestions.set(dateKey, Math.max(1, lastKnownChapter));
+    suggestions.set(dateKey, clamp(nextChapter));
   });
 
   return suggestions;
