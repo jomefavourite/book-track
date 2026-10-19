@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import Navigation from "@/components/Navigation";
 import PWAInstallBanner from "@/components/PWAInstallBanner";
 import Footer from "@/components/Footer";
+import { trackEvent } from "@/lib/analytics";
 import {
   Reveal,
   Marquee,
@@ -84,7 +85,11 @@ export default function LandingV3() {
             style={{ animationDelay: "550ms" }}
           >
             <SignInButton mode="modal">
-              <Button size="lg" className="group px-8 text-base">
+              <Button
+                size="lg"
+                className="group px-8 text-base"
+                onClick={() => trackEvent("signup_started", { location: "hero" })}
+              >
                 Start reading free
                 <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
               </Button>
@@ -407,7 +412,14 @@ export default function LandingV3() {
                     forceRedirectUrl="/communities/new"
                     signUpForceRedirectUrl="/communities/new"
                   >
-                    <Button variant="secondary" size="lg" className="px-8">
+                    <Button
+                      variant="secondary"
+                      size="lg"
+                      className="px-8"
+                      onClick={() =>
+                        trackEvent("signup_started", { location: "reading_circle" })
+                      }
+                    >
                       Start a reading circle
                     </Button>
                   </SignInButton>
@@ -508,7 +520,11 @@ export default function LandingV3() {
             </p>
             <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
               <SignInButton mode="modal">
-                <Button size="lg" className="group px-10 text-base">
+                <Button
+                  size="lg"
+                  className="group px-10 text-base"
+                  onClick={() => trackEvent("signup_started", { location: "footer_cta" })}
+                >
                   Get started free
                   <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
                 </Button>

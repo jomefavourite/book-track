@@ -18,11 +18,21 @@ declare global {
   }
 }
 
-/** Sends a Sabilytics custom event. No-ops on the server or if the script hasn't loaded. */
-export function trackEvent(name: string, props?: TrackProps) {
+/**
+ * Sends a Sabilytics custom event. If the script hasn't loaded yet (e.g. right
+ * after a post-signup redirect), retries for up to ~5s before giving up.
+ */
+export function trackEvent(name: string, props?: TrackProps, attempt = 0) {
   if (typeof window === "undefined") return;
+  const track = window.sabilytics?.track;
+  if (!track) {
+    if (attempt < 20) {
+      window.setTimeout(() => trackEvent(name, props, attempt + 1), 250);
+    }
+    return;
+  }
   try {
-    window.sabilytics?.track?.(name, props);
+    track(name, props);
   } catch {
     // Analytics must never break the app.
   }
