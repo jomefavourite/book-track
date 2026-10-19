@@ -2622,7 +2622,7 @@ function DayDetailModal({
                             onChapterSelect(e.target.value);
                           }}
                           disabled={!canEdit}
-                          className="w-full rounded-md border border-input bg-background px-4 py-3 text-lg font-semibold text-foreground"
+                          className="h-14 w-full rounded-md border border-input bg-background px-4 text-lg font-semibold text-foreground"
                         >
                           {Array.from(
                             { length: chapterMax },
@@ -2650,7 +2650,7 @@ function DayDetailModal({
                           }}
                           disabled={!canEdit}
                           min="1"
-                          className="w-full px-4 py-3 text-lg font-semibold"
+                          className="h-14 w-full px-4 text-lg font-semibold"
                           placeholder="Chapter number"
                         />
                       )}
@@ -2672,7 +2672,7 @@ function DayDetailModal({
                         disabled={!canEdit}
                         min="0"
                         max={maxStopPage}
-                        className="w-full px-4 py-3 text-lg font-semibold"
+                        className="h-14 w-full px-4 text-lg font-semibold"
                         placeholder="Stop"
                       />
                     </div>
