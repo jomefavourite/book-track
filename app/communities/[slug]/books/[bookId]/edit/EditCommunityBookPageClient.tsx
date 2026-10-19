@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { ArrowLeft, ImagePlus, X } from "lucide-react";
-import { differenceInDays } from "date-fns";
+import { differenceInCalendarDays } from "date-fns";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import Navigation from "@/components/Navigation";
@@ -163,7 +163,7 @@ export default function EditCommunityBookPageClient() {
         return;
       }
       daysToReadValue =
-        differenceInDays(
+        differenceInCalendarDays(
           parseDateFromStorage(endDate),
           parseDateFromStorage(startDate)
         ) + 1;
@@ -231,7 +231,7 @@ export default function EditCommunityBookPageClient() {
     startDate &&
     endDate &&
     parseDateFromStorage(endDate) >= parseDateFromStorage(startDate)
-      ? differenceInDays(
+      ? differenceInCalendarDays(
           parseDateFromStorage(endDate),
           parseDateFromStorage(startDate)
         ) + 1

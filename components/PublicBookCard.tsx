@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
 import { parseDateFromStorage } from "@/lib/dateUtils";
 import { isChapterOnlyBook } from "@/lib/chapterTracking";
 import { Card } from "@/components/ui/card";
@@ -92,7 +92,7 @@ export default function PublicBookCard({
             </p>
             <p>
               {(() => {
-                const days = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
+                const days = differenceInCalendarDays(endDate, startDate) + 1; // +1 to include both start and end days
                 return `${format(startDate, "MMMM d, yyyy")} - ${format(endDate, "MMMM d, yyyy")} (${days} day${days !== 1 ? "s" : ""})`;
               })()}
             </p>

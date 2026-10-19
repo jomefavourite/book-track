@@ -6,7 +6,8 @@ import { useConvexMutation, convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import {
   format,
-  differenceInDays,
+  differenceInCalendarDays,
+  startOfDay,
 } from "date-fns";
 import {
   MONTHS,
@@ -130,7 +131,7 @@ export default function BookForm({
     if (initialBook?.startDate) {
       return parseDateFromStorage(initialBook.startDate);
     }
-    return new Date();
+    return startOfDay(new Date());
   };
 
   const getInitialEndDate = (): Date | null => {
@@ -173,7 +174,7 @@ export default function BookForm({
   const calculateTotalDays = (): number | null => {
     if (!startDate || !endDate) return null;
     if (endDate < startDate) return null;
-    return differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
+    return differenceInCalendarDays(endDate, startDate) + 1; // +1 to include both start and end days
   };
 
   const totalDays = calculateTotalDays();
@@ -273,7 +274,7 @@ export default function BookForm({
         endDateValue = formatDateForStorage(endDate);
 
         // Calculate total days
-        const days = differenceInDays(endDate, startDate) + 1;
+        const days = differenceInCalendarDays(endDate, startDate) + 1;
         daysToReadValue = days;
 
         // Derive month/year values for backward compatibility

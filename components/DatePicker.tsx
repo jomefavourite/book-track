@@ -16,6 +16,7 @@ import {
   isToday,
   setMonth,
   setYear,
+  startOfDay,
 } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -121,7 +122,7 @@ export default function DatePicker({
   };
 
   const handleToday = () => {
-    const today = new Date();
+    const today = startOfDay(new Date());
     setCurrentMonth(startOfMonth(today));
     onDateSelect(today);
   };

@@ -7,7 +7,7 @@ import { useConvexMutation, convexQuery } from "@convex-dev/react-query";
 import { useUser } from "@clerk/nextjs";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
 import { parseDateFromStorage } from "@/lib/dateUtils";
 import { isChapterOnlyBook } from "@/lib/chapterTracking";
 import { Button } from "@/components/ui/button";
@@ -181,7 +181,7 @@ export default function ArchivedBookCard({
               </p>
               <p className="wrap-break-word sm:break-normal">
                 {(() => {
-                  const days = differenceInDays(endDate, startDate) + 1; // +1 to include both start and end days
+                  const days = differenceInCalendarDays(endDate, startDate) + 1; // +1 to include both start and end days
                   return `${format(startDate, "MMMM d, yyyy")} - ${format(endDate, "MMMM d, yyyy")} (${days} day${days !== 1 ? "s" : ""})`;
                 })()}
               </p>

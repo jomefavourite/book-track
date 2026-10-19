@@ -6,7 +6,7 @@ import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useUser, SignInButton } from "@clerk/nextjs";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
 import { parseDateFromStorage, formatDateForStorage } from "@/lib/dateUtils";
 import {
   filterActiveSessions,
@@ -588,7 +588,7 @@ export default function BookDetailPage() {
               (() => {
                 const start = parseDateFromStorage(book.startDate);
                 const end = parseDateFromStorage(book.endDate);
-                const days = differenceInDays(end, start) + 1; // +1 to include both start and end days
+                const days = differenceInCalendarDays(end, start) + 1; // +1 to include both start and end days
 
                 // Always show actual dates with month, day, and year
                 return (
