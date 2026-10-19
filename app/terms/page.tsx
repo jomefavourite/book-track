@@ -93,18 +93,18 @@ export default function TermsPage() {
 
       <LegalSection id="ending" title="Ending your use">
         <p>
-          You can stop using BookTrackr and ask us to delete your account at
-          any time by emailing <ContactEmail />{" "}from the address on your
-          account. We&apos;ll confirm the request and complete it within one
-          month.
+          You can stop using BookTrackr and delete your account at any time
+          from <strong>Settings → Delete account</strong>. If you can&apos;t
+          sign in, email <ContactEmail />{" "}from the address on your account
+          and we&apos;ll complete the deletion within one month.
         </p>
         <p>
           When your account is deleted, we permanently remove your profile,
           books, reading logs, reflection notes, tags, reminder settings and
           push subscriptions from our database, and delete your sign-in
           account. Your public books and profile stop being visible straight
-          away. If you own a community, we&apos;ll first ask whether to hand it
-          over to another admin or delete it. Copies in our encrypted backups
+          away. If you own a community, you&apos;ll first need to delete it or ask
+          us to hand it over to another admin. Copies in our encrypted backups
           are removed automatically when those backups expire. Anonymous
           analytics that can&apos;t identify you are kept. See our{" "}
           <LegalLink href="/privacy#retention">Privacy Policy</LegalLink>{" "}for

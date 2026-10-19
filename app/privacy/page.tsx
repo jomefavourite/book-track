@@ -181,9 +181,11 @@ export default function PrivacyPage() {
           isn&apos;t linked to your account and is kept in aggregate.
         </p>
         <p>
-          If you own a community, we&apos;ll ask whether to hand it over to
-          another admin or delete it before we delete your account, so other
-          members don&apos;t lose access without warning.
+          If you own a community, you&apos;ll need to delete it, or ask us to
+          hand it over to another admin, before you can delete your account,
+          so other members don&apos;t lose access without warning. Books you
+          added to someone else&apos;s community stay with that community, but
+          your name is removed from them.
         </p>
       </LegalSection>
 
@@ -203,10 +205,11 @@ export default function PrivacyPage() {
         </LegalList>
         <p>
           You can edit your books, sharing settings and reminders yourself in
-          the app. For anything else, including deleting your account, email{" "}
-          <ContactEmail />{" "}from the address on your account. We may ask you to
-          confirm the request so we know it&apos;s really you, and we&apos;ll
-          respond within one month. You can also complain to your local data
+          the app. You can delete your account at any time from{" "}
+          <strong>Settings → Delete account</strong>. For anything else, or
+          if you can&apos;t sign in, email <ContactEmail />{" "}from the address
+          on your account. We may ask you to confirm the request so we know
+          it&apos;s really you, and we&apos;ll respond within one month. You can also complain to your local data
           protection authority.
         </p>
       </LegalSection>

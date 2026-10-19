@@ -24,6 +24,9 @@ export default function Footer() {
           <Link href="/terms" className="underline-offset-4 hover:underline">
             Terms
           </Link>
+          <Link href="/sitemap" className="underline-offset-4 hover:underline">
+            Sitemap
+          </Link>
         </nav>
         <p>
           Built by{" "}

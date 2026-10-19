@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as account from "../account.js";
 import type * as bookProgress from "../bookProgress.js";
 import type * as books from "../books.js";
 import type * as communities from "../communities.js";
@@ -32,6 +33,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  account: typeof account;
   bookProgress: typeof bookProgress;
   books: typeof books;
   communities: typeof communities;
