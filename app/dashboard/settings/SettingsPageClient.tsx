@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { FormPageSkeleton } from "@/components/CommunityCardSkeleton";
 import TagManager from "@/components/TagManager";
+import DeleteAccountSection from "@/components/DeleteAccountSection";
 
 const DEFAULT_REMINDER_TIME = "20:00";
 const DEFAULT_TIMEZONE = "Africa/Lagos";
@@ -588,6 +589,10 @@ export default function SettingsPage() {
 
         <div className="mt-6">
           <TagManager />
+        </div>
+
+        <div className="mt-6">
+          <DeleteAccountSection />
         </div>
       </div>
     </>

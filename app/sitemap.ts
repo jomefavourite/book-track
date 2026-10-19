@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { getSiteUrl } from "@/lib/metadata";
+import { getIndexableSiteMapPages } from "@/lib/siteMap";
 
 // Revalidate the sitemap hourly so newly-shared public content gets indexed
 // without rebuilding, while keeping Convex load low.
@@ -21,26 +22,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const siteUrl = getSiteUrl();
   const now = new Date();
 
-  const staticEntries: SitemapEntry[] = [
-    {
-      url: `${siteUrl}/`,
+  // Top-level pages come from lib/siteMap.ts, which also powers /sitemap.
+  const staticEntries: SitemapEntry[] = getIndexableSiteMapPages().map(
+    (page) => ({
+      url: `${siteUrl}${page.path}`,
       lastModified: now,
-      changeFrequency: "daily",
-      priority: 1,
-    },
-    {
-      url: `${siteUrl}/public`,
-      lastModified: now,
-      changeFrequency: "daily",
-      priority: 0.8,
-    },
-    {
-      url: `${siteUrl}/communities`,
-      lastModified: now,
-      changeFrequency: "daily",
-      priority: 0.7,
-    },
-  ];
+      changeFrequency: page.changeFrequency,
+      priority: page.priority,
+    })
+  );
 
   const client = getConvexClient();
   if (!client) {
