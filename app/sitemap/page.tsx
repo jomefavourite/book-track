@@ -36,9 +36,9 @@ export default async function SitemapPage() {
   const communities = await getPublicCommunities();
 
   return (
-    <>
+    <div className="flex min-h-screen flex-col">
       <Navigation />
-      <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 sm:px-6 sm:py-14">
         <header className="mb-10 border-b border-border pb-8">
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             Sitemap
@@ -99,6 +99,6 @@ export default async function SitemapPage() {
         )}
       </main>
       <Footer />
-    </>
+    </div>
   );
 }
