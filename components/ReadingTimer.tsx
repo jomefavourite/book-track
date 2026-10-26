@@ -57,7 +57,6 @@ export interface ReadingTimerProps {
   onOpenChange: (open: boolean) => void;
   dayLabel: string;
   sessionId: Id<"readingSessions"> | undefined;
-  userId: string;
   savedDurationSec?: number;
   onSaved?: (durationSec: number) => void;
   // Controlled timer state from parent (persists when dialog closes)
@@ -74,7 +73,6 @@ export default function ReadingTimer({
   onOpenChange,
   dayLabel,
   sessionId,
-  userId,
   savedDurationSec,
   onSaved,
   phase,
@@ -112,7 +110,7 @@ export default function ReadingTimer({
     if (totalSec === 0 || !sessionId) return;
     setSaving(true);
     try {
-      await updateSessionMutation({ sessionId, userId, timerDurationSec: totalSec });
+      await updateSessionMutation({ sessionId, timerDurationSec: totalSec });
       onSaved?.(totalSec);
     } catch {
       // Non-fatal — timer still starts

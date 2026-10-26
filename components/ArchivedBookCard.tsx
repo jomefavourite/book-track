@@ -50,13 +50,11 @@ export default function ArchivedBookCard({
     mutationFn: useConvexMutation(api.books.deleteBook),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getBooks, { userId: user?.id || "" })
+        queryKey: convexQuery(api.books.getBooks, {})
           .queryKey,
       });
       queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getArchivedBooks, {
-          userId: user?.id || "",
-        }).queryKey,
+        queryKey: convexQuery(api.books.getArchivedBooks, {}).queryKey,
       });
     },
   });
@@ -64,13 +62,11 @@ export default function ArchivedBookCard({
     mutationFn: useConvexMutation(api.books.unarchiveBook),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getBooks, { userId: user?.id || "" })
+        queryKey: convexQuery(api.books.getBooks, {})
           .queryKey,
       });
       queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getArchivedBooks, {
-          userId: user?.id || "",
-        }).queryKey,
+        queryKey: convexQuery(api.books.getArchivedBooks, {}).queryKey,
       });
     },
   });
@@ -81,7 +77,7 @@ export default function ArchivedBookCard({
   const handleDelete = async () => {
     if (!user?.id) return;
     try {
-      await deleteBook({ bookId: book._id, userId: user.id });
+      await deleteBook({ bookId: book._id });
     } catch (error) {
       console.error("Error deleting book:", error);
       alert("Failed to delete book. Please try again.");
@@ -99,7 +95,7 @@ export default function ArchivedBookCard({
     e.stopPropagation();
     if (!user?.id) return;
     try {
-      await unarchiveBook({ bookId: book._id, userId: user.id });
+      await unarchiveBook({ bookId: book._id });
     } catch (error) {
       console.error("Error unarchiving book:", error);
       alert("Failed to unarchive book. Please try again.");

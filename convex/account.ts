@@ -1,20 +1,13 @@
 import { ConvexError } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { getClerkId, requireClerkId } from "./authHelpers";
 
 /**
  * Self-serve account deletion. Clerk identity comes from the auth token, never
  * from arguments, so a user can only ever delete their own data. The Clerk
  * account itself is deleted afterwards by app/api/account/route.ts.
  */
-
-async function requireClerkId(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity?.subject) {
-    throw new ConvexError("Not authenticated");
-  }
-  return identity.subject;
-}
 
 /** Communities the user still owns. These must be deleted (or handed over) first. */
 async function getOwnedCommunities(ctx: QueryCtx | MutationCtx, clerkId: string) {
@@ -37,9 +30,9 @@ async function getOwnedCommunities(ctx: QueryCtx | MutationCtx, clerkId: string)
 export const getDeletionBlockers = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity?.subject) return null;
-    return { ownedCommunities: await getOwnedCommunities(ctx, identity.subject) };
+    const clerkId = await getClerkId(ctx);
+    if (!clerkId) return null;
+    return { ownedCommunities: await getOwnedCommunities(ctx, clerkId) };
   },
 });
 

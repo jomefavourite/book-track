@@ -9,6 +9,7 @@
  */
 
 import type * as account from "../account.js";
+import type * as authHelpers from "../authHelpers.js";
 import type * as bookProgress from "../bookProgress.js";
 import type * as books from "../books.js";
 import type * as communities from "../communities.js";
@@ -34,6 +35,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   account: typeof account;
+  authHelpers: typeof authHelpers;
   bookProgress: typeof bookProgress;
   books: typeof books;
   communities: typeof communities;

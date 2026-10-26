@@ -14,6 +14,7 @@ import {
 } from "./bookProgress";
 import { sanitizeTags } from "../lib/bookTags";
 import { registerUserTags } from "./userTags";
+import { getClerkId, requireClerkId } from "./authHelpers";
 
 const isValidPositiveInteger = (value: number | undefined): value is number =>
   value !== undefined && Number.isInteger(value) && value > 0;
@@ -28,7 +29,6 @@ const isChapterOnlyTracking = (options: {
 
 export const createBook = mutation({
   args: {
-    userId: v.string(),
     name: v.string(),
     author: v.optional(v.string()),
     totalPages: v.optional(v.number()),
@@ -55,10 +55,7 @@ export const createBook = mutation({
     ignorePages: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     const progressStyle = args.progressStyle ?? "pages";
     const ignorePages = isChapterOnlyTracking({
@@ -158,19 +155,16 @@ export const createBook = mutation({
 export const setMergedReflectionSharing = mutation({
   args: {
     bookId: v.id("books"),
-    userId: v.string(),
     shareMergedReflection: v.boolean(),
   },
   handler: async (ctx, args) => {
-    if (!args.userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     const book = await ctx.db.get(args.bookId);
     if (!book) {
       throw new Error("Book not found");
     }
-    if (book.userId !== args.userId) {
+    if (book.userId !== userId) {
       throw new Error("Unauthorized");
     }
 
@@ -181,14 +175,9 @@ export const setMergedReflectionSharing = mutation({
 });
 
 export const getBooks = query({
-  args: {
-    userId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireClerkId(ctx);
 
     // Get only active (non-archived) books
     const allBooks = await ctx.db
@@ -230,7 +219,6 @@ export const getBooks = query({
 export const getBook = query({
   args: {
     bookId: v.id("books"),
-    userId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const book = await ctx.db.get(args.bookId);
@@ -239,7 +227,8 @@ export const getBook = query({
     }
 
     // If user is authenticated and owns the book, return it
-    if (args.userId && book.userId === args.userId) {
+    const viewerId = await getClerkId(ctx);
+    if (viewerId && book.userId === viewerId) {
       return book;
     }
 
@@ -266,7 +255,6 @@ export const getBook = query({
 export const updateBook = mutation({
   args: {
     bookId: v.id("books"),
-    userId: v.string(),
     name: v.optional(v.string()),
     author: v.optional(v.string()),
     totalPages: v.optional(v.number()),
@@ -294,10 +282,7 @@ export const updateBook = mutation({
     ignorePages: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     const book = await ctx.db.get(args.bookId);
     if (!book) {
@@ -545,13 +530,9 @@ export const updateBook = mutation({
 export const markBookCompleted = mutation({
   args: {
     bookId: v.id("books"),
-    userId: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     const book = await ctx.db.get(args.bookId);
     if (!book) {
@@ -573,13 +554,9 @@ export const markBookCompleted = mutation({
 export const clearMarkedComplete = mutation({
   args: {
     bookId: v.id("books"),
-    userId: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     const book = await ctx.db.get(args.bookId);
     if (!book) {
@@ -610,14 +587,10 @@ export const clearMarkedComplete = mutation({
 export const resetBook = mutation({
   args: {
     bookId: v.id("books"),
-    userId: v.string(),
     startDate: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     const book = await ctx.db.get(args.bookId);
     if (!book) {
@@ -641,14 +614,9 @@ export const resetBook = mutation({
 });
 
 export const getArchivedBooks = query({
-  args: {
-    userId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireClerkId(ctx);
 
     // Get only archived books
     const allBooks = await ctx.db
@@ -683,13 +651,9 @@ export const getArchivedBooks = query({
 export const archiveBook = mutation({
   args: {
     bookId: v.id("books"),
-    userId: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     const book = await ctx.db.get(args.bookId);
     if (!book) {
@@ -708,13 +672,9 @@ export const archiveBook = mutation({
 export const unarchiveBook = mutation({
   args: {
     bookId: v.id("books"),
-    userId: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     const book = await ctx.db.get(args.bookId);
     if (!book) {
@@ -733,13 +693,9 @@ export const unarchiveBook = mutation({
 export const deleteBook = mutation({
   args: {
     bookId: v.id("books"),
-    userId: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     const book = await ctx.db.get(args.bookId);
     if (!book) {
@@ -941,11 +897,9 @@ export const getPublicBooksByUserId = query({
 export const getBooksForProfile = query({
   args: {
     profileUserId: v.string(),
-    viewerUserId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    const actualViewerId = identity?.subject ?? null;
+    const actualViewerId = await getClerkId(ctx);
     const isOwner =
       actualViewerId != null && actualViewerId === args.profileUserId;
 

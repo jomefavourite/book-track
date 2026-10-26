@@ -6,6 +6,7 @@ import {
 } from "./dateUtils";
 import { getScheduleDayBehaviorForDate } from "./communitySchedule";
 import { behaviorAllowsLogging } from "./dayBehavior";
+import { getClerkId, requireClerkId } from "./authHelpers";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 
@@ -47,7 +48,6 @@ const normalizeReflectionNote = (note: string | undefined) => {
 export const createSession = mutation({
   args: {
     bookId: v.id("books"),
-    userId: v.string(),
     date: v.string(),
     plannedPages: v.number(),
     actualPages: v.optional(v.number()),
@@ -59,10 +59,7 @@ export const createSession = mutation({
     isMissed: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     // Verify the book belongs to the user
     const book = await ctx.db.get(args.bookId);
@@ -104,16 +101,12 @@ export const createSession = mutation({
 export const initializeSessionsForBook = mutation({
   args: {
     bookId: v.id("books"),
-    userId: v.string(),
     startDate: v.string(),
     endDate: v.string(),
     totalPages: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     // Verify the book belongs to the user
     const book = await ctx.db.get(args.bookId);
@@ -148,7 +141,6 @@ export const initializeSessionsForBook = mutation({
 export const updateSession = mutation({
   args: {
     sessionId: v.id("readingSessions"),
-    userId: v.string(),
     actualPages: v.optional(v.number()),
     stopPage: v.optional(v.number()),
     plannedPages: v.optional(v.number()),
@@ -160,10 +152,7 @@ export const updateSession = mutation({
     timerDurationSec: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     const session = await ctx.db.get(args.sessionId);
     if (!session) {
@@ -261,7 +250,6 @@ export const updateSession = mutation({
 export const getSessionsForBook = query({
   args: {
     bookId: v.id("books"),
-    userId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const book = await ctx.db.get(args.bookId);
@@ -270,7 +258,8 @@ export const getSessionsForBook = query({
     }
 
     // If user is authenticated and owns the book, allow access
-    if (args.userId && book.userId === args.userId) {
+    const viewerId = await getClerkId(ctx);
+    if (viewerId && book.userId === viewerId) {
       return await ctx.db
         .query("readingSessions")
         .withIndex("by_book", (q) => q.eq("bookId", args.bookId))
@@ -289,7 +278,7 @@ export const getSessionsForBook = query({
     }
 
     // If not owner and not public, unauthorized
-    if (args.userId) {
+    if (viewerId) {
       throw new Error("Unauthorized");
     }
     throw new Error("Not authenticated");
@@ -299,7 +288,6 @@ export const getSessionsForBook = query({
 export const getReflectionsForBook = query({
   args: {
     bookId: v.id("books"),
-    userId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const book = await ctx.db.get(args.bookId);
@@ -307,11 +295,12 @@ export const getReflectionsForBook = query({
       throw new Error("Book not found");
     }
 
-    const isOwner = args.userId && book.userId === args.userId;
+    const viewerId = await getClerkId(ctx);
+    const isOwner = viewerId !== null && book.userId === viewerId;
     const canReadPublicMerged = book.isPublic && book.shareMergedReflection;
 
     if (!isOwner && !canReadPublicMerged) {
-      if (args.userId) {
+      if (viewerId) {
         throw new Error("Unauthorized");
       }
       throw new Error("Not authenticated");
@@ -345,15 +334,11 @@ export const getReflectionsForBook = query({
 export const getSessionsForDateRange = query({
   args: {
     bookId: v.id("books"),
-    userId: v.string(),
     startDate: v.string(),
     endDate: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     // Verify the book belongs to the user
     const book = await ctx.db.get(args.bookId);
@@ -382,14 +367,10 @@ export const getSessionsForDateRange = query({
 export const getSessionByDate = query({
   args: {
     bookId: v.id("books"),
-    userId: v.string(),
     date: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = args.userId;
-    if (!userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
 
     // Verify the book belongs to the user
     const book = await ctx.db.get(args.bookId);

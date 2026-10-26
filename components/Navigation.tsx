@@ -36,9 +36,7 @@ export default function Navigation({
   const [mounted, setMounted] = useState(false);
 
   const { data: convexUser } = useQuery({
-    ...convexQuery(api.users.getUserByClerkId, {
-      clerkId: user?.id ?? "",
-    }),
+    ...convexQuery(api.users.getCurrentUser, {}),
     enabled: !!user?.id,
   });
 

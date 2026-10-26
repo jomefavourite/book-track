@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useSession, useUser } from "@clerk/nextjs";
-import { useMutation } from "convex/react";
+import { useConvexAuth, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { trackEvent } from "@/lib/analytics";
 
@@ -29,16 +29,18 @@ function markSessionTracked(sessionId: string) {
 export default function SyncUser() {
   const { user, isLoaded } = useUser();
   const { session } = useSession();
+  // syncUser reads the caller from the Convex auth token, so wait until Convex
+  // has that token rather than just until Clerk has loaded the user.
+  const { isAuthenticated } = useConvexAuth();
   const syncUser = useMutation(api.users.syncUser);
   const syncedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!isLoaded || !user?.id) return;
+    if (!isLoaded || !isAuthenticated || !user?.id) return;
     if (syncedRef.current === user.id) return;
 
     syncedRef.current = user.id;
     syncUser({
-      clerkId: user.id,
       name: user.fullName ?? undefined,
       email: user.primaryEmailAddress?.emailAddress ?? undefined,
       imageUrl: user.imageUrl ?? undefined,
@@ -56,7 +58,7 @@ export default function SyncUser() {
         markSessionTracked(session.id);
       })
       .catch(console.error);
-  }, [isLoaded, user, user?.id, user?.fullName, user?.primaryEmailAddress?.emailAddress, user?.imageUrl, session, syncUser]);
+  }, [isLoaded, isAuthenticated, user, user?.id, user?.fullName, user?.primaryEmailAddress?.emailAddress, user?.imageUrl, session, syncUser]);
 
   return null;
 }

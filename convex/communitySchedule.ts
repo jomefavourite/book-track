@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { canManageBooks } from "./communityRules";
+import { requireClerkId } from "./authHelpers";
 import { canAccessCommunityBooks } from "./communityBookRules";
 import {
   BEHAVIOR_LEGACY_DAY_TYPE,
@@ -64,15 +65,6 @@ async function getLabelsById(
       { behavior: label.behavior as DayBehavior, name: label.name },
     ])
   );
-}
-
-async function requireClerkId(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  const clerkId = identity?.subject;
-  if (!clerkId) {
-    throw new Error("Not authenticated");
-  }
-  return clerkId;
 }
 
 async function getViewerRole(

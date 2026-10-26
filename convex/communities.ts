@@ -23,6 +23,7 @@ import { ensureDefaultLabels } from "./communityDayLabels";
 import { getBookProgressPercent } from "./bookProgress";
 import { sanitizeTags } from "../lib/bookTags";
 import { registerUserTags } from "./userTags";
+import { requireIdentity } from "./authHelpers";
 
 const communityRoleValidator = v.union(
   v.literal("owner"),
@@ -82,19 +83,6 @@ function generateInviteToken() {
     return globalThis.crypto.randomUUID().replace(/-/g, "");
   }
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 14)}`;
-}
-
-async function requireClerkId(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  const clerkId = identity?.subject;
-  if (!clerkId) {
-    throw new Error("Not authenticated");
-  }
-  return {
-    clerkId,
-    name: identity.name,
-    email: identity.email,
-  };
 }
 
 async function getActiveCreatorGrant(
@@ -229,7 +217,7 @@ async function buildCommunityPreview(
 export const getCreatorStatus = query({
   args: {},
   handler: async (ctx) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const grant = await getActiveCreatorGrant(ctx, clerkId);
     const request = await getCreatorRequest(ctx, clerkId);
 
@@ -245,7 +233,7 @@ export const requestCreatorAccess = mutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { clerkId, name, email } = await requireClerkId(ctx);
+    const { clerkId, name, email } = await requireIdentity(ctx);
     const grant = await getActiveCreatorGrant(ctx, clerkId);
     if (grant) {
       return { status: "approved" as const };
@@ -338,7 +326,7 @@ export const createCommunity = mutation({
     websiteUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { clerkId, name } = await requireClerkId(ctx);
+    const { clerkId, name } = await requireIdentity(ctx);
     const canCreate = await hasCreatorAccess(ctx, clerkId);
     if (!canCreate) {
       throw new Error("Community creator access is required");
@@ -413,7 +401,7 @@ export const discoverCommunities = query({
 export const getMyCommunities = query({
   args: {},
   handler: async (ctx) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const memberships = await ctx.db
       .query("communityMembers")
       .withIndex("by_clerk", (q) => q.eq("clerkId", clerkId))
@@ -504,7 +492,7 @@ export const getCommunityBySlug = query({
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
-    await requireClerkId(ctx);
+    await requireIdentity(ctx);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -515,7 +503,7 @@ export const saveCommunityLogo = mutation({
     storageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const community = await ctx.db.get(args.communityId);
     if (!community || community.isArchived === true) {
       throw new Error("Community not found");
@@ -537,7 +525,7 @@ export const saveCommunityBookCover = mutation({
     storageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const book = await ctx.db.get(args.communityBookId);
     if (!book) {
       throw new Error("Community book not found");
@@ -565,7 +553,7 @@ export const updateCommunity = mutation({
     websiteUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const community = await ctx.db.get(args.communityId);
     if (!community) {
       throw new Error("Community not found");
@@ -719,7 +707,7 @@ export const createCommunityBook = mutation({
     coverImageStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
-    const { clerkId, name } = await requireClerkId(ctx);
+    const { clerkId, name } = await requireIdentity(ctx);
     const community = await ctx.db.get(args.communityId);
     if (!community || community.isArchived === true) {
       throw new Error("Community not found");
@@ -766,7 +754,7 @@ export const updateCommunityBook = mutation({
     coverImageStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const existing = await ctx.db.get(args.communityBookId);
     if (!existing) {
       throw new Error("Community book not found");
@@ -799,7 +787,7 @@ export const setCommunityBookStatus = mutation({
     demoteCurrentActive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const book = await ctx.db.get(args.communityBookId);
     if (!book || book.isArchived === true) {
       throw new Error("Community book not found");
@@ -859,7 +847,7 @@ export const archiveCommunityBook = mutation({
     communityBookId: v.id("communityBooks"),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const book = await ctx.db.get(args.communityBookId);
     if (!book) {
       throw new Error("Community book not found");
@@ -882,7 +870,7 @@ export const deleteCommunityBook = mutation({
     communityBookId: v.id("communityBooks"),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const book = await ctx.db.get(args.communityBookId);
     if (!book) {
       throw new Error("Community book not found");
@@ -919,7 +907,7 @@ export const deleteCommunity = mutation({
     communityId: v.id("communities"),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const community = await ctx.db.get(args.communityId);
     if (!community) {
       throw new Error("Community not found");
@@ -1090,7 +1078,7 @@ export const listCommunityMembers = query({
     communityId: v.id("communities"),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const role = await getViewerRole(ctx, args.communityId, clerkId);
     if (!canManageCommunity(role)) {
       throw new Error("Unauthorized");
@@ -1129,7 +1117,7 @@ export const listInvites = query({
     communityId: v.id("communities"),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const role = await getViewerRole(ctx, args.communityId, clerkId);
     if (!canManageInvites(role)) {
       throw new Error("Unauthorized");
@@ -1151,7 +1139,7 @@ export const createInvite = mutation({
     maxUses: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const role = await getViewerRole(ctx, args.communityId, clerkId);
     if (!canManageInvites(role)) {
       throw new Error("Unauthorized");
@@ -1190,7 +1178,7 @@ export const disableInvite = mutation({
     inviteId: v.id("communityInvites"),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const invite = await ctx.db.get(args.inviteId);
     if (!invite) {
       throw new Error("Invite not found");
@@ -1248,7 +1236,7 @@ export const acceptInvite = mutation({
     token: v.string(),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const invite = await ctx.db
       .query("communityInvites")
       .withIndex("by_token", (q) => q.eq("token", args.token))
@@ -1328,7 +1316,7 @@ export const updateMemberRole = mutation({
     role: communityRoleValidator,
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const member = await ctx.db.get(args.memberId);
     if (!member) {
       throw new Error("Member not found");
@@ -1349,7 +1337,7 @@ export const removeMember = mutation({
     memberId: v.id("communityMembers"),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const member = await ctx.db.get(args.memberId);
     if (!member) {
       throw new Error("Member not found");
@@ -1403,7 +1391,7 @@ export const trackCommunityBook = mutation({
     communityBookId: v.id("communityBooks"),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
 
     const communityBook = await ctx.db.get(args.communityBookId);
     if (!communityBook || communityBook.isArchived === true) {
@@ -1497,7 +1485,7 @@ export const getCommunityBookReflections = query({
     communityBookId: v.id("communityBooks"),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
 
     const communityBook = await ctx.db.get(args.communityBookId);
     if (!communityBook || communityBook.isArchived === true) {
@@ -1566,7 +1554,7 @@ export const getCommunityMemberProgress = query({
     communityId: v.id("communities"),
   },
   handler: async (ctx, args) => {
-    const { clerkId } = await requireClerkId(ctx);
+    const { clerkId } = await requireIdentity(ctx);
     const role = await getViewerRole(ctx, args.communityId, clerkId);
     if (!canManageCommunity(role)) {
       throw new Error("Unauthorized");
