@@ -10,13 +10,24 @@ export default function Footer() {
         <p>
           © {year} {SITE_NAME}
         </p>
-        <Link
-          href="/live"
-          className="flex items-center gap-1.5 font-medium text-foreground underline-offset-4 hover:underline"
-        >
-          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-          Live Room
-        </Link>
+        <nav className="flex items-center gap-5">
+          <Link
+            href="/live"
+            className="flex items-center gap-1.5 font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+            Live Room
+          </Link>
+          <Link href="/privacy" className="underline-offset-4 hover:underline">
+            Privacy
+          </Link>
+          <Link href="/terms" className="underline-offset-4 hover:underline">
+            Terms
+          </Link>
+          <Link href="/sitemap" className="underline-offset-4 hover:underline">
+            Sitemap
+          </Link>
+        </nav>
         <p>
           Built by{" "}
           <Link
