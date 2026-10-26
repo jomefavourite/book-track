@@ -187,12 +187,12 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<TabType>("active");
 
   const { data: books, isPending: booksPending } = useQuery({
-    ...convexQuery(api.books.getBooks, { userId: user?.id || "" }),
+    ...convexQuery(api.books.getBooks, {}),
     enabled: isLoaded && !!user?.id && activeTab === "active",
   });
 
   const { data: archivedBooks, isPending: archivedPending } = useQuery({
-    ...convexQuery(api.books.getArchivedBooks, { userId: user?.id || "" }),
+    ...convexQuery(api.books.getArchivedBooks, {}),
     enabled: isLoaded && !!user?.id && activeTab === "archived",
   });
 
@@ -202,9 +202,7 @@ export default function Dashboard() {
   });
 
   const { data: convexUser } = useQuery({
-    ...convexQuery(api.users.getUserByClerkId, {
-      clerkId: user?.id ?? "",
-    }),
+    ...convexQuery(api.users.getCurrentUser, {}),
     enabled: !!user?.id,
   });
 

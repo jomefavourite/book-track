@@ -49,7 +49,6 @@ export default function UserProfilePage() {
   const { data: books = [], isPending: booksPending } = useQuery({
     ...convexQuery(api.books.getBooksForProfile, {
       profileUserId: profileUser?.clerkId ?? "",
-      viewerUserId: viewer?.id ?? undefined,
     }),
     enabled: !!profileUser?.clerkId,
   });

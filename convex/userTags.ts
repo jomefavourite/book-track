@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { sanitizeTags, normalizeTagKey } from "../lib/bookTags";
+import { getClerkId, requireClerkId } from "./authHelpers";
 
 /**
  * Upsert a set of tags into a user's reusable vocabulary. Called whenever tags
@@ -34,12 +35,13 @@ export async function registerUserTags(
 
 /** All of a user's saved tag labels, alphabetically. */
 export const getUserTags = query({
-  args: { userId: v.string() },
-  handler: async (ctx, args) => {
-    if (!args.userId) return [];
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getClerkId(ctx);
+    if (!userId) return [];
     const rows = await ctx.db
       .query("userTags")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
     return rows
       .map((row) => ({ _id: row._id, label: row.label, key: row.key }))
@@ -49,11 +51,9 @@ export const getUserTags = query({
 
 /** Create a tag directly (e.g. from the settings manager). Deduped by key. */
 export const createUserTag = mutation({
-  args: { userId: v.string(), label: v.string() },
+  args: { label: v.string() },
   handler: async (ctx, args) => {
-    if (!args.userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
     const [label] = sanitizeTags([args.label]);
     if (!label) {
       throw new Error("Tag cannot be empty");
@@ -62,12 +62,12 @@ export const createUserTag = mutation({
     const existing = await ctx.db
       .query("userTags")
       .withIndex("by_user_and_key", (q) =>
-        q.eq("userId", args.userId).eq("key", key)
+        q.eq("userId", userId).eq("key", key)
       )
       .first();
     if (existing) return existing._id;
     return await ctx.db.insert("userTags", {
-      userId: args.userId,
+      userId,
       label,
       key,
       createdAt: Date.now(),
@@ -80,14 +80,12 @@ export const createUserTag = mutation({
  * the tag — this only stops it from being suggested.
  */
 export const deleteUserTag = mutation({
-  args: { userId: v.string(), tagId: v.id("userTags") },
+  args: { tagId: v.id("userTags") },
   handler: async (ctx, args) => {
-    if (!args.userId) {
-      throw new Error("Not authenticated");
-    }
+    const userId = await requireClerkId(ctx);
     const tag = await ctx.db.get(args.tagId);
     if (!tag) return;
-    if (tag.userId !== args.userId) {
+    if (tag.userId !== userId) {
       throw new Error("Unauthorized");
     }
     await ctx.db.delete(args.tagId);

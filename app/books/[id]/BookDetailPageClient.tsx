@@ -78,7 +78,7 @@ export default function BookDetailPage() {
     isPending,
     error,
   } = useQuery({
-    ...convexQuery(api.books.getBook, { bookId, userId: user?.id }),
+    ...convexQuery(api.books.getBook, { bookId }),
     enabled: true, // Allow querying even without auth (for public books)
     retry: false, // Don't retry on error to show private book message
   });
@@ -87,7 +87,6 @@ export default function BookDetailPage() {
   const { data: sessions = [], isSuccess: sessionsLoaded } = useQuery({
     ...convexQuery(api.readingSessions.getSessionsForBook, {
       bookId,
-      userId: user?.id,
     }),
     enabled: Boolean(
       book && (book.isPublic || (user?.id && book.userId === user.id))
@@ -123,7 +122,6 @@ export default function BookDetailPage() {
   const { data: reflections = [] } = useQuery({
     ...convexQuery(api.readingSessions.getReflectionsForBook, {
       bookId,
-      userId: user?.id,
     }),
     enabled: Boolean(
       book && (isOwner || (book.isPublic && book.shareMergedReflection))
@@ -250,18 +248,16 @@ export default function BookDetailPage() {
     await queryClient.invalidateQueries({
       queryKey: convexQuery(api.books.getBook, {
         bookId,
-        userId: user?.id,
       }).queryKey,
     });
     await queryClient.invalidateQueries({
       queryKey: convexQuery(api.readingSessions.getSessionsForBook, {
         bookId,
-        userId: user?.id,
       }).queryKey,
     });
     if (user?.id) {
       await queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getBooks, { userId: user.id }).queryKey,
+        queryKey: convexQuery(api.books.getBooks, {}).queryKey,
       });
     }
   };
@@ -824,7 +820,6 @@ export default function BookDetailPage() {
                         const shareMergedReflection = !book.shareMergedReflection;
                         void setMergedReflectionSharing({
                           bookId,
-                          userId: user.id,
                           shareMergedReflection,
                         }).then(() => {
                           if (shareMergedReflection) {
@@ -1000,7 +995,7 @@ export default function BookDetailPage() {
               onClick={async () => {
                 if (!user?.id) return;
                 try {
-                  await markBookCompleted({ bookId, userId: user.id });
+                  await markBookCompleted({ bookId });
                   trackEvent("book_completed", { method: "manual" });
                   setMarkCompleteOpen(false);
                 } catch (e) {
@@ -1042,7 +1037,7 @@ export default function BookDetailPage() {
               onClick={async () => {
                 if (!user?.id) return;
                 try {
-                  await clearMarkedComplete({ bookId, userId: user.id });
+                  await clearMarkedComplete({ bookId });
                   setClearMarkCompleteOpen(false);
                 } catch (e) {
                   console.error(e);
@@ -1088,7 +1083,6 @@ export default function BookDetailPage() {
                 try {
                   await resetBook({
                     bookId,
-                    userId: user.id,
                     startDate: formatDateForStorage(new Date()),
                   });
                   trackEvent("book_restarted");

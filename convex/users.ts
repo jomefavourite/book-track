@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { getClerkId, requireClerkId } from "./authHelpers";
 
 function slugify(name: string): string {
   return name
@@ -11,14 +12,12 @@ function slugify(name: string): string {
 
 export const syncUser = mutation({
   args: {
-    clerkId: v.string(),
     name: v.optional(v.string()),
     email: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const clerkId = args.clerkId;
-    if (!clerkId) throw new Error("clerkId is required");
+    const clerkId = await requireClerkId(ctx);
 
     const now = Date.now();
     const existing = await ctx.db
@@ -108,12 +107,15 @@ export const syncUser = mutation({
   },
 });
 
-export const getUserByClerkId = query({
-  args: { clerkId: v.string() },
-  handler: async (ctx, args) => {
+/** The signed-in caller's own user record, or null when signed out. */
+export const getCurrentUser = query({
+  args: {},
+  handler: async (ctx) => {
+    const clerkId = await getClerkId(ctx);
+    if (!clerkId) return null;
     return await ctx.db
       .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
       .unique();
   },
 });
@@ -138,15 +140,13 @@ export const getUserBySlugOrId = query({
 
 export const updateProfile = mutation({
   args: {
-    clerkId: v.string(),
     name: v.optional(v.string()),
     email: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
     slug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const clerkId = args.clerkId;
-    if (!clerkId) throw new Error("clerkId is required");
+    const clerkId = await requireClerkId(ctx);
 
     const user = await ctx.db
       .query("users")

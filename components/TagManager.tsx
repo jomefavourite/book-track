@@ -30,7 +30,7 @@ export default function TagManager() {
   const [error, setError] = useState<string | null>(null);
 
   const { data: tags = [], isPending } = useQuery({
-    ...convexQuery(api.userTags.getUserTags, { userId: user?.id ?? "" }),
+    ...convexQuery(api.userTags.getUserTags, {}),
     enabled: !!user?.id,
   });
 
@@ -46,7 +46,7 @@ export default function TagManager() {
     }
     setError(null);
     try {
-      await createTag({ userId: user.id, label });
+      await createTag({ label });
       setDraft("");
     } catch {
       setError("Could not add that tag. Please try again.");
@@ -56,7 +56,7 @@ export default function TagManager() {
   const handleDelete = async (tagId: Id<"userTags">) => {
     if (!user?.id) return;
     try {
-      await deleteTag({ userId: user.id, tagId });
+      await deleteTag({ tagId });
     } catch {
       setError("Could not remove that tag. Please try again.");
     }

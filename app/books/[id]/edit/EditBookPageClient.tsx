@@ -21,7 +21,7 @@ export default function EditBookPage({
   const bookId = params.id as Id<"books">;
   
   const { data: book, isPending } = useQuery({
-    ...convexQuery(api.books.getBook, { bookId, userId: user?.id }),
+    ...convexQuery(api.books.getBook, { bookId }),
     enabled: isLoaded && !!user?.id,
   });
 

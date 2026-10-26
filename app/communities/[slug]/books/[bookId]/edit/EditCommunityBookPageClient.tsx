@@ -96,7 +96,7 @@ export default function EditCommunityBookPageClient() {
   const generateUploadUrl = useConvexMutation(api.communities.generateUploadUrl);
   const { user } = useUser();
   const { data: savedTags = [] } = useQuery({
-    ...convexQuery(api.userTags.getUserTags, { userId: user?.id ?? "" }),
+    ...convexQuery(api.userTags.getUserTags, {}),
     enabled: !!user?.id,
   });
 

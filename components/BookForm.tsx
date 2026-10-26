@@ -65,7 +65,7 @@ export default function BookForm({
   const router = useRouter();
   const { user } = useUser();
   const { data: savedTags = [] } = useQuery({
-    ...convexQuery(api.userTags.getUserTags, { userId: user?.id ?? "" }),
+    ...convexQuery(api.userTags.getUserTags, {}),
     enabled: !!user?.id,
   });
   const queryClient = useQueryClient();
@@ -75,11 +75,11 @@ export default function BookForm({
       // Invalidate and refetch the books list query
       if (user?.id) {
         queryClient.invalidateQueries({
-          queryKey: convexQuery(api.books.getBooks, { userId: user.id })
+          queryKey: convexQuery(api.books.getBooks, {})
             .queryKey,
         });
         queryClient.invalidateQueries({
-          queryKey: convexQuery(api.books.getArchivedBooks, { userId: user.id })
+          queryKey: convexQuery(api.books.getArchivedBooks, {})
             .queryKey,
         });
       }
@@ -90,17 +90,16 @@ export default function BookForm({
     onSuccess: () => {
       if (user?.id && initialBook) {
         queryClient.invalidateQueries({
-          queryKey: convexQuery(api.books.getBooks, { userId: user.id })
+          queryKey: convexQuery(api.books.getBooks, {})
             .queryKey,
         });
         queryClient.invalidateQueries({
-          queryKey: convexQuery(api.books.getArchivedBooks, { userId: user.id })
+          queryKey: convexQuery(api.books.getArchivedBooks, {})
             .queryKey,
         });
         queryClient.invalidateQueries({
           queryKey: convexQuery(api.books.getBook, {
             bookId: initialBook._id,
-            userId: user.id,
           }).queryKey,
         });
       }
@@ -379,7 +378,6 @@ export default function BookForm({
         // Update existing book with all fields
         await updateBook({
           bookId: initialBook._id,
-          userId: user.id,
           name,
           author: authorValue,
           buyLink: buyLinkValue,
@@ -413,7 +411,6 @@ export default function BookForm({
       } else {
         // Create new book
         const bookId = await createBook({
-          userId: user.id,
           name,
           author: authorValue,
           buyLink: buyLinkValue,

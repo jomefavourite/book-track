@@ -52,13 +52,11 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
     onSuccess: () => {
       // Invalidate and refetch the books list query
       queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getBooks, { userId: user?.id || "" })
+        queryKey: convexQuery(api.books.getBooks, {})
           .queryKey,
       });
       queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getArchivedBooks, {
-          userId: user?.id || "",
-        }).queryKey,
+        queryKey: convexQuery(api.books.getArchivedBooks, {}).queryKey,
       });
     },
   });
@@ -66,13 +64,11 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
     mutationFn: useConvexMutation(api.books.archiveBook),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getBooks, { userId: user?.id || "" })
+        queryKey: convexQuery(api.books.getBooks, {})
           .queryKey,
       });
       queryClient.invalidateQueries({
-        queryKey: convexQuery(api.books.getArchivedBooks, {
-          userId: user?.id || "",
-        }).queryKey,
+        queryKey: convexQuery(api.books.getArchivedBooks, {}).queryKey,
       });
     },
   });
@@ -84,7 +80,7 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
   const handleDelete = async () => {
     if (!user?.id) return;
     try {
-      await deleteBook({ bookId: book._id, userId: user.id });
+      await deleteBook({ bookId: book._id });
     } catch (error) {
       console.error("Error deleting book:", error);
       alert("Failed to delete book. Please try again.");
@@ -107,7 +103,7 @@ export default function BookCard({ book, progress = 0 }: BookCardProps) {
     e.stopPropagation();
     if (!user?.id) return;
     try {
-      await archiveBook({ bookId: book._id, userId: user.id });
+      await archiveBook({ bookId: book._id });
     } catch (error) {
       console.error("Error archiving book:", error);
       alert("Failed to archive book. Please try again.");

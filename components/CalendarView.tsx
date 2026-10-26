@@ -123,7 +123,6 @@ export default function CalendarView({
   const { data: sessionsQuery, isPending } = useQuery({
     ...convexQuery(api.readingSessions.getSessionsForBook, {
       bookId,
-      userId: user?.id,
     }),
     enabled: true, // Allow querying even without auth (for public books)
   });
@@ -214,7 +213,7 @@ export default function CalendarView({
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
       if (user?.id) {
         queryClient.invalidateQueries({
-          queryKey: convexQuery(api.books.getBooks, { userId: user.id })
+          queryKey: convexQuery(api.books.getBooks, {})
             .queryKey,
         });
       }
@@ -255,7 +254,7 @@ export default function CalendarView({
         _id: tempId as Id<"readingSessions">,
         _creationTime: Date.now(),
         bookId: variables.bookId,
-        userId: variables.userId,
+        userId: user?.id ?? "",
         date: variables.date,
         plannedPages: variables.plannedPages,
         actualPages: variables.actualPages,
@@ -304,7 +303,7 @@ export default function CalendarView({
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
       if (user?.id) {
         queryClient.invalidateQueries({
-          queryKey: convexQuery(api.books.getBooks, { userId: user.id })
+          queryKey: convexQuery(api.books.getBooks, {})
             .queryKey,
         });
       }
@@ -734,7 +733,6 @@ export default function CalendarView({
 
     await updateSession({
       sessionId: session._id,
-      userId: user.id,
       isRead: session.isRead,
       chapterNumber: normalizeChapterValue(chapterNumber),
     });
@@ -764,7 +762,6 @@ export default function CalendarView({
         // Update session - optimistic update will handle UI immediately
         updateSession({
           sessionId: existingSession._id,
-          userId: user.id,
           isRead: false,
           isMissed: false,
           actualPages: existingSession.actualPages,
@@ -808,7 +805,6 @@ export default function CalendarView({
                 updatePromises.push(
                   updateSession({
                     sessionId: sess._id,
-                    userId: user.id,
                     isRead: false,
                     isMissed: false,
                     plannedPages: newPlannedPages,
@@ -818,7 +814,6 @@ export default function CalendarView({
                 updatePromises.push(
                   updateSession({
                     sessionId: sess._id,
-                    userId: user.id,
                     isRead: false,
                     isMissed: false,
                     plannedPages: newPlannedPages,
@@ -855,7 +850,6 @@ export default function CalendarView({
           : {};
         await updateSession({
           sessionId: existingSession._id,
-          userId: user.id,
           isRead: true,
           isMissed: false,
           ...(chapterOnlyMode ? {} : markPages),
@@ -897,7 +891,6 @@ export default function CalendarView({
       // No session exists - create one as read
       await createSession({
         bookId,
-        userId: user.id,
         date: dateKey,
         plannedPages,
         ...(chapterOnlyMode ? {} : markPages),
@@ -933,7 +926,6 @@ export default function CalendarView({
       if (existingSession.isMissed) {
         updateSession({
           sessionId: existingSession._id,
-          userId: user.id,
           isRead: false,
           isMissed: false,
           actualPages: existingSession.actualPages,
@@ -946,7 +938,6 @@ export default function CalendarView({
         // Not missed - mark as missed
         await updateSession({
           sessionId: existingSession._id,
-          userId: user.id,
           isRead: false,
           isMissed: true,
           actualPages: existingSession.actualPages,
@@ -958,7 +949,6 @@ export default function CalendarView({
       // No session exists - create one as missed
       await createSession({
         bookId,
-        userId: user.id,
         date: dateKey,
         plannedPages,
         isRead: false,
@@ -987,7 +977,6 @@ export default function CalendarView({
         if (session) {
           return updateSession({
             sessionId: session._id,
-            userId: user.id,
             isRead: false,
             isMissed: false,
             plannedPages,
@@ -995,7 +984,6 @@ export default function CalendarView({
         }
         return createSession({
           bookId,
-          userId: user.id,
           date: targetDateKey,
           plannedPages,
           isRead: false,
@@ -1038,7 +1026,6 @@ export default function CalendarView({
           updatePromises.push(
             updateSession({
               sessionId: sess._id,
-              userId: user.id,
               isRead: false,
               isMissed: false,
               plannedPages: newPlannedPages,
@@ -1048,7 +1035,6 @@ export default function CalendarView({
           updatePromises.push(
             updateSession({
               sessionId: sess._id,
-              userId: user.id,
               isRead: false,
               isMissed: false,
               plannedPages: newPlannedPages,
@@ -1130,7 +1116,6 @@ export default function CalendarView({
           updatePromises.push(
             updateSession({
               sessionId: session._id,
-              userId: user.id,
               isRead: false,
               isMissed: false,
               plannedPages: newPlannedPages,
@@ -1142,7 +1127,6 @@ export default function CalendarView({
         updatePromises.push(
           createSession({
             bookId,
-            userId: user.id,
             date: dateKey,
             plannedPages: newPlannedPages,
             isRead: false,
@@ -1180,7 +1164,6 @@ export default function CalendarView({
 
     await updateSession({
       sessionId: session._id,
-      userId: user.id,
       reflectionNote: note,
     });
     if (note.trim()) {
@@ -1219,7 +1202,6 @@ export default function CalendarView({
           updatePromises.push(
             updateSession({
               sessionId: session._id,
-              userId: user.id,
               actualPages: next.actualPages,
               stopPage: next.stopPage,
             })
@@ -1255,7 +1237,6 @@ export default function CalendarView({
         : undefined;
       await updateSession({
         sessionId: existingSession._id,
-        userId: user.id,
         isRead: existingSession.isRead,
         actualPages: pageUpdate.actualPages,
         stopPage: pageUpdate.stopPage,
@@ -1552,7 +1533,6 @@ export default function CalendarView({
         }
         dayLabel={format(parseDateFromStorage(openTimerDateKey), "MMM d, yyyy")}
         sessionId={timerSession?._id}
-        userId={user?.id ?? ""}
         savedDurationSec={timerSession?.timerDurationSec}
         onSaved={(durationSec) => {
           queryClient.setQueryData<ReadingSessionDoc[]>(

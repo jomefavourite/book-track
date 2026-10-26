@@ -95,7 +95,6 @@ export default function DaysView({
   const { data: sessionsQuery, isPending } = useQuery({
     ...convexQuery(api.readingSessions.getSessionsForBook, {
       bookId,
-      userId: user?.id,
     }),
     enabled: true, // Allow querying even without auth (for public books)
   });
@@ -186,7 +185,7 @@ export default function DaysView({
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
       if (user?.id) {
         queryClient.invalidateQueries({
-          queryKey: convexQuery(api.books.getBooks, { userId: user.id })
+          queryKey: convexQuery(api.books.getBooks, {})
             .queryKey,
         });
       }
@@ -227,7 +226,7 @@ export default function DaysView({
         _id: tempId as Id<"readingSessions">,
         _creationTime: Date.now(),
         bookId: variables.bookId,
-        userId: variables.userId,
+        userId: user?.id ?? "",
         date: variables.date,
         plannedPages: variables.plannedPages,
         actualPages: variables.actualPages,
@@ -276,7 +275,7 @@ export default function DaysView({
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
       if (user?.id) {
         queryClient.invalidateQueries({
-          queryKey: convexQuery(api.books.getBooks, { userId: user.id })
+          queryKey: convexQuery(api.books.getBooks, {})
             .queryKey,
         });
       }
@@ -542,7 +541,6 @@ export default function DaysView({
 
     await updateSession({
       sessionId: session._id,
-      userId: user.id,
       isRead: session.isRead,
       chapterNumber: normalizeChapterValue(chapterNumber),
     });
@@ -568,7 +566,6 @@ export default function DaysView({
       if (existingSession.isRead) {
         updateSession({
           sessionId: existingSession._id,
-          userId: user.id,
           isRead: false,
           isMissed: false,
           actualPages: existingSession.actualPages,
@@ -609,7 +606,6 @@ export default function DaysView({
           : {};
         updateSession({
           sessionId: existingSession._id,
-          userId: user.id,
           isRead: true,
           isMissed: false,
           ...(chapterOnlyMode ? {} : markPages),
@@ -651,7 +647,6 @@ export default function DaysView({
         : {};
       createSession({
         bookId,
-        userId: user.id,
         date: dateKey,
         plannedPages: defaultPlannedPages,
         ...(chapterOnlyMode ? {} : markPages),
@@ -682,7 +677,6 @@ export default function DaysView({
       if (existingSession.isMissed) {
         updateSession({
           sessionId: existingSession._id,
-          userId: user.id,
           isRead: false,
           isMissed: false,
           actualPages: existingSession.actualPages,
@@ -718,7 +712,6 @@ export default function DaysView({
                 updatePromises.push(
                   updateSession({
                     sessionId: sess._id,
-                    userId: user.id,
                     isRead: false,
                     isMissed: false,
                     plannedPages: newPlannedPages,
@@ -728,7 +721,6 @@ export default function DaysView({
                 updatePromises.push(
                   updateSession({
                     sessionId: sess._id,
-                    userId: user.id,
                     isRead: false,
                     isMissed: false,
                     plannedPages: newPlannedPages,
@@ -743,7 +735,6 @@ export default function DaysView({
         // Not missed - mark as missed
         await updateSession({
           sessionId: existingSession._id,
-          userId: user.id,
           isRead: false,
           isMissed: true,
           actualPages: existingSession.actualPages,
@@ -755,7 +746,6 @@ export default function DaysView({
       // No session exists - create one as missed
       await createSession({
         bookId,
-        userId: user.id,
         date: dateKey,
         plannedPages: chapterOnlyMode
           ? 0
@@ -784,7 +774,6 @@ export default function DaysView({
         if (session) {
           return updateSession({
             sessionId: session._id,
-            userId: user.id,
             isRead: false,
             isMissed: false,
             plannedPages,
@@ -792,7 +781,6 @@ export default function DaysView({
         }
         return createSession({
           bookId,
-          userId: user.id,
           date: targetDateKey,
           plannedPages,
           isRead: false,
@@ -831,7 +819,6 @@ export default function DaysView({
           updatePromises.push(
             updateSession({
               sessionId: sess._id,
-              userId: user.id,
               isRead: false,
               isMissed: false,
               plannedPages: newPlannedPages,
@@ -841,7 +828,6 @@ export default function DaysView({
           updatePromises.push(
             updateSession({
               sessionId: sess._id,
-              userId: user.id,
               isRead: false,
               isMissed: false,
               plannedPages: newPlannedPages,
@@ -914,7 +900,6 @@ export default function DaysView({
           updatePromises.push(
             updateSession({
               sessionId: session._id,
-              userId: user.id,
               isRead: false,
               isMissed: false,
               plannedPages: newPlannedPages,
@@ -926,7 +911,6 @@ export default function DaysView({
         updatePromises.push(
           createSession({
             bookId,
-            userId: user.id,
             date: dateKey,
             plannedPages: newPlannedPages,
             isRead: false,
@@ -964,7 +948,6 @@ export default function DaysView({
 
     await updateSession({
       sessionId: session._id,
-      userId: user.id,
       reflectionNote: note,
     });
     if (note.trim()) {
@@ -1002,7 +985,6 @@ export default function DaysView({
           updatePromises.push(
             updateSession({
               sessionId: session._id,
-              userId: user.id,
               actualPages: next.actualPages,
               stopPage: next.stopPage,
             })
@@ -1033,7 +1015,6 @@ export default function DaysView({
         : undefined;
       await updateSession({
         sessionId: existingSession._id,
-        userId: user.id,
         isRead: existingSession.isRead,
         actualPages: pageUpdate.actualPages,
         stopPage: pageUpdate.stopPage,
@@ -1670,7 +1651,6 @@ export default function DaysView({
                   }
                   dayLabel={`Day ${dayNumber} – ${format(date, "MMM d")}`}
                   sessionId={session?._id}
-                  userId={user?.id ?? ""}
                   savedDurationSec={session?.timerDurationSec}
                   onSaved={(durationSec) => {
                     queryClient.setQueryData<ReadingSessionDoc[]>(
