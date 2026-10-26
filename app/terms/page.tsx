@@ -143,9 +143,7 @@ export default function TermsPage() {
         <p>
           To the extent the law allows, BookTrackr and its operator are not
           liable for indirect or consequential losses, or for loss of data,
-          arising from your use of the service. Because the service is free,
-          our total liability to you for any claim is limited to £50 (or the
-          equivalent in your currency). Nothing in these terms limits
+          arising from your use of the service. Nothing in these terms limits
           liability that can&apos;t be limited by law, or your rights as a
           consumer.
         </p>
