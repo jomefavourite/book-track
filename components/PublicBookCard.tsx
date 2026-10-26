@@ -50,7 +50,7 @@ export default function PublicBookCard({
   const isArchived = book.isArchived ?? false;
 
   return (
-    <Card className="relative p-4 transition-shadow hover:shadow-lg">
+    <Card className="relative flex h-full flex-col p-4 transition-shadow hover:shadow-lg">
       <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
         {showVisibilityBadge && isArchived && (
           <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
@@ -75,7 +75,7 @@ export default function PublicBookCard({
       </div>
       <Link
         href={`/books/${book._id}`}
-        className="flex flex-col justify-between"
+        className="flex flex-1 flex-col justify-between"
       >
         <div>
           <h3 className="mb-2 pr-16 text-xl font-semibold text-card-foreground">
@@ -111,7 +111,7 @@ export default function PublicBookCard({
           )}
         </div>
 
-        <div className="mt-3">
+        <div className="mt-auto pt-3">
           <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
             <span>Progress</span>
             <span>{Math.round(progress)}%</span>
