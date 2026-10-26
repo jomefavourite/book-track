@@ -149,6 +149,15 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
+      <LegalSection id="governing-law" title="Governing law">
+        <p>
+          These terms are governed by the laws of the Federal Republic of
+          Nigeria, and any dispute about them will be handled by the courts
+          of Nigeria. If you use BookTrackr as a consumer outside Nigeria, you
+          also keep any protections the law where you live gives you.
+        </p>
+      </LegalSection>
+
       <LegalSection id="changes" title="Changes to these terms">
         <p>
           We may update these terms. We&apos;ll change the date at the top and,
