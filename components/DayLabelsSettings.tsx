@@ -109,12 +109,12 @@ export default function DayLabelsSettings({
   const trimmedNewName = newName.trim();
 
   return (
-    <Card className="p-5">
+    <Card className="p-5 sm:p-6">
       <div className="flex items-center gap-2">
-        <CalendarDays className="h-5 w-5 text-muted-foreground" />
-        <h2 className="text-lg font-semibold text-foreground">Day labels</h2>
+        <CalendarDays className="h-4 w-4 text-muted-foreground" />
+        <h2 className="font-semibold text-foreground">Day labels</h2>
       </div>
-      <p className="mt-2 text-sm text-muted-foreground">
+      <p className="mt-1 text-sm text-muted-foreground">
         Name the kinds of days your reading schedules use. Each label needs a
         behavior so progress and catch-up suggestions know what the day means —
         rename &quot;Rest&quot; to &quot;Sabbath&quot; and nothing else changes.
@@ -125,12 +125,15 @@ export default function DayLabelsSettings({
           const Icon = dayIconFor(label.icon, label.behavior);
           const archived = label.isArchived === true;
           return (
+            // Phone: icon, name and archive share a line; behavior and its
+            // description wrap underneath. md+: everything on one row.
             <div
               key={label._id}
-              className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center"
-              style={{ borderColor: "var(--border)" }}
+              className={`flex flex-wrap items-center gap-2 rounded-lg border border-border p-3 md:flex-nowrap ${
+                archived ? "bg-muted/40 opacity-70" : ""
+              }`}
             >
-              <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <Icon className="order-0 h-4 w-4 shrink-0 text-muted-foreground" />
               {/* Uncontrolled + commit on blur: renaming shouldn't fire a
                   mutation on every keystroke. */}
               <Input
@@ -155,7 +158,7 @@ export default function DayLabelsSettings({
                     "Day label renamed"
                   );
                 }}
-                className="h-9 w-full sm:w-44"
+                className="order-1 h-9 min-w-0 flex-1 md:w-44 md:flex-none"
                 aria-label={`Name for ${label.name}`}
               />
               <Select
@@ -172,7 +175,10 @@ export default function DayLabelsSettings({
                   )
                 }
               >
-                <SelectTrigger className="h-9 w-full sm:w-40">
+                <SelectTrigger
+                  className="order-3 h-9 w-full md:order-2 md:w-40 md:shrink-0"
+                  aria-label={`Behavior for ${label.name}`}
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -183,7 +189,10 @@ export default function DayLabelsSettings({
                   ))}
                 </SelectContent>
               </Select>
-              <p className="flex-1 text-xs text-muted-foreground">
+              <p className="order-4 w-full text-xs text-muted-foreground md:order-3 md:w-auto md:flex-1">
+                {archived && (
+                  <span className="mr-1 font-medium text-foreground">Archived ·</span>
+                )}
                 {DAY_BEHAVIOR_HELP[label.behavior].description}
               </p>
               {canEdit && !label.isPlaceholder && (
@@ -191,6 +200,7 @@ export default function DayLabelsSettings({
                   type="button"
                   variant="ghost"
                   size="sm"
+                  className="order-2 shrink-0 md:order-4"
                   onClick={() =>
                     run(
                       () =>
@@ -217,8 +227,7 @@ export default function DayLabelsSettings({
 
       {canEdit && (
         <form
-          className="mt-4 flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center"
-          style={{ borderColor: "var(--border)" }}
+          className="mt-4 grid gap-2 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_10rem_10rem_auto]"
           // Own the empty-name case rather than letting the browser's native
           // `required` bubble take over, so the highlight matches the app.
           noValidate
@@ -257,7 +266,7 @@ export default function DayLabelsSettings({
             aria-required="true"
             aria-invalid={nameInvalid || undefined}
             aria-describedby={nameInvalid ? "day-label-name-error" : undefined}
-            className={`h-9 w-full sm:w-44 ${
+            className={`h-9 w-full sm:col-span-2 lg:col-span-1 ${
               nameInvalid
                 ? "border-destructive focus-visible:ring-destructive"
                 : ""
@@ -268,7 +277,7 @@ export default function DayLabelsSettings({
             value={newBehavior}
             onValueChange={(value) => setNewBehavior(value as DayBehavior)}
           >
-            <SelectTrigger className="h-9 w-full sm:w-40">
+            <SelectTrigger className="h-9 w-full" aria-label="New label behavior">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -280,7 +289,7 @@ export default function DayLabelsSettings({
             </SelectContent>
           </Select>
           <Select value={newIcon} onValueChange={setNewIcon}>
-            <SelectTrigger className="h-9 w-full sm:w-32">
+            <SelectTrigger className="h-9 w-full" aria-label="New label icon">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -299,7 +308,12 @@ export default function DayLabelsSettings({
           </Select>
           {/* Deliberately always clickable — clicking with an empty name
               highlights the field instead of leaving a dead button. */}
-          <Button type="submit" variant="outline" disabled={creating}>
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={creating}
+            className="h-9 sm:col-span-2 lg:col-span-1"
+          >
             <Plus className="h-4 w-4" />
             {creating ? "Adding..." : "Add"}
           </Button>
