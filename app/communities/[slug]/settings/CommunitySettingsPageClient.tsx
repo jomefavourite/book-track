@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,13 +9,18 @@ import {
   ArrowLeft,
   BookOpen,
   CalendarClock,
+  CalendarDays,
+  Check,
   Copy,
   ImagePlus,
   Infinity,
   LinkIcon,
+  Plus,
   Settings,
   ShieldCheck,
   Trash2,
+  TriangleAlert,
+  UserMinus,
   Users,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
@@ -42,6 +47,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/use-toast";
 import DayLabelsSettings from "@/components/DayLabelsSettings";
 
@@ -131,6 +137,190 @@ function getInviteUsageText(invite: Invite) {
     return `${invite.usedCount.toLocaleString()} used · Unlimited uses`;
   }
   return `${invite.usedCount.toLocaleString()}/${invite.maxUses.toLocaleString()} used`;
+}
+
+function memberDisplayName(member: Member) {
+  return member.name || member.email || "BookTrackr member";
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const letters = parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : name.slice(0, 2);
+  return letters.toUpperCase();
+}
+
+function CommunityAvatar({
+  name,
+  logoUrl,
+  brandColor,
+}: {
+  name: string;
+  logoUrl?: string | null;
+  brandColor?: string;
+}) {
+  if (logoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logoUrl}
+        alt=""
+        className="h-12 w-12 shrink-0 rounded-lg border border-border object-cover"
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden="true"
+      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-lg font-bold text-white"
+      style={{ backgroundColor: safeBrandColor(brandColor ?? "") }}
+    >
+      {initials(name)}
+    </span>
+  );
+}
+
+function SectionHeading({
+  title,
+  description,
+}: {
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div>
+      <h2 className="font-semibold text-foreground">{title}</h2>
+      {description && (
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      )}
+    </div>
+  );
+}
+
+/** One titled group inside the General form. Title sits beside the fields on wide screens. */
+function FormSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="grid gap-4 p-5 sm:p-6 xl:grid-cols-[14rem_minmax(0,1fr)] xl:gap-8">
+      <SectionHeading title={title} description={description} />
+      <div className="min-w-0 space-y-4">{children}</div>
+    </section>
+  );
+}
+
+function Field({
+  label,
+  htmlFor,
+  className = "",
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`flex min-w-0 flex-col gap-2 ${className}`}>
+      <label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function RoleBadge({ role }: { role: Role }) {
+  return (
+    <span className="inline-flex h-7 items-center rounded-md border border-border px-2 text-xs font-medium capitalize text-muted-foreground">
+      {role}
+    </span>
+  );
+}
+
+function InviteRow({
+  invite,
+  copied = false,
+  onCopy,
+  onRevoke,
+}: {
+  invite: Invite;
+  copied?: boolean;
+  onCopy?: () => void;
+  onRevoke?: () => void;
+}) {
+  const inviteUrl = buildInviteUrl(invite.token);
+  const { inactive, isExpired, isRevoked, isUsedUp } = getInviteState(invite);
+  const status = isRevoked
+    ? "Revoked"
+    : isExpired
+      ? "Expired"
+      : isUsedUp
+        ? "Used up"
+        : "Active";
+
+  return (
+    <div
+      className={`rounded-lg border border-border p-3 sm:p-4 ${inactive ? "opacity-70" : ""}`}
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <RoleBadge role={invite.roleToGrant} />
+        <span
+          className={`inline-flex h-6 items-center rounded-full px-2 text-xs font-medium ${
+            inactive
+              ? "bg-muted text-muted-foreground"
+              : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+          }`}
+        >
+          {status}
+        </span>
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          {invite.expiresAt === undefined ? (
+            <Infinity className="h-3.5 w-3.5" />
+          ) : (
+            <CalendarClock className="h-3.5 w-3.5" />
+          )}
+          {getInviteExpiryText(invite)}
+        </span>
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Users className="h-3.5 w-3.5" />
+          {getInviteUsageText(invite)}
+        </span>
+      </div>
+      {!inactive && (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+            {inviteUrl}
+          </code>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 sm:flex-none"
+              onClick={onCopy}
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              {copied ? "Copied" : "Copy"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="flex-1 text-muted-foreground hover:text-destructive sm:flex-none"
+              onClick={onRevoke}
+            >
+              <Trash2 className="h-4 w-4" />
+              Revoke
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function LogoUploader({
@@ -245,6 +435,7 @@ export default function CommunitySettingsPageClient() {
   const slug = params.slug;
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("general");
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [roleToGrant, setRoleToGrant] = useState<"admin" | "moderator" | "member">("member");
@@ -415,14 +606,109 @@ export default function CommunitySettingsPageClient() {
     }
   };
 
+  const members = (memberQuery.data as Member[] | undefined) ?? [];
+  const liveInvites = activeInvites.filter(
+    (invite) => !getInviteState(invite).inactive
+  );
+  const pastInvites = activeInvites.filter(
+    (invite) => getInviteState(invite).inactive
+  );
+
+  const handleRoleChange = async (member: Member, role: Role) => {
+    try {
+      await updateMemberRole({ memberId: member._id, role });
+      toast({
+        title: "Role updated",
+        description: `${memberDisplayName(member)} is now ${role === "admin" ? "an" : "a"} ${role}.`,
+      });
+    } catch (caught) {
+      toast({
+        title: "Could not update role",
+        description: caught instanceof Error ? caught.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCreateInvite = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!detail || isCreatingInvite) return;
+    setIsCreatingInvite(true);
+    try {
+      await createInvite({
+        communityId: detail._id,
+        roleToGrant,
+        expiresInDays:
+          expirationMode === "limited"
+            ? Number(expiresInDays) || undefined
+            : undefined,
+        maxUses:
+          usageMode === "limited" ? Number(maxUses) || undefined : undefined,
+      });
+      trackEvent("invite_created", {
+        role: roleToGrant,
+        expires_in_days:
+          expirationMode === "limited" ? Number(expiresInDays) || null : null,
+        max_uses: usageMode === "limited" ? Number(maxUses) || null : null,
+      });
+      toast({
+        title: "Invite link created",
+        description: "The invite is ready to copy and share.",
+      });
+    } catch (caught) {
+      toast({
+        title: "Could not create invite",
+        description: caught instanceof Error ? caught.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingInvite(false);
+    }
+  };
+
+  const copyInvite = async (invite: Invite) => {
+    try {
+      await navigator.clipboard.writeText(buildInviteUrl(invite.token));
+      setCopiedToken(invite.token);
+      setTimeout(
+        () => setCopiedToken((current) => (current === invite.token ? null : current)),
+        2000
+      );
+    } catch {
+      toast({ title: "Could not copy link", variant: "destructive" });
+    }
+  };
+
+  const tabs = [
+    { value: "general", label: "General", icon: Settings },
+    {
+      value: "members",
+      label: "Members",
+      icon: Users,
+      count: memberQuery.data ? members.length : undefined,
+    },
+    {
+      value: "invites",
+      label: "Invites",
+      icon: LinkIcon,
+      count: inviteQuery.data ? liveInvites.length : undefined,
+    },
+    { value: "day-labels", label: "Day labels", icon: CalendarDays },
+    ...(isOwner
+      ? [{ value: "danger", label: "Danger zone", icon: TriangleAlert }]
+      : []),
+  ];
+
   return (
     <>
       <Navigation />
-      <main className="mx-auto max-w-6xl p-3 sm:p-6">
-        <Button variant="ghost" asChild className="mb-4">
+      <main className="mx-auto max-w-6xl p-3 pb-12 sm:p-6 sm:pb-16">
+        <Button variant="ghost" size="sm" asChild className="-ml-2 mb-4 max-w-full">
           <Link href={detail ? `/communities/${detail.slug}` : "/communities"}>
             <ArrowLeft className="h-4 w-4" />
-            Community
+            <span className="truncate">
+              {detail ? `Back to ${detail.name}` : "Communities"}
+            </span>
           </Link>
         </Button>
 
@@ -444,487 +730,467 @@ export default function CommunitySettingsPageClient() {
           </Card>
         ) : (
           <div className="space-y-6">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground sm:text-4xl">
-                Community Settings
-              </h1>
-              <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-                Manage visibility, invite links, and member roles for{" "}
-                {detail.name}.
-              </p>
-            </div>
+            <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <CommunityAvatar
+                  name={detail.name}
+                  logoUrl={detail.logoUrl}
+                  brandColor={detail.brandColor}
+                />
+                <div className="min-w-0">
+                  <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
+                    Settings
+                  </h1>
+                  <p className="truncate text-sm text-muted-foreground">
+                    {detail.name}
+                  </p>
+                </div>
+              </div>
+              <Button asChild variant="outline" className="w-full sm:w-auto">
+                <Link href={`/communities/${detail.slug}/books/new`}>
+                  <BookOpen className="h-4 w-4" />
+                  Add community book
+                </Link>
+              </Button>
+            </header>
 
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <section className="space-y-6">
-                <Card className="p-5 sm:p-6">
-                  <form onSubmit={handleSave} className="space-y-5">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2 sm:col-span-2">
-                        <span className="text-sm font-medium text-foreground">
-                          Community logo
-                        </span>
-                        <LogoUploader
-                          communityId={detail._id}
-                          logoUrl={detail.logoUrl}
-                          communityName={detail.name}
-                          onUploaded={invalidateCommunity}
-                        />
-                      </div>
-                      <label className="space-y-2 sm:col-span-2">
-                        <span className="text-sm font-medium text-foreground">
-                          Community name
-                        </span>
-                        <Input name="name" defaultValue={detail.name} required />
-                      </label>
-                      <label className="space-y-2 sm:col-span-2">
-                        <span className="text-sm font-medium text-foreground">
-                          Description
-                        </span>
-                        <textarea
-                          name="description"
-                          defaultValue={detail.description ?? ""}
-                          className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        />
-                      </label>
-                      <label className="flex flex-col gap-2">
-                        <span className="text-sm font-medium text-foreground">
-                          Visibility
-                        </span>
-                        <Select
-                          name="visibility"
-                          defaultValue={detail.visibility}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select visibility" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              <SelectItem value="private">
-                                Private, discoverable
-                              </SelectItem>
-                              <SelectItem value="public">Public</SelectItem>
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </label>
-                      <label className="flex flex-col gap-2">
-                        <span className="text-sm font-medium text-foreground">
-                          Brand color
-                        </span>
-                        <BrandColorInput
-                          key={`${detail._id}:${detail.brandColor ?? ""}`}
-                          defaultColor={detail.brandColor}
-                        />
-                      </label>
-                      <label className="space-y-2 sm:col-span-2">
-                        <span className="text-sm font-medium text-foreground">
-                          Instagram{" "}
-                          <span className="text-muted-foreground">(optional)</span>
-                        </span>
-                        <Input
-                          name="instagramUrl"
-                          type="url"
-                          defaultValue={detail.instagramUrl ?? ""}
-                          placeholder="https://instagram.com/yourcommunity"
-                        />
-                      </label>
-                      <label className="space-y-2 sm:col-span-2">
-                        <span className="text-sm font-medium text-foreground">
-                          TikTok{" "}
-                          <span className="text-muted-foreground">(optional)</span>
-                        </span>
-                        <Input
-                          name="tiktokUrl"
-                          type="url"
-                          defaultValue={detail.tiktokUrl ?? ""}
-                          placeholder="https://tiktok.com/@yourcommunity"
-                        />
-                      </label>
-                      <label className="space-y-2 sm:col-span-2">
-                        <span className="text-sm font-medium text-foreground">
-                          Website{" "}
-                          <span className="text-muted-foreground">(optional)</span>
-                        </span>
-                        <Input
-                          name="websiteUrl"
-                          type="url"
-                          defaultValue={detail.websiteUrl ?? ""}
-                          placeholder="https://yourcommunity.com"
-                        />
-                      </label>
-                    </div>
-                    {error && (
-                      <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                        {error}
-                      </p>
+            <Tabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-8"
+            >
+              <TabsList className="flex h-auto w-full justify-start gap-1 overflow-x-auto rounded-lg p-1 [scrollbar-width:none] lg:sticky lg:top-6 lg:flex-col lg:items-stretch lg:overflow-visible lg:bg-transparent lg:p-0 [&::-webkit-scrollbar]:hidden">
+                {tabs.map(({ value, label, icon: Icon, count }) => (
+                  <TabsTrigger
+                    key={value}
+                    value={value}
+                    className={`shrink-0 gap-2 px-3 py-2 lg:justify-start lg:hover:bg-muted/60 lg:data-[state=active]:bg-muted lg:data-[state=active]:shadow-none ${
+                      value === "danger" ? "text-destructive data-[state=active]:text-destructive" : ""
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {label}
+                    {count !== undefined && (
+                      <span className="ml-auto rounded-full bg-background px-1.5 text-xs tabular-nums text-muted-foreground lg:bg-transparent">
+                        {count}
+                      </span>
                     )}
-                    <div className="flex justify-end">
-                      <Button type="submit" disabled={isSaving}>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+
+              {/* Kept mounted so unsaved edits survive switching tabs. */}
+              <TabsContent
+                value="general"
+                forceMount
+                className="mt-4 data-[state=inactive]:hidden lg:mt-0"
+              >
+                <Card className="overflow-hidden">
+                  <form onSubmit={handleSave}>
+                    <div className="divide-y divide-border">
+                      <FormSection
+                        title="Profile"
+                        description="How your community appears to members and visitors."
+                      >
+                        <div className="space-y-2">
+                          <span className="text-sm font-medium text-foreground">
+                            Logo
+                          </span>
+                          <LogoUploader
+                            communityId={detail._id}
+                            logoUrl={detail.logoUrl}
+                            communityName={detail.name}
+                            onUploaded={invalidateCommunity}
+                          />
+                        </div>
+                        <Field label="Community name" htmlFor="community-name">
+                          <Input
+                            id="community-name"
+                            name="name"
+                            defaultValue={detail.name}
+                            required
+                          />
+                        </Field>
+                        <Field label="Description" htmlFor="community-description">
+                          <textarea
+                            id="community-description"
+                            name="description"
+                            defaultValue={detail.description ?? ""}
+                            rows={4}
+                            placeholder="What does your community read together?"
+                            className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          />
+                        </Field>
+                      </FormSection>
+
+                      <FormSection
+                        title="Visibility & branding"
+                        description="Control who can see activity and set your accent color."
+                      >
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Field label="Visibility">
+                            <Select name="visibility" defaultValue={detail.visibility}>
+                              <SelectTrigger aria-label="Visibility">
+                                <SelectValue placeholder="Select visibility" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  <SelectItem value="private">
+                                    Private, discoverable
+                                  </SelectItem>
+                                  <SelectItem value="public">Public</SelectItem>
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                          </Field>
+                          <Field label="Brand color">
+                            <BrandColorInput
+                              key={`${detail._id}:${detail.brandColor ?? ""}`}
+                              defaultColor={detail.brandColor}
+                            />
+                          </Field>
+                        </div>
+                        <p className="flex items-start gap-2 rounded-md bg-muted/50 p-3 text-xs leading-relaxed text-muted-foreground">
+                          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                          Private communities stay discoverable, but activity and
+                          membership are protected by invite-only access.
+                        </p>
+                      </FormSection>
+
+                      <FormSection
+                        title="Links"
+                        description="Optional links shown on your community page."
+                      >
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Field label="Instagram" htmlFor="community-instagram">
+                            <Input
+                              id="community-instagram"
+                              name="instagramUrl"
+                              type="url"
+                              defaultValue={detail.instagramUrl ?? ""}
+                              placeholder="https://instagram.com/yourcommunity"
+                            />
+                          </Field>
+                          <Field label="TikTok" htmlFor="community-tiktok">
+                            <Input
+                              id="community-tiktok"
+                              name="tiktokUrl"
+                              type="url"
+                              defaultValue={detail.tiktokUrl ?? ""}
+                              placeholder="https://tiktok.com/@yourcommunity"
+                            />
+                          </Field>
+                          <Field
+                            label="Website"
+                            htmlFor="community-website"
+                            className="sm:col-span-2"
+                          >
+                            <Input
+                              id="community-website"
+                              name="websiteUrl"
+                              type="url"
+                              defaultValue={detail.websiteUrl ?? ""}
+                              placeholder="https://yourcommunity.com"
+                            />
+                          </Field>
+                        </div>
+                      </FormSection>
+                    </div>
+
+                    <div className="flex flex-col gap-3 border-t border-border bg-muted/30 px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
+                      {error && (
+                        <p
+                          role="alert"
+                          className="text-sm text-destructive sm:mr-auto"
+                        >
+                          {error}
+                        </p>
+                      )}
+                      <Button
+                        type="submit"
+                        disabled={isSaving || updatePending}
+                        className="w-full sm:w-auto"
+                      >
                         {isSaving ? "Saving..." : "Save changes"}
                       </Button>
                     </div>
                   </form>
                 </Card>
+              </TabsContent>
 
+              <TabsContent value="members" className="mt-4 lg:mt-0">
                 <Card className="p-5 sm:p-6">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-5 w-5 text-muted-foreground" />
-                    <h2 className="text-lg font-semibold text-foreground">
-                      Members
-                    </h2>
-                  </div>
+                  <SectionHeading
+                    title="Members"
+                    description={
+                      isOwner
+                        ? "Change roles or remove people from the community."
+                        : "Only the owner can change roles. You can remove members."
+                    }
+                  />
                   <div className="mt-4 divide-y divide-border">
-                    {((memberQuery.data as Member[] | undefined) ?? []).map((member) => (
-                      <div
-                        key={member._id}
-                        className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground">
-                            {member.name || member.email || "BookTrackr member"}
-                          </p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {member.email || member.clerkId}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {detail.viewerRole === "owner" && member.role !== "owner" ? (
-                            <Select
-                              value={member.role}
-                              onValueChange={(value) =>
-                                updateMemberRole({
-                                  memberId: member._id,
-                                  role: value as Role,
-                                })
-                              }
-                            >
-                              <SelectTrigger className="h-9 w-36 capitalize">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectGroup>
-                                  <SelectItem value="admin">Admin</SelectItem>
-                                  <SelectItem value="moderator">
-                                    Moderator
-                                  </SelectItem>
-                                  <SelectItem value="member">Member</SelectItem>
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <span className="rounded-md border border-border px-2 py-1 text-xs font-medium capitalize text-muted-foreground">
-                              {member.role}
-                            </span>
-                          )}
-                          {member.role !== "owner" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setMemberToRemove(member)}
-                            >
-                              Remove
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-                <DayLabelsSettings
-                  communityId={detail._id}
-                  canEdit={canEdit}
-                />
-              </section>
-
-              <aside className="space-y-6">
-                <Card className="p-5">
-                  <div className="flex items-start gap-2">
-                    <BookOpen className="mt-0.5 h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <h2 className="text-lg font-semibold text-foreground">
-                        Community books
-                      </h2>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        Add shared page-based or chapter-based reading plans for
-                        members.
+                    {memberQuery.isPending ? (
+                      <p className="py-6 text-center text-sm text-muted-foreground">
+                        Loading members...
                       </p>
-                      <Button asChild className="mt-4 w-full">
-                        <Link href={`/communities/${detail.slug}/books/new`}>
-                          Add community book
-                        </Link>
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="p-5">
-                  <div className="flex items-center gap-2">
-                    <LinkIcon className="h-5 w-5 text-muted-foreground" />
-                    <h2 className="text-lg font-semibold text-foreground">
-                      Invite links
-                    </h2>
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Create invite links for specific roles. You can limit how
-                    long each link works and how many people can use it.
-                  </p>
-                  <form
-                    className="mt-4 space-y-3"
-                    onSubmit={async (event) => {
-                      event.preventDefault();
-                      if (!detail || isCreatingInvite) return;
-                      setIsCreatingInvite(true);
-                      try {
-                        await createInvite({
-                          communityId: detail._id,
-                          roleToGrant,
-                          expiresInDays:
-                            expirationMode === "limited"
-                              ? Number(expiresInDays) || undefined
-                              : undefined,
-                          maxUses:
-                            usageMode === "limited"
-                              ? Number(maxUses) || undefined
-                              : undefined,
-                        });
-                        trackEvent("invite_created", {
-                          role: roleToGrant,
-                          expires_in_days:
-                            expirationMode === "limited"
-                              ? Number(expiresInDays) || null
-                              : null,
-                          max_uses:
-                            usageMode === "limited"
-                              ? Number(maxUses) || null
-                              : null,
-                        });
-                        toast({
-                          title: "Invite link created",
-                          description: "The invite is ready to copy and share.",
-                        });
-                      } finally {
-                        setIsCreatingInvite(false);
-                      }
-                    }}
-                  >
-                    <label className="flex flex-col gap-2">
-                      <span className="text-sm font-medium text-foreground">
-                        Invite role
-                      </span>
-                      <Select
-                        value={roleToGrant}
-                        onValueChange={(value) =>
-                          setRoleToGrant(value as typeof roleToGrant)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select role" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            <SelectItem value="member">Member</SelectItem>
-                            <SelectItem value="moderator">Moderator</SelectItem>
-                            <SelectItem value="admin">Admin</SelectItem>
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </label>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="flex flex-col gap-2">
-                        <span className="text-sm font-medium text-foreground">
-                          Expiry
-                        </span>
-                        <Select
-                          value={expirationMode}
-                          onValueChange={(value) =>
-                            setExpirationMode(value as typeof expirationMode)
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              <SelectItem value="limited">
-                                Expires after days
-                              </SelectItem>
-                              <SelectItem value="unlimited">
-                                Never expires
-                              </SelectItem>
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                        <Input
-                          value={expiresInDays}
-                          onChange={(event) => setExpiresInDays(event.target.value)}
-                          type="number"
-                          min={1}
-                          disabled={expirationMode === "unlimited"}
-                        />
-                        <span className="block text-xs leading-relaxed text-muted-foreground">
-                          {expirationMode === "unlimited"
-                            ? "This link will not expire by date."
-                            : "Number of days before the link stops working."}
-                        </span>
-                      </label>
-                      <label className="flex flex-col gap-2">
-                        <span className="text-sm font-medium text-foreground">
-                          Uses
-                        </span>
-                        <Select
-                          value={usageMode}
-                          onValueChange={(value) =>
-                            setUsageMode(value as typeof usageMode)
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              <SelectItem value="limited">
-                                Limited uses
-                              </SelectItem>
-                              <SelectItem value="unlimited">
-                                Unlimited uses
-                              </SelectItem>
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                        <Input
-                          value={maxUses}
-                          onChange={(event) => setMaxUses(event.target.value)}
-                          type="number"
-                          min={1}
-                          disabled={usageMode === "unlimited"}
-                        />
-                        <span className="block text-xs leading-relaxed text-muted-foreground">
-                          {usageMode === "unlimited"
-                            ? "Any number of people can use this link."
-                            : "Number of people who can join with this link."}
-                        </span>
-                      </label>
-                    </div>
-                    <Button type="submit" disabled={isCreatingInvite} className="w-full">
-                      {isCreatingInvite ? "Creating..." : "Create invite"}
-                    </Button>
-                  </form>
-                </Card>
-
-                <Card className="p-5">
-                  <h2 className="text-lg font-semibold text-foreground">
-                    Active invites
-                  </h2>
-                  <div className="mt-4 space-y-3">
-                    {activeInvites.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        No invite links yet.
+                    ) : members.length === 0 ? (
+                      <p className="py-6 text-center text-sm text-muted-foreground">
+                        No members yet.
                       </p>
                     ) : (
-                      activeInvites.map((invite) => {
-                        const inviteUrl = buildInviteUrl(invite.token);
-                        const { inactive, isExpired, isRevoked, isUsedUp } =
-                          getInviteState(invite);
-                        return (
-                          <div key={invite._id} className="rounded-md border border-border p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-medium capitalize text-foreground">
-                                {invite.roleToGrant}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                {isRevoked
-                                  ? "Revoked"
-                                  : isExpired
-                                    ? "Expired"
-                                    : isUsedUp
-                                      ? "Used up"
-                                      : "Active"}
-                              </span>
-                            </div>
-                            <div className="mt-3 flex flex-col gap-2 text-xs text-muted-foreground">
-                              <span className="inline-flex items-center gap-2">
-                                {invite.expiresAt === undefined ? (
-                                  <Infinity className="h-3.5 w-3.5" />
-                                ) : (
-                                  <CalendarClock className="h-3.5 w-3.5" />
-                                )}
-                                {getInviteExpiryText(invite)}
-                              </span>
-                              <span className="inline-flex items-center gap-2">
-                                <Users className="h-3.5 w-3.5" />
-                                {getInviteUsageText(invite)}
-                              </span>
-                            </div>
-                            <p className="mt-2 truncate text-xs text-muted-foreground">
-                              {inviteUrl}
-                            </p>
-                            <div className="mt-3 flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={inactive}
-                                onClick={async () => {
-                                  await navigator.clipboard.writeText(inviteUrl);
-                                  setCopiedToken(invite.token);
-                                }}
-                              >
-                                <Copy className="h-4 w-4" />
-                                {copiedToken === invite.token ? "Copied" : "Copy"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={inactive}
-                                onClick={() => setInviteToRevoke(invite)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                {inactive ? "Revoked" : "Revoke link"}
-                              </Button>
+                      members.map((member) => (
+                        <div
+                          key={member._id}
+                          className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center"
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                            <span
+                              aria-hidden="true"
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-muted-foreground"
+                            >
+                              {initials(memberDisplayName(member))}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-foreground">
+                                {memberDisplayName(member)}
+                              </p>
+                              {member.email && member.name && (
+                                <p className="truncate text-xs text-muted-foreground">
+                                  {member.email}
+                                </p>
+                              )}
                             </div>
                           </div>
-                        );
-                      })
+                          <div className="flex items-center gap-2 pl-12 sm:shrink-0 sm:pl-0">
+                            {isOwner && member.role !== "owner" ? (
+                              <Select
+                                value={member.role}
+                                onValueChange={(value) =>
+                                  handleRoleChange(member, value as Role)
+                                }
+                              >
+                                <SelectTrigger
+                                  className="h-9 flex-1 sm:w-36 sm:flex-none"
+                                  aria-label={`Role for ${memberDisplayName(member)}`}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectGroup>
+                                    <SelectItem value="admin">Admin</SelectItem>
+                                    <SelectItem value="moderator">
+                                      Moderator
+                                    </SelectItem>
+                                    <SelectItem value="member">Member</SelectItem>
+                                  </SelectGroup>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <RoleBadge role={member.role} />
+                            )}
+                            {member.role !== "owner" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-muted-foreground hover:text-destructive"
+                                onClick={() => setMemberToRemove(member)}
+                                aria-label={`Remove ${memberDisplayName(member)}`}
+                              >
+                                <UserMinus className="h-4 w-4" />
+                                <span className="sm:sr-only">Remove</span>
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))
                     )}
                   </div>
                 </Card>
+              </TabsContent>
 
-                <Card className="p-5">
-                  <div className="flex items-start gap-2">
-                    <ShieldCheck className="mt-0.5 h-5 w-5 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      Private communities stay discoverable, but activity and
-                      membership are protected by invite-only access.
-                    </p>
-                  </div>
+              <TabsContent value="invites" className="mt-4 space-y-6 lg:mt-0">
+                <Card className="p-5 sm:p-6">
+                  <SectionHeading
+                    title="Create an invite link"
+                    description="Choose the role new members get, and limit how long the link works or how many people can use it."
+                  />
+                  <form className="mt-5 space-y-5" onSubmit={handleCreateInvite}>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <Field label="Role">
+                        <Select
+                          value={roleToGrant}
+                          onValueChange={(value) =>
+                            setRoleToGrant(value as typeof roleToGrant)
+                          }
+                        >
+                          <SelectTrigger aria-label="Invite role">
+                            <SelectValue placeholder="Select role" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectItem value="member">Member</SelectItem>
+                              <SelectItem value="moderator">Moderator</SelectItem>
+                              <SelectItem value="admin">Admin</SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field label="Expiry">
+                        <div className="flex gap-2">
+                          <Select
+                            value={expirationMode}
+                            onValueChange={(value) =>
+                              setExpirationMode(value as typeof expirationMode)
+                            }
+                          >
+                            <SelectTrigger aria-label="Invite expiry">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectGroup>
+                                <SelectItem value="limited">After days</SelectItem>
+                                <SelectItem value="unlimited">Never</SelectItem>
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                          {expirationMode === "limited" && (
+                            <Input
+                              value={expiresInDays}
+                              onChange={(event) => setExpiresInDays(event.target.value)}
+                              type="number"
+                              min={1}
+                              inputMode="numeric"
+                              aria-label="Days until the link expires"
+                              className="w-20 shrink-0"
+                            />
+                          )}
+                        </div>
+                      </Field>
+                      <Field label="Uses">
+                        <div className="flex gap-2">
+                          <Select
+                            value={usageMode}
+                            onValueChange={(value) =>
+                              setUsageMode(value as typeof usageMode)
+                            }
+                          >
+                            <SelectTrigger aria-label="Invite uses">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectGroup>
+                                <SelectItem value="limited">Limited</SelectItem>
+                                <SelectItem value="unlimited">Unlimited</SelectItem>
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                          {usageMode === "limited" && (
+                            <Input
+                              value={maxUses}
+                              onChange={(event) => setMaxUses(event.target.value)}
+                              type="number"
+                              min={1}
+                              inputMode="numeric"
+                              aria-label="Number of people who can use the link"
+                              className="w-20 shrink-0"
+                            />
+                          )}
+                        </div>
+                      </Field>
+                    </div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs text-muted-foreground">
+                        {expirationMode === "limited"
+                          ? `Expires in ${Number(expiresInDays) || "?"} day${Number(expiresInDays) === 1 ? "" : "s"}`
+                          : "Never expires"}
+                        {" · "}
+                        {usageMode === "limited"
+                          ? `${Number(maxUses) || "?"} use${Number(maxUses) === 1 ? "" : "s"}`
+                          : "Unlimited uses"}
+                      </p>
+                      <Button
+                        type="submit"
+                        disabled={isCreatingInvite || invitePending}
+                        className="w-full sm:w-auto"
+                      >
+                        <Plus className="h-4 w-4" />
+                        {isCreatingInvite ? "Creating..." : "Create invite"}
+                      </Button>
+                    </div>
+                  </form>
                 </Card>
-              </aside>
-            </div>
 
-            {isOwner && (
-              <Card className="border-destructive/40 p-5">
-                <div className="flex items-start gap-2">
-                  <Trash2 className="mt-0.5 h-5 w-5 text-destructive" />
-                  <div className="flex-1">
-                    <h2 className="text-lg font-semibold text-foreground">
-                      Danger zone
-                    </h2>
-                    <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                      Deleting this community permanently removes its books,
-                      schedules, day labels, invites, and every member&apos;s
-                      access. This cannot be undone.
-                    </p>
-                    <Button
-                      variant="destructive"
-                      className="mt-4"
-                      onClick={() => setShowDeleteDialog(true)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Delete community
-                    </Button>
+                <Card className="p-5 sm:p-6">
+                  <SectionHeading
+                    title="Active links"
+                    description="Share these links to let people join."
+                  />
+                  <div className="mt-4 space-y-3">
+                    {liveInvites.length === 0 ? (
+                      <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                        No active invite links. Create one above.
+                      </p>
+                    ) : (
+                      liveInvites.map((invite) => (
+                        <InviteRow
+                          key={invite._id}
+                          invite={invite}
+                          copied={copiedToken === invite.token}
+                          onCopy={() => copyInvite(invite)}
+                          onRevoke={() => setInviteToRevoke(invite)}
+                        />
+                      ))
+                    )}
                   </div>
-                </div>
-              </Card>
-            )}
+
+                  {pastInvites.length > 0 && (
+                    <details className="group mt-6 border-t border-border pt-4">
+                      <summary className="cursor-pointer list-none text-sm font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                        <span className="group-open:hidden">Show</span>
+                        <span className="hidden group-open:inline">Hide</span>{" "}
+                        past links ({pastInvites.length})
+                      </summary>
+                      <div className="mt-3 space-y-3">
+                        {pastInvites.map((invite) => (
+                          <InviteRow key={invite._id} invite={invite} />
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="day-labels" className="mt-4 lg:mt-0">
+                <DayLabelsSettings communityId={detail._id} canEdit={canEdit} />
+              </TabsContent>
+
+              {isOwner && (
+                <TabsContent value="danger" className="mt-4 lg:mt-0">
+                  <Card className="border-destructive/40 p-5 sm:p-6">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h2 className="font-semibold text-foreground">
+                          Delete this community
+                        </h2>
+                        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+                          Permanently removes its books, schedules, day labels,
+                          invites, and every member&apos;s access. This cannot be
+                          undone.
+                        </p>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        className="w-full shrink-0 sm:w-auto"
+                        onClick={() => setShowDeleteDialog(true)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete community
+                      </Button>
+                    </div>
+                  </Card>
+                </TabsContent>
+              )}
+            </Tabs>
           </div>
         )}
       </main>
