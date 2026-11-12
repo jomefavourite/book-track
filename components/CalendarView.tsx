@@ -1459,14 +1459,16 @@ export default function CalendarView({
       chapterDistribution
     );
 
+    const selectedPlannedPages =
+      adaptivePageDistribution.get(selectedDateKey) ??
+      selectedSession?.plannedPages ??
+      (pageDistribution.get(selectedDateKey) || 0);
+
     return (
       <DayDetailModal
         day={selectedDay}
         session={selectedSession}
-        plannedPages={
-          selectedSession?.plannedPages ??
-          (pageDistribution.get(selectedDateKey) || 0)
-        }
+        plannedPages={selectedPlannedPages}
         plannedChapter={selectedChapter}
         isRead={selectedIsRead}
         isMissed={selectedIsMissed}
@@ -1494,15 +1496,13 @@ export default function CalendarView({
           inputValues.get(selectedDateKey) ??
           getStopPageInputValue(
             selectedDateKey,
-            selectedSession?.plannedPages ??
-              (pageDistribution.get(selectedDateKey) || 0)
+            selectedPlannedPages
           )
         }
         maxStopPage={book.totalPages}
         pagesReadToday={getPagesReadForDate(
           selectedDateKey,
-          selectedSession?.plannedPages ??
-            (pageDistribution.get(selectedDateKey) || 0),
+          selectedPlannedPages,
           selectedSession
         )}
         onInputChange={(value) => handleInputChange(selectedDateKey, value)}
@@ -2121,7 +2121,7 @@ export default function CalendarView({
                             <div className="text-[10px] text-muted-foreground sm:text-xs">
                               {chapterOnlyMode
                                 ? `Chapter ${targetChapter}`
-                                : `${session?.plannedPages || plannedPages} `}
+                                : `${plannedPages} `}
                               {!chapterOnlyMode && (
                                 <span className="hidden sm:inline">pages</span>
                               )}
@@ -2216,7 +2216,7 @@ export default function CalendarView({
                       <div className="truncate text-[9px] text-muted-foreground">
                         {chapterOnlyMode
                           ? `Chapter ${targetChapter}`
-                          : `${session?.plannedPages || plannedPages} pages`}
+                          : `${plannedPages} pages`}
                       </div>
                     ) : null}
                   </div>
