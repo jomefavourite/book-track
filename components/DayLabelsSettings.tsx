@@ -227,7 +227,7 @@ export default function DayLabelsSettings({
 
       {canEdit && (
         <form
-          className="mt-4 grid gap-2 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_10rem_10rem_auto]"
+          className="mt-4 grid grid-cols-1 gap-2 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_10rem_10rem_auto]"
           // Own the empty-name case rather than letting the browser's native
           // `required` bubble take over, so the highlight matches the app.
           noValidate

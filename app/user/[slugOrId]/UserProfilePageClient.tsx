@@ -505,7 +505,7 @@ export default function UserProfilePage() {
               />
             )}
 
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Card className="flex flex-col p-4 sm:p-5">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h3 className="text-base font-semibold text-foreground">
