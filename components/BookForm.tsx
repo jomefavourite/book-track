@@ -19,7 +19,10 @@ import {
 } from "@/lib/readingCalculator";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import ThemeSwitcher from "@/components/ThemeSwitcher";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import Navigation from "@/components/Navigation";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Id } from "@/convex/_generated/dataModel";
 import { useEffect } from "react";
@@ -55,11 +58,14 @@ interface BookFormProps {
   };
   /** When true, the form was reached via "Reset": start date is locked and only the end date can move forward. */
   resetMode?: boolean;
+  /** Creating from a reading-plan entry: prefill from it and link the new book back. */
+  plannedBookId?: string;
 }
 
 export default function BookForm({
   book: initialBook,
   resetMode = false,
+  plannedBookId,
 }: BookFormProps = {}) {
   const isEditMode = !!initialBook;
   const router = useRouter();
@@ -122,6 +128,15 @@ export default function BookForm({
     initialBook?.progressStyle ?? "pages"
   );
   const [ignorePages, setIgnorePages] = useState(initialBook?.ignorePages ?? false);
+  const { mutateAsync: linkPlannedBook } = useMutation({
+    mutationFn: useConvexMutation(api.readingPlans.linkPlannedBook),
+  });
+  const { data: plannedBook } = useQuery({
+    ...convexQuery(api.readingPlans.getPlannedBook, {
+      id: plannedBookId ?? "",
+    }),
+    enabled: !isEditMode && !!plannedBookId && !!user?.id,
+  });
   const currentMonthIndex = new Date().getMonth();
   const currentYear = new Date().getFullYear();
 
@@ -194,6 +209,35 @@ export default function BookForm({
       setEndYear(endDate.getFullYear());
     }
   }, [endDate]);
+
+  // Prefill once from the reading-plan entry when it arrives (adjusting state
+  // during render, React's recommended alternative to a syncing effect).
+  const [prefilledPlanId, setPrefilledPlanId] = useState<string | null>(null);
+  if (plannedBook && prefilledPlanId !== plannedBook._id) {
+    setPrefilledPlanId(plannedBook._id);
+    if (!name) setName(plannedBook.title);
+    if (!author && plannedBook.author) setAuthor(plannedBook.author);
+    if (!totalPages && plannedBook.totalPages) {
+      setTotalPages(plannedBook.totalPages.toString());
+    }
+    // A book planned for a future month starts on the 1st of that month.
+    if (plannedBook.month) {
+      const plannedStart = new Date(plannedBook.year, plannedBook.month - 1, 1);
+      if (plannedStart > startOfDay(new Date())) setStartDate(plannedStart);
+    }
+  }
+
+  // Fixed Days mode has no date pickers, so a book started from a plan entry
+  // for a future month would otherwise begin today. Begin on the 1st of the
+  // planned month instead (new books only; edits keep their own dates).
+  const plannedStart =
+    plannedBook?.month != null
+      ? new Date(plannedBook.year, plannedBook.month - 1, 1)
+      : null;
+  const fixedDaysStart =
+    !isEditMode && plannedStart && plannedStart > startOfDay(new Date())
+      ? plannedStart
+      : null;
 
   const chapterOnlyMode = progressStyle === "chapters" && ignorePages;
 
@@ -321,18 +365,20 @@ export default function BookForm({
           startYearValue = initialBook.startYear;
           endYearValue = initialBook.endYear;
         } else {
-          // New book or daysToRead changed - recalculate from today
+          // New book or daysToRead changed - recalculate from today (or from
+          // the planned month when started from the reading plan).
           const today = new Date();
           today.setHours(0, 0, 0, 0);
-          startDateValue = formatDateForStorage(today);
-          const end = new Date(today);
+          const start = fixedDaysStart ?? today;
+          startDateValue = formatDateForStorage(start);
+          const end = new Date(start);
           end.setDate(end.getDate() + days - 1);
           endDateValue = formatDateForStorage(end);
           daysToReadValue = days;
 
           // Derive month/year values
-          startMonthValue = MONTHS[today.getMonth()];
-          startYearValue = today.getFullYear();
+          startMonthValue = MONTHS[start.getMonth()];
+          startYearValue = start.getFullYear();
           endMonthValue = MONTHS[end.getMonth()];
           endYearValue = end.getFullYear();
         }
@@ -441,12 +487,23 @@ export default function BookForm({
         });
 
         trackEvent("book_created", {
+          from_plan: Boolean(plannedBook),
           reading_mode: readingMode,
           progress_style: progressStyle,
           is_public: Boolean(isPublic),
           total_days: daysToReadValue ?? totalDays ?? null,
           tag_count: tagsValue?.length ?? 0,
         });
+        if (plannedBook) {
+          try {
+            await linkPlannedBook({ id: plannedBook._id, bookId });
+            trackEvent("plan_book_tracked", { year: plannedBook.year });
+          } catch (linkError) {
+            // The book exists either way; a missing link only hides its status
+            // on the reading plan, so don't block the reader on it.
+            console.error("Error linking planned book:", linkError);
+          }
+        }
         router.push(`/books/${bookId}`);
       }
     } catch (error) {
@@ -463,14 +520,32 @@ export default function BookForm({
     }
   };
 
+  const backHref = initialBook ? `/books/${initialBook._id}` : "/dashboard";
+
   return (
-    <div className="mx-auto max-w-2xl p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-foreground">
-          {isEditMode ? "Edit Book" : "Add New Book"}
+    <>
+    <Navigation />
+    <div className="mx-auto max-w-2xl px-3 pb-8 pt-4 sm:px-6 sm:pt-6">
+      <Link
+        href={backHref}
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        {initialBook ? "Back to book" : "Back to my books"}
+      </Link>
+      <div className="mb-5 sm:mb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          {resetMode ? "Restart Book" : isEditMode ? "Edit Book" : "Add New Book"}
         </h1>
-        <ThemeSwitcher />
+        <p className="mt-1 text-sm text-muted-foreground">
+          {isEditMode
+            ? "Update the details and reading schedule for this book."
+            : plannedBook
+              ? "Prefilled from your reading plan. Pick your dates to start tracking."
+              : "Tell us about the book and when you want to read it. We'll plan your daily pages."}
+        </p>
       </div>
+      <Card className="p-4 sm:p-6">
       <form
         onSubmit={handleSubmit}
         className="space-y-6"
@@ -663,6 +738,9 @@ export default function BookForm({
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <DatePicker
+                // Remount once a reading-plan prefill lands so the calendar
+                // opens on the planned month (it only reads the date on mount).
+                key={prefilledPlanId ?? "start"}
                 selectedDate={startDate}
                 onDateSelect={(date) => {
                   setStartDate(date);
@@ -747,6 +825,12 @@ export default function BookForm({
               min="1"
               className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
             />
+            {fixedDaysStart && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                Starts {format(fixedDaysStart, "MMM d, yyyy")}, the month you
+                planned it for.
+              </p>
+            )}
             {daysToRead &&
               !isNaN(Number(daysToRead)) &&
               Number(daysToRead) > 365 && !chapterOnlyMode && (
@@ -825,20 +909,26 @@ export default function BookForm({
           </div>
         </div>
 
-        <Button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full"
-        >
-          {isSubmitting
-            ? isEditMode
-              ? "Updating..."
-              : "Creating..."
-            : isEditMode
-              ? "Update Book"
-              : "Create Book"}
-        </Button>
+        {/* Stays in reach while scrolling the long form; sits above the
+            mobile tab bar via --mobile-tabbar-offset. */}
+        <div className="sticky bottom-[var(--mobile-tabbar-offset,0px)] z-10 -mx-4 -mb-4 border-t border-border bg-card/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/80 sm:-mx-6 sm:-mb-6 sm:rounded-b-lg sm:px-6">
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full"
+          >
+            {isSubmitting
+              ? isEditMode
+                ? "Updating..."
+                : "Creating..."
+              : isEditMode
+                ? "Update Book"
+                : "Create Book"}
+          </Button>
+        </div>
       </form>
+      </Card>
     </div>
+    </>
   );
 }

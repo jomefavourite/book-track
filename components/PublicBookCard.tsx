@@ -26,6 +26,8 @@ interface PublicBookCardProps {
     daysToRead?: number;
     creatorName?: string;
     creatorEmail?: string;
+    /** Owner's profile slug (username), for /user/<slug> links. */
+    creatorSlug?: string;
     isPublic?: boolean;
     isArchived?: boolean;
     progressStyle?: "pages" | "chapters";
@@ -49,27 +51,38 @@ export default function PublicBookCard({
   const isPublic = book.isPublic ?? true;
   const isArchived = book.isArchived ?? false;
 
+  const creatorLabel =
+    book.creatorName || book.creatorEmail?.split("@")[0] || "Anonymous";
+  const days = differenceInCalendarDays(endDate, startDate) + 1; // +1 to include both start and end days
+  const sameYear = startDate.getFullYear() === endDate.getFullYear();
+  const metaLine = `${
+    chapterOnlyMode
+      ? `${book.totalChapters ?? 0} chapters`
+      : `${book.totalPages ?? 0} pages`
+  } · ${format(startDate, sameYear ? "MMM d" : "MMM d, yyyy")} – ${format(endDate, "MMM d, yyyy")} · ${days} day${days !== 1 ? "s" : ""}`;
+  const rounded = Math.min(100, Math.round(progress));
+
   return (
-    <Card className="relative flex h-full flex-col p-4 transition-shadow hover:shadow-lg">
-      <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
+    <Card className="flex h-full flex-col p-4 transition-shadow hover:shadow-md">
+      {/* Same shape as BookCard: status badges on top, then title + one meta line. */}
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
         {showVisibilityBadge && isArchived && (
-          <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
             Archived
           </span>
         )}
-        {showVisibilityBadge ? (
-          <span
-            className={`rounded-full px-2 py-1 text-xs font-medium ${
-              isPublic
-                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                : "bg-muted text-muted-foreground"
-            }`}
-          >
-            {isPublic ? "Public" : "Private"}
+        {showVisibilityBadge && !isPublic ? (
+          <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">
+            Private
           </span>
         ) : (
-          <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
+          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
             Public
+          </span>
+        )}
+        {rounded >= 100 && (
+          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+            Finished
           </span>
         )}
       </div>
@@ -78,31 +91,23 @@ export default function PublicBookCard({
         className="flex flex-1 flex-col justify-between"
       >
         <div>
-          <h3 className="mb-2 pr-16 text-xl font-semibold text-card-foreground">
+          <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-card-foreground">
             {book.name}
           </h3>
-          <div className="mb-3 space-y-1 text-sm text-muted-foreground">
-            {book.author && (
-              <p className="font-medium text-foreground">by {book.author}</p>
-            )}
-            <p>
-              {chapterOnlyMode
-                ? `${book.totalChapters ?? 0} chapters`
-                : `${book.totalPages ?? 0} pages`}
+          {book.author && (
+            <p className="mt-0.5 truncate text-sm text-muted-foreground">
+              by {book.author}
             </p>
-            <p>
-              {(() => {
-                const days = differenceInCalendarDays(endDate, startDate) + 1; // +1 to include both start and end days
-                return `${format(startDate, "MMMM d, yyyy")} - ${format(endDate, "MMMM d, yyyy")} (${days} day${days !== 1 ? "s" : ""})`;
-              })()}
-            </p>
-          </div>
+          )}
+          <p className="mb-3 mt-2 text-xs text-muted-foreground sm:text-sm">
+            {metaLine}
+          </p>
           {book.tags && book.tags.length > 0 && (
             <div className="mb-3 flex flex-wrap gap-1.5">
               {book.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
+                  className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
                 >
                   {tag}
                 </span>
@@ -111,36 +116,36 @@ export default function PublicBookCard({
           )}
         </div>
 
-        <div className="mt-auto pt-3">
-          <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+        <div className="mt-auto">
+          <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground sm:text-xs">
             <span>Progress</span>
-            <span>{Math.round(progress)}%</span>
+            <span className="tabular-nums">{rounded}%</span>
           </div>
-          <Progress
-            value={Math.min(progress, 100)}
-            className="h-2"
-          />
+          <Progress value={Math.min(progress, 100)} className="h-2" />
         </div>
       </Link>
 
       {(book.creatorName || book.creatorEmail) && (
-        <p className="mt-2 text-xs italic text-muted-foreground">
-          by{" "}
+        <div className="mt-3 flex items-center gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+          <span
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold uppercase text-foreground"
+            aria-hidden="true"
+          >
+            {creatorLabel.charAt(0)}
+          </span>
           {book.userId ? (
             <Link
-              href={`/user/${book.userId}`}
-              className="text-primary underline hover:no-underline"
+              href={`/user/${book.creatorSlug ?? book.userId}`}
+              className="truncate font-medium text-foreground hover:underline"
             >
-              {book.creatorName ||
-                book.creatorEmail?.split("@")[0] ||
-                "Anonymous"}
+              {creatorLabel}
             </Link>
           ) : (
-            book.creatorName ||
-            book.creatorEmail?.split("@")[0] ||
-            "Anonymous"
+            <span className="truncate font-medium text-foreground">
+              {creatorLabel}
+            </span>
           )}
-        </p>
+        </div>
       )}
     </Card>
   );

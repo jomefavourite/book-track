@@ -5,11 +5,10 @@ import { SignInButton, useUser } from "@clerk/nextjs";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import {
+  BookOpen,
   Lock,
   Plus,
   Search,
-  ShieldCheck,
-  Users,
 } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import Navigation from "@/components/Navigation";
@@ -33,15 +32,20 @@ type CommunityPreview = {
   isLocked: boolean;
   brandColor?: string;
   logoUrl?: string | null;
+  // Only present on getMyCommunities results.
+  activeBook?: {
+    _id: string;
+    name: string;
+    trackedBookId?: string | null;
+  } | null;
 };
 
-function VisibilityBadge({ visibility }: { visibility: "public" | "private" }) {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium capitalize text-muted-foreground">
-      {visibility === "private" ? <Lock className="h-3 w-3" /> : <Search className="h-3 w-3" />}
-      {visibility}
-    </span>
-  );
+function getActiveBookHref(community: CommunityPreview) {
+  if (!community.activeBook) return null;
+  if (community.activeBook.trackedBookId) {
+    return `/books/${community.activeBook.trackedBookId}`;
+  }
+  return `/communities/${community.slug}/books/${community.activeBook._id}`;
 }
 
 function CommunityLogo({ community }: { community: CommunityPreview }) {
@@ -51,14 +55,14 @@ function CommunityLogo({ community }: { community: CommunityPreview }) {
       <img
         src={community.logoUrl}
         alt={`${community.name} logo`}
-        className="h-14 w-14 shrink-0 rounded-lg border border-border object-cover"
+        className="h-12 w-12 shrink-0 rounded-lg border border-border bg-card object-contain p-1"
       />
     );
   }
   const brandTheme = getBrandTheme(community.brandColor);
   return (
     <span
-      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-border text-xl font-semibold uppercase text-foreground"
+      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-lg font-semibold uppercase text-foreground"
       style={
         brandTheme
           ? {
@@ -75,26 +79,56 @@ function CommunityLogo({ community }: { community: CommunityPreview }) {
 }
 
 function CommunityCard({ community }: { community: CommunityPreview }) {
-  return (
-    <Card className="flex h-full flex-col p-4">
-      <div className="flex items-center gap-3">
-        <CommunityLogo community={community} />
-        <h3 className="min-w-0 flex-1 truncate text-lg font-semibold text-foreground">
-          {community.name}
-        </h3>
-      </div>
-      <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
-        {community.description || "A reading community."}
-      </p>
+  const activeBookHref = community.isMember ? getActiveBookHref(community) : null;
+  const brandTheme = getBrandTheme(community.brandColor);
+  const meta = [
+    `${community.memberCount.toLocaleString()} ${community.memberCount === 1 ? "member" : "members"}`,
+    community.viewerRole
+      ? community.viewerRole.charAt(0).toUpperCase() + community.viewerRole.slice(1)
+      : null,
+  ].filter(Boolean);
 
-      <div className="mt-3 space-y-1.5 text-sm">
-        <VisibilityBadge visibility={community.visibility} />
+  return (
+    <Card className="flex h-full flex-col overflow-hidden transition-shadow hover:shadow-md">
+      {/* Thin brand strip so each community is recognisable at a glance. */}
+      <div
+        className="h-1.5 bg-muted"
+        style={brandTheme ? { backgroundColor: brandTheme.brand } : undefined}
+        aria-hidden="true"
+      />
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex items-center gap-3">
+          <CommunityLogo community={community} />
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-base font-semibold text-foreground sm:text-lg">
+              {community.name}
+            </h3>
+            <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+              {community.visibility === "private" ? (
+                <Lock className="h-3 w-3 shrink-0" />
+              ) : (
+                <Search className="h-3 w-3 shrink-0" />
+              )}
+              <span className="capitalize">{community.visibility}</span>
+              {meta.map((item) => (
+                <span key={item} className="before:mr-1.5 before:content-['·']">
+                  {item}
+                </span>
+              ))}
+            </p>
+          </div>
+        </div>
+
+        <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">
+          {community.description || "A reading community."}
+        </p>
+
         {community.currentBookTitle && community.totalChapters && (
-          <div className="rounded-md border border-border bg-muted/40 p-3 text-muted-foreground">
+          <div className="mt-3 rounded-md border border-border bg-muted/40 p-2.5 text-xs text-muted-foreground">
             <p className="font-medium text-foreground">
               Legacy current read: {community.currentBookTitle}
             </p>
-            <p className="mt-1 text-xs">
+            <p className="mt-0.5">
               {community.totalChapters.toLocaleString()} chapters
               {community.currentBookAuthor
                 ? ` by ${community.currentBookAuthor}`
@@ -102,33 +136,34 @@ function CommunityCard({ community }: { community: CommunityPreview }) {
             </p>
           </div>
         )}
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Users className="h-4 w-4" />
-          <span>
-            {community.memberCount.toLocaleString()}{" "}
-            {community.memberCount === 1 ? "member" : "members"}
-          </span>
-        </div>
-        {community.viewerRole && (
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <ShieldCheck className="h-4 w-4" />
-            <span className="capitalize">Your role: {community.viewerRole}</span>
-          </div>
+
+        {community.isLocked && (
+          <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Lock className="h-3 w-3" />
+            Activity is locked. Members join by invite only.
+          </p>
         )}
-      </div>
 
-      {community.isLocked && (
-        <div className="mt-3 rounded-md border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
-          Private activity is locked. Members join by invite only.
+        <div className="mt-auto flex gap-2 pt-4">
+          <Button
+            asChild
+            size="sm"
+            variant={community.isMember ? "default" : "outline"}
+            className="flex-1"
+          >
+            <Link href={`/communities/${community.slug}`}>
+              {community.isMember ? "Open community" : "View community"}
+            </Link>
+          </Button>
+          {activeBookHref && (
+            <Button asChild size="sm" variant="outline" className="flex-1">
+              <Link href={activeBookHref}>
+                <BookOpen className="h-4 w-4" />
+                Open book
+              </Link>
+            </Button>
+          )}
         </div>
-      )}
-
-      <div className="mt-auto pt-4">
-        <Button asChild variant={community.isMember ? "default" : "outline"} className="w-full">
-          <Link href={`/communities/${community.slug}`}>
-            {community.isMember ? "Open community" : "View profile"}
-          </Link>
-        </Button>
       </div>
     </Card>
   );
@@ -167,7 +202,7 @@ export default function CommunitiesPageClient() {
       <main className="mx-auto max-w-6xl p-3 sm:p-6">
         <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground sm:text-4xl">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-4xl">
               Communities
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground sm:mt-2 sm:text-base">

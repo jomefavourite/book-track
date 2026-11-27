@@ -32,6 +32,8 @@ export default defineSchema({
 
   books: defineTable({
     userId: v.string(),
+    /** URL slug from the name, set at creation and stable across renames. Absent on rows awaiting backfill */
+    slug: v.optional(v.string()),
     name: v.string(),
     author: v.optional(v.string()),
     totalPages: v.optional(v.number()),
@@ -84,6 +86,31 @@ export default defineSchema({
    * and manageable from settings. `key` is the normalized (lowercased) label,
    * used to keep the vocabulary unique per user regardless of casing.
    */
+  /**
+   * Books a reader plans to read in a given year (optionally a given month) —
+   * the "Reading plan" calendar on their profile. Kept separate from `books`
+   * because a plan is just a title until the reader starts tracking it, at
+   * which point `bookId` links it to the tracked book for live status.
+   */
+  plannedBooks: defineTable({
+    userId: v.string(),
+    year: v.number(),
+    /** 1–12. Absent = "any time this year". */
+    month: v.optional(v.number()),
+    title: v.string(),
+    author: v.optional(v.string()),
+    totalPages: v.optional(v.number()),
+    note: v.optional(v.string()),
+    isPublic: v.boolean(),
+    /** At most one per user per year (enforced in the mutation). */
+    isBookOfTheYear: v.optional(v.boolean()),
+    bookId: v.optional(v.id("books")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_and_year", ["userId", "year"]),
+
   userTags: defineTable({
     userId: v.string(),
     label: v.string(),

@@ -9,6 +9,13 @@ export const metadata: Metadata = createPageMetadata({
   noIndex: true,
 });
 
-export default function NewBookPage() {
-  return <BookForm />;
+export default async function NewBookPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ plan?: string }>;
+}) {
+  const { plan } = await searchParams;
+  // ?plan=<plannedBookId> comes from "Start tracking" in the profile's
+  // reading plan: BookForm prefills from it and links the new book back.
+  return <BookForm plannedBookId={plan} />;
 }

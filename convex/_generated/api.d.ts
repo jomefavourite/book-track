@@ -21,6 +21,7 @@ import type * as communitySchedule from "../communitySchedule.js";
 import type * as crons from "../crons.js";
 import type * as dateUtils from "../dateUtils.js";
 import type * as dayBehavior from "../dayBehavior.js";
+import type * as readingPlans from "../readingPlans.js";
 import type * as readingSessions from "../readingSessions.js";
 import type * as reminders from "../reminders.js";
 import type * as remindersSend from "../remindersSend.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   dateUtils: typeof dateUtils;
   dayBehavior: typeof dayBehavior;
+  readingPlans: typeof readingPlans;
   readingSessions: typeof readingSessions;
   reminders: typeof reminders;
   remindersSend: typeof remindersSend;

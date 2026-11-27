@@ -1,4 +1,4 @@
-import { Info } from "lucide-react";
+import { Info, MessageSquareQuote } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -47,20 +47,24 @@ export function CommunityScheduleNoteCallout({
   note,
   className,
 }: CommunityScheduleNoteCalloutProps) {
+  // A compact quote-style line rather than a boxed card, so it reads as part of
+  // the day instead of competing with it.
   return (
     <div
       className={cn(
-        "rounded-lg border border-primary/20 bg-primary/5 p-4 dark:border-primary/30",
+        "flex gap-2 rounded-r-md border-l-2 border-primary/50 bg-background/60 px-2.5 py-1.5 dark:bg-white/[0.04]",
         className
       )}
     >
-      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-        <Info className="h-4 w-4 shrink-0 text-primary" />
-        Community note
+      <MessageSquareQuote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Community note
+        </p>
+        <p className="whitespace-pre-wrap break-words text-sm leading-snug text-foreground">
+          {note}
+        </p>
       </div>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-        {note}
-      </p>
     </div>
   );
 }

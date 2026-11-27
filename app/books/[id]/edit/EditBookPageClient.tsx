@@ -9,6 +9,7 @@ import { useParams, useRouter } from "next/navigation";
 import BookForm from "@/components/BookForm";
 import { FormPageSkeleton } from "@/components/CommunityCardSkeleton";
 import Link from "next/link";
+import Navigation from "@/components/Navigation";
 
 export default function EditBookPage({
   resetMode = false,
@@ -27,9 +28,12 @@ export default function EditBookPage({
 
   if (!isLoaded) {
     return (
-      <div className="mx-auto max-w-2xl p-3 sm:p-6">
-        <FormPageSkeleton fields={5} />
-      </div>
+      <>
+        <Navigation />
+        <div className="mx-auto max-w-2xl p-3 sm:p-6">
+          <FormPageSkeleton fields={5} />
+        </div>
+      </>
     );
   }
 
@@ -40,15 +44,20 @@ export default function EditBookPage({
 
   if (isPending) {
     return (
-      <div className="mx-auto max-w-2xl p-3 sm:p-6">
-        <FormPageSkeleton fields={5} />
-      </div>
+      <>
+        <Navigation />
+        <div className="mx-auto max-w-2xl p-3 sm:p-6">
+          <FormPageSkeleton fields={5} />
+        </div>
+      </>
     );
   }
 
   if (!book || book === null) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <>
+      <Navigation />
+      <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-center">
           <div className="mb-4 text-lg">Book not found</div>
           <Link
@@ -59,13 +68,16 @@ export default function EditBookPage({
           </Link>
         </div>
       </div>
+      </>
     );
   }
 
   // Check if user owns the book
   if (book.userId !== user.id) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <>
+      <Navigation />
+      <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-center">
           <div className="mb-4 text-lg">You don&apos;t have permission to edit this book</div>
           <Link
@@ -76,6 +88,7 @@ export default function EditBookPage({
           </Link>
         </div>
       </div>
+      </>
     );
   }
 
