@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Make `dark:` utilities follow the app theme toggle (next-themes adds .dark
+   to <html>) instead of the OS-level prefers-color-scheme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
@@ -80,8 +84,13 @@
   --font-mono: var(--font-geist-mono);
 }
 
-* {
-  border-color: var(--border);
+/* In the base layer so Tailwind's border-colour utilities (border-primary,
+   border-amber-300, border-transparent, …) can override it. Unlayered, this
+   rule beat every utility and all borders rendered in the default grey. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
 /* ---------------------------------------------------------------- */
@@ -293,4 +302,24 @@ body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* ---------------------------------------------------------------- */
+/* Mobile bottom tab bar (components/MobileTabBar.tsx)              */
+/* Below md, when the bar is on the page, reserve room for it so     */
+/* content, toasts and sticky footers are never hidden behind it.    */
+/* ---------------------------------------------------------------- */
+
+:root {
+  --mobile-tabbar-offset: 0px;
+}
+
+@media (max-width: 767.98px) {
+  :root:has([data-mobile-tabbar]) {
+    --mobile-tabbar-offset: calc(4rem + env(safe-area-inset-bottom));
+  }
+}
+
+body {
+  padding-bottom: var(--mobile-tabbar-offset);
 }

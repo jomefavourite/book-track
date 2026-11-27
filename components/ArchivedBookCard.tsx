@@ -14,7 +14,14 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import DeleteConfirmDialog from "./DeleteConfirmDialog";
-import { Users } from "lucide-react";
+import { ArchiveRestore, MoreHorizontal, Trash2, Users } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface ArchivedBookCardProps {
   book: {
@@ -84,15 +91,7 @@ export default function ArchivedBookCard({
     }
   };
 
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setShowDeleteDialog(true);
-  };
-
-  const handleUnarchive = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleUnarchive = async () => {
     if (!user?.id) return;
     try {
       await unarchiveBook({ bookId: book._id });
@@ -104,84 +103,74 @@ export default function ArchivedBookCard({
 
   return (
     <>
-      <Card className="relative p-3 opacity-75 transition-shadow hover:shadow-lg sm:p-4">
-        <div className="absolute right-1.5 top-1.5 flex items-center gap-1 sm:right-2 sm:top-2 sm:gap-2">
-          {book.communityBookId && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground sm:px-2 sm:py-1 sm:text-xs">
-              <Users className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-              Community
+      {/* Same layout as BookCard; the Archived badge and dimmed content set it apart. */}
+      <Card className="flex flex-col p-4 transition-shadow hover:shadow-md">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+              Archived
             </span>
-          )}
-          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200 sm:px-2 sm:py-1 sm:text-xs">
-            Archived
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleUnarchive}
-            className="h-8 w-8 text-muted-foreground hover:text-green-600 dark:hover:text-green-500"
-            aria-label="Unarchive book"
-            title="Unarchive book"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4 sm:h-5 sm:w-5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4z" />
-              <path
-                fillRule="evenodd"
-                d="M3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleDeleteClick}
-            className="h-8 w-8 text-muted-foreground hover:text-red-600 dark:hover:text-red-500"
-            aria-label="Delete book"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4 sm:h-5 sm:w-5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </Button>
+            {book.communityBookId && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">
+                <Users className="h-3 w-3" />
+                Community
+              </span>
+            )}
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="-mr-2 -mt-1 h-8 w-8 text-muted-foreground"
+                aria-label={`Actions for ${book.name}`}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem
+                onSelect={() => void handleUnarchive()}
+                className="cursor-pointer gap-2"
+              >
+                <ArchiveRestore className="h-4 w-4" />
+                Unarchive
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => setShowDeleteDialog(true)}
+                className="cursor-pointer gap-2 text-destructive focus:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         <Link
           href={`/books/${book._id}`}
-          className="h-full flex flex-col justify-between pt-5"
+          className="flex flex-1 flex-col justify-between opacity-75 transition-opacity hover:opacity-100"
         >
           <div>
-            <h3 className="mb-2 pr-16 text-lg font-semibold text-foreground sm:pr-20 sm:text-xl">
+            <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-card-foreground">
               {book.name}
             </h3>
-            <div className="mb-3 space-y-1 text-xs text-muted-foreground sm:text-sm">
-              {book.author && (
-                <p className="font-medium text-foreground">by {book.author}</p>
-              )}
-              <p>
-                {chapterOnlyMode
+            {book.author && (
+              <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                by {book.author}
+              </p>
+            )}
+            <p className="mb-3 mt-2 text-xs text-muted-foreground sm:text-sm">
+              {(() => {
+                const days = differenceInCalendarDays(endDate, startDate) + 1; // +1 to include both start and end days
+                const sameYear =
+                  startDate.getFullYear() === endDate.getFullYear();
+                const amount = chapterOnlyMode
                   ? `${book.totalChapters ?? 0} chapters`
-                  : `${book.totalPages ?? 0} pages`}
-              </p>
-              <p className="wrap-break-word sm:break-normal">
-                {(() => {
-                  const days = differenceInCalendarDays(endDate, startDate) + 1; // +1 to include both start and end days
-                  return `${format(startDate, "MMMM d, yyyy")} - ${format(endDate, "MMMM d, yyyy")} (${days} day${days !== 1 ? "s" : ""})`;
-                })()}
-              </p>
-            </div>
+                  : `${book.totalPages ?? 0} pages`;
+                return `${amount} · ${format(startDate, sameYear ? "MMM d" : "MMM d, yyyy")} – ${format(endDate, "MMM d, yyyy")} · ${days} day${days !== 1 ? "s" : ""}`;
+              })()}
+            </p>
           </div>
 
           <div className="mt-3">

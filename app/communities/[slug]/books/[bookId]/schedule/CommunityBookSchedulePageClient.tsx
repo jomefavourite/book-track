@@ -904,7 +904,7 @@ export default function CommunityBookSchedulePageClient() {
             </Card>
 
             <div
-              className="sticky bottom-0 z-10 -mx-3 border-t bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6"
+              className="sticky bottom-[var(--mobile-tabbar-offset,0px)] z-10 -mx-3 border-t bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6"
               style={{ borderColor: "var(--border)" }}
             >
               {error && (

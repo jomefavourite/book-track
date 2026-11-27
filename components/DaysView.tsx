@@ -7,6 +7,7 @@ import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DayCardsSkeleton } from "@/components/CommunityCardSkeleton";
 import { useUser } from "@clerk/nextjs";
 import { formatDateForStorage, parseDateFromStorage, formatTimerDuration, formatCountdown } from "@/lib/dateUtils";
 import {
@@ -34,14 +35,13 @@ import {
 } from "@/lib/pageTracking";
 import CatchUpSuggestion from "./CatchUpSuggestion";
 import { Input } from "./ui/input";
-import { ChevronDown, Timer } from "lucide-react";
+import { BookOpen, ChevronDown, Timer } from "lucide-react";
 import { filterStaleSessions } from "@/lib/resetGeneration";
 import { trackEvent } from "@/lib/analytics";
 import ReadingTimer, { type TimerPhase } from "./ReadingTimer";
 import ReflectionNoteEditor from "./ReflectionNoteEditor";
 import {
   CommunityScheduleNoteCallout,
-  CommunityScheduleNoteIndicator,
 } from "./CommunityScheduleNote";
 import { playTimerEndSound } from "@/lib/timerSound";
 import {
@@ -99,18 +99,20 @@ export default function DaysView({
     enabled: true, // Allow querying even without auth (for public books)
   });
   const communityBookId = book.communityBookId;
-  const { data: scheduleQuery } = useQuery({
-    ...convexQuery(api.communitySchedule.getScheduleForBook, {
-      communityBookId: communityBookId as Id<"communityBooks">,
-    }),
-    enabled: Boolean(communityBookId),
-  });
-  const { data: dayLabelsQuery } = useQuery({
-    ...convexQuery(api.communityDayLabels.listForCommunityBook, {
-      communityBookId: communityBookId as Id<"communityBooks">,
-    }),
-    enabled: Boolean(communityBookId),
-  });
+  // "skip" (not `enabled: false`) so personal books never send these
+  // community-only queries with an empty, invalid argument object.
+  const { data: scheduleQuery } = useQuery(
+    convexQuery(
+      api.communitySchedule.getScheduleForBook,
+      communityBookId ? { communityBookId } : "skip"
+    )
+  );
+  const { data: dayLabelsQuery } = useQuery(
+    convexQuery(
+      api.communityDayLabels.listForCommunityBook,
+      communityBookId ? { communityBookId } : "skip"
+    )
+  );
   const dayLabelByDate = useMemo(
     () => buildDayLabelMap(scheduleQuery, dayLabelsQuery),
     [scheduleQuery, dayLabelsQuery]
@@ -1156,10 +1158,13 @@ export default function DaysView({
 
   if (isPending && sessionsQuery === undefined) {
     return (
-      <div className="space-y-3 p-4" aria-hidden="true">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <Skeleton key={index} className="h-16 w-full rounded-md" />
-        ))}
+      <div className="rounded-lg border border-border bg-card p-4" aria-hidden="true">
+        <div className="mb-2 flex items-center justify-between">
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+        <Skeleton className="mb-4 h-2 w-full rounded-full" />
+        <DayCardsSkeleton count={8} />
       </div>
     );
   }
@@ -1234,7 +1239,7 @@ export default function DaysView({
             return (
               <div
                 key={dateKey}
-                className={`relative rounded border p-3 hover:z-20 focus-within:z-20 ${
+                className={`relative flex flex-col rounded-lg border p-3 hover:z-20 focus-within:z-20 ${
                   isRead
                     ? "border-green-600 bg-green-100 text-green-900 dark:border-green-600 dark:bg-green-900 dark:text-green-50"
                     : isMissed
@@ -1245,14 +1250,7 @@ export default function DaysView({
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-medium">Day {dayNumber}</span>
-                      {scheduleNote ? (
-                        <CommunityScheduleNoteIndicator
-                          dateKey={dateKey}
-                          dateLabel={`Day ${dayNumber}, ${format(date, "MMMM d, yyyy")}`}
-                          note={scheduleNote}
-                        />
-                      ) : null}
+                      <span className="text-sm font-semibold">Day {dayNumber}</span>
                       {/* Timer — only for unread, non-missed days */}
                       {canEdit && !isRead && !isMissed && !isNonReadingDay && (
                         <button
@@ -1291,7 +1289,7 @@ export default function DaysView({
                       <button
                         onClick={() => handleDayToggle(dateKey)}
                         disabled={!canEdit}
-                        className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-all sm:h-6 sm:w-6 ${
+                        className={`flex h-7 w-7 items-center justify-center rounded-md border-2 transition-all ${
                           isRead
                             ? "border-green-600 bg-green-600"
                             : "border-input"
@@ -1338,7 +1336,7 @@ export default function DaysView({
                       <button
                         onClick={() => handleMissedToggle(dateKey)}
                         disabled={!canEdit}
-                        className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-all sm:h-6 sm:w-6 ${
+                        className={`flex h-7 w-7 items-center justify-center rounded-md border-2 transition-all ${
                           isMissed
                             ? "border-red-600 bg-red-600"
                             : "border-input"
@@ -1387,7 +1385,7 @@ export default function DaysView({
                 {scheduleNote ? (
                   <CommunityScheduleNoteCallout
                     note={scheduleNote}
-                    className="mb-2 p-3 sm:hidden"
+                    className="mb-2"
                   />
                 ) : null}
                 {showDayTypeLabel ? (
@@ -1397,10 +1395,11 @@ export default function DaysView({
                   </div>
                 ) : (
                   !isMissed && (
-                    <div className="mb-2 text-xs">
+                    <div className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium">
+                      <BookOpen className="h-3.5 w-3.5 shrink-0 opacity-70" />
                       {chapterOnlyMode
                         ? `Target: Chapter ${targetChapter}`
-                        : `Plan: ${plannedPages} pages`}
+                        : `${plannedPages} ${plannedPages === 1 ? "page" : "pages"} planned`}
                     </div>
                   )
                 )}
@@ -1430,7 +1429,7 @@ export default function DaysView({
                       <>
                       <div className="flex gap-2">
                         <div className="min-w-0 flex-1">
-                          <label className="block text-xs font-medium text-white">
+                          <label className="block text-xs font-medium opacity-80">
                             Chapter
                           </label>
                           {useChapterDropdown ? (
@@ -1484,7 +1483,7 @@ export default function DaysView({
                           )}
                         </div>
                         <div className="w-20 shrink-0 sm:w-24">
-                          <label className="block text-xs font-medium text-white">
+                          <label className="block text-xs font-medium opacity-80">
                             Stop Page
                           </label>
                           <Input
@@ -1532,7 +1531,7 @@ export default function DaysView({
                       <>
                         {chapterMode && (
                           <div>
-                            <label className="block text-xs font-medium text-white">
+                            <label className="block text-xs font-medium opacity-80">
                               Chapter
                             </label>
                             {useChapterDropdown ? (
@@ -1589,7 +1588,7 @@ export default function DaysView({
                         <div className="flex items-end gap-2">
                           {!chapterOnlyMode && (
                             <div className="flex-1 min-w-0">
-                              <label className="block text-xs font-medium text-white">
+                              <label className="block text-xs font-medium opacity-80">
                                 Stopped at Page
                               </label>
                               <Input

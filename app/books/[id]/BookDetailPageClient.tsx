@@ -22,18 +22,25 @@ import {
   getHighestChapterRead,
   isChapterOnlyBook,
 } from "@/lib/chapterTracking";
-import ReadingProgressStatusBanner from "@/components/ReadingProgressStatusBanner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import CalendarView from "@/components/CalendarView";
 import DaysView from "@/components/DaysView";
 import Navigation from "@/components/Navigation";
-import { DetailPageSkeleton } from "@/components/CommunityCardSkeleton";
+import { BookDetailSkeleton } from "@/components/CommunityCardSkeleton";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  AlertTriangle,
+  ArrowLeft,
   BookOpenText,
+  CalendarDays,
   Check,
+  ExternalLink,
+  FileText,
+  ListChecks,
+  Timer,
+  UserRound,
   CheckCircle2,
   ChevronDown,
   Copy,
@@ -42,6 +49,7 @@ import {
   Pencil,
   RotateCcw,
   Share2,
+  TrendingUp,
   Users,
 } from "lucide-react";
 import {
@@ -59,6 +67,29 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+function SummaryStat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-0.5 truncate text-lg font-bold tabular-nums leading-tight text-foreground sm:text-xl">
+        {value}
+      </p>
+      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+const META_CHIP =
+  "inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1";
+
 export default function BookDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -67,8 +98,9 @@ export default function BookDetailPage() {
   const bookId = params.id as Id<"books">;
   const [copied, setCopied] = useState(false);
   const [copiedReflections, setCopiedReflections] = useState(false);
-  const [progressSummaryOpen, setProgressSummaryOpen] = useState(false);
-  const [reflectionsOpen, setReflectionsOpen] = useState(false);
+  const [bookView, setBookView] = useState<"schedule" | "reflections">(
+    "schedule"
+  );
   const [markCompleteOpen, setMarkCompleteOpen] = useState(false);
   const [clearMarkCompleteOpen, setClearMarkCompleteOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
@@ -321,6 +353,7 @@ export default function BookDetailPage() {
   };
 
   const isCommunityBook = !!book?.communityBookId;
+  const canSeeReflections = canEdit || isPublicBook;
 
   const showMarkCompleteButton = Boolean(
     canEdit &&
@@ -362,7 +395,7 @@ export default function BookDetailPage() {
       <>
         <Navigation />
         <div className="mx-auto max-w-6xl p-3 sm:p-6">
-          <DetailPageSkeleton />
+          <BookDetailSkeleton />
         </div>
       </>
     );
@@ -411,7 +444,7 @@ export default function BookDetailPage() {
       <>
         <Navigation />
         <div className="mx-auto max-w-6xl p-3 sm:p-6">
-          <DetailPageSkeleton />
+          <BookDetailSkeleton />
         </div>
       </>
     );
@@ -419,15 +452,17 @@ export default function BookDetailPage() {
 
   return (
     <>
-      <Navigation />
+      {/* Another reader's book belongs under Discover, not your Home. */}
+      <Navigation activeNav={isOwner ? undefined : "discover"} />
       <div className="mx-auto max-w-6xl p-3 sm:p-6">
         <div className="mb-4 sm:mb-6">
           <div className="mb-3 flex items-center justify-between sm:mb-4">
             <Link
               href={user ? "/dashboard" : "/"}
-              className="text-sm text-primary hover:underline sm:text-base"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
-              ← Back
+              <ArrowLeft className="h-4 w-4" />
+              {user ? "My books" : "Back"}
             </Link>
             <div className="flex items-center gap-3">
               {isPublicBook && (
@@ -508,12 +543,12 @@ export default function BookDetailPage() {
           </div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <div className="flex-1">
-              <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
                 {book.name}
               </h1>
               {book.author && (
-                <p className="mt-1 text-lg text-muted-foreground sm:text-xl">
-                  Author: {book.author}
+                <p className="mt-0.5 text-base text-muted-foreground sm:text-lg">
+                  by {book.author}
                 </p>
               )}
             </div>
@@ -536,7 +571,7 @@ export default function BookDetailPage() {
                       href={`/communities/${communityInfo.slug}/books/${book.communityBookId}`}
                     >
                       <MessageSquareText className="h-4 w-4" />
-                      View reflections
+                      Community reflections
                     </Link>
                   </Button>
                 </div>
@@ -560,69 +595,71 @@ export default function BookDetailPage() {
               )}
             </div>
           </div>
-          <div className="mt-2 space-y-1 text-sm text-muted-foreground sm:text-base">
+          {/* Book facts as compact chips instead of "Label: value" lines. */}
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground sm:text-sm">
             {!chapterOnlyMode && typeof book.totalPages === "number" && (
-              <p>Total Pages: {book.totalPages}</p>
+              <span className={META_CHIP}>
+                <FileText className="h-3.5 w-3.5" />
+                {book.totalPages.toLocaleString()} pages
+              </span>
             )}
-            <p>
-              Tracking:{" "}
+            {book.progressStyle === "chapters" &&
+              typeof book.totalChapters === "number" && (
+                <span className={META_CHIP}>
+                  <BookOpenText className="h-3.5 w-3.5" />
+                  {book.totalChapters} chapters
+                </span>
+              )}
+            <span className={META_CHIP}>
+              <ListChecks className="h-3.5 w-3.5" />
               {chapterOnlyMode
                 ? "Chapter-only"
                 : book.progressStyle === "chapters"
                   ? "Chapter-based"
                   : "Page-based"}
-            </p>
-            {book.progressStyle === "chapters" &&
-              typeof book.totalChapters === "number" && (
-                <p>Total Chapters: {book.totalChapters}</p>
-              )}
-            <p>
-              Mode:{" "}
-              {book.readingMode === "calendar" ? "Calendar" : "Fixed Days"}
-            </p>
+            </span>
             {book.readingMode === "calendar" &&
               (() => {
                 const start = parseDateFromStorage(book.startDate);
                 const end = parseDateFromStorage(book.endDate);
                 const days = differenceInCalendarDays(end, start) + 1; // +1 to include both start and end days
-
-                // Always show actual dates with month, day, and year
+                const sameYear = start.getFullYear() === end.getFullYear();
                 return (
-                  <p>
-                    Period: {format(start, "MMMM d, yyyy")} -{" "}
-                    {format(end, "MMMM d, yyyy")} ({days} day
-                    {days !== 1 ? "s" : ""})
-                  </p>
+                  <span className={META_CHIP}>
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {format(start, sameYear ? "MMM d" : "MMM d, yyyy")} –{" "}
+                    {format(end, "MMM d, yyyy")} · {days} day
+                    {days !== 1 ? "s" : ""}
+                  </span>
                 );
               })()}
             {book.readingMode === "fixed-days" && book.daysToRead && (
-              <p>Days to Read: {book.daysToRead}</p>
+              <span className={META_CHIP}>
+                <Timer className="h-3.5 w-3.5" />
+                {book.daysToRead} days to read
+              </span>
             )}
             {isPublicBook && (book.creatorName || book.creatorEmail) && (
-              <p className="italic">
-                Created by:{" "}
-                <Link
-                  href={`/user/${book.userId}`}
-                  className="text-primary underline hover:no-underline"
-                >
-                  {book.creatorName ||
-                    book.creatorEmail?.split("@")[0] ||
-                    "Anonymous"}
-                </Link>
-              </p>
+              <Link
+                href={`/user/${book.creatorSlug ?? book.userId}`}
+                className={`${META_CHIP} transition-colors hover:text-foreground`}
+              >
+                <UserRound className="h-3.5 w-3.5" />
+                {book.creatorName ||
+                  book.creatorEmail?.split("@")[0] ||
+                  "Anonymous"}
+              </Link>
             )}
             {book.buyLink && (
-              <p>
-                Buy the book:{" "}
-                <a
-                  href={book.buyLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary underline hover:no-underline"
-                >
-                  {book.buyLink}
-                </a>
-              </p>
+              <a
+                href={book.buyLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`${META_CHIP} transition-colors hover:text-foreground`}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Buy the book
+              </a>
             )}
           </div>
           {canEdit &&
@@ -650,319 +687,325 @@ export default function BookDetailPage() {
             </Card>
           )}
 
-          {/* Progress Summary */}
+          {/* Progress at a glance: always visible, no accordion. */}
           {progressSummary && (
-            <Card className="mt-4 p-4">
-              <button
-                type="button"
-                onClick={() => setProgressSummaryOpen((open) => !open)}
-                className="flex w-full items-center justify-between gap-3 text-left"
-                aria-expanded={progressSummaryOpen}
-              >
-                <span className="text-lg font-semibold text-foreground">
-                  Reading Progress Summary
-                </span>
-                <ChevronDown
-                  className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${
-                    progressSummaryOpen ? "rotate-180" : ""
-                  }`}
+            <Card className="mt-4 p-4 sm:p-5">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-[repeat(auto-fit,minmax(130px,1fr))]">
+                <SummaryStat
+                  label="Progress"
+                  value={`${progressSummary.progressPercentage.toFixed(
+                    progressSummary.progressPercentage % 1 === 0 ? 0 : 1
+                  )}%`}
                 />
-              </button>
-
-              {progressSummaryOpen && (
-                <div className="mt-4 space-y-2 border-t border-border pt-4">
-                  {chapterMode && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        Current Chapter:
-                      </span>
-                      <span className="font-medium text-foreground">
-                        {progressSummary.currentChapter
-                          ? `Chapter ${progressSummary.currentChapter}${
-                              typeof book.totalChapters === "number"
-                                ? ` / ${book.totalChapters}`
-                                : ""
-                            }`
-                          : "Not logged yet"}
-                      </span>
-                    </div>
-                  )}
-                  {!progressSummary.isChapterOnly && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        Pages Read:
-                      </span>
-                      <span className="font-medium text-foreground">
-                        {progressSummary.totalPagesRead} /{" "}
-                        {progressSummary.totalPages}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      Progress:
-                    </span>
-                    <span className="font-medium text-foreground">
-                      {progressSummary.progressPercentage.toFixed(1)}%
-                    </span>
-                  </div>
-                  {!isCommunityBook && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        Expected by Today:
-                      </span>
-                      <span className="font-medium text-foreground">
-                        {progressSummary.isChapterOnly
-                          ? progressSummary.expectedChapterByToday !== undefined
-                            ? `Chapter ${progressSummary.expectedChapterByToday}`
-                            : "Not started yet"
-                          : `Page ${progressSummary.expectedPageByToday}${
-                              chapterMode &&
-                              progressSummary.expectedChapterByToday !==
-                                undefined
-                                ? ` • Chapter ${progressSummary.expectedChapterByToday}`
-                                : ""
-                            }`}
-                      </span>
-                    </div>
-                  )}
-                  {!isCommunityBook && progressSummary.showExpectedDropdown && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-auto py-1.5 text-sm text-muted-foreground hover:text-foreground"
-                        >
-                          Expected for each day unaccounted
-                          <ChevronDown className="ml-1 h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="start"
-                        className="max-h-48 min-w-48 overflow-y-auto"
-                      >
-                        {progressSummary.expectedPerUnaccountedDay.map(
-                          (item) => (
-                            <DropdownMenuItem
-                              key={item.key}
-                              className="cursor-default"
-                            >
-                              {item.label}:{" "}
-                              {progressSummary.isChapterOnly
-                                ? `Chapter ${item.expectedChapter}`
-                                : `Page ${item.expectedPage}${
-                                    chapterMode &&
-                                    item.expectedChapter !== undefined
-                                      ? ` • Chapter ${item.expectedChapter}`
-                                      : ""
-                                  }`}
-                            </DropdownMenuItem>
-                          )
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                  <ReadingProgressStatusBanner
-                    showStatusBanner={progressSummary.showStatusBanner}
-                    isAhead={progressSummary.isAhead}
-                    isBehind={progressSummary.isBehind}
-                    difference={progressSummary.difference}
-                    differenceUnit={progressSummary.differenceUnit}
+                {chapterMode && (
+                  <SummaryStat
+                    label="Current chapter"
+                    value={
+                      progressSummary.currentChapter
+                        ? `${progressSummary.currentChapter}${
+                            typeof book.totalChapters === "number"
+                              ? ` / ${book.totalChapters}`
+                              : ""
+                          }`
+                        : "—"
+                    }
                   />
+                )}
+                {!progressSummary.isChapterOnly && (
+                  <SummaryStat
+                    label="Pages read"
+                    value={`${progressSummary.totalPagesRead} / ${progressSummary.totalPages}`}
+                  />
+                )}
+                {!isCommunityBook && (
+                  <SummaryStat
+                    label="Expected by today"
+                    value={
+                      progressSummary.isChapterOnly
+                        ? progressSummary.expectedChapterByToday !== undefined
+                          ? `Ch. ${progressSummary.expectedChapterByToday}`
+                          : "Not started"
+                        : `Page ${progressSummary.expectedPageByToday}`
+                    }
+                    hint={
+                      !progressSummary.isChapterOnly &&
+                      chapterMode &&
+                      progressSummary.expectedChapterByToday !== undefined
+                        ? `Chapter ${progressSummary.expectedChapterByToday}`
+                        : undefined
+                    }
+                  />
+                )}
+                {progressSummary.showStatusBanner && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <div className="mt-1">
+                      {progressSummary.isBehind && progressSummary.difference > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          {progressSummary.difference}{" "}
+                          {progressSummary.differenceUnit}
+                          {progressSummary.difference !== 1 ? "s" : ""} behind
+                        </span>
+                      ) : progressSummary.isAhead ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200">
+                          <TrendingUp className="h-3.5 w-3.5" />
+                          Ahead
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          On track
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {!isCommunityBook && progressSummary.showExpectedDropdown && (
+                <div className="mt-3 border-t border-border pt-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="-ml-2 h-auto py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Expected for each day you haven&apos;t logged
+                        <ChevronDown className="ml-1 h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="start"
+                      className="max-h-48 min-w-48 overflow-y-auto"
+                    >
+                      {progressSummary.expectedPerUnaccountedDay.map((item) => (
+                        <DropdownMenuItem
+                          key={item.key}
+                          className="cursor-default"
+                        >
+                          {item.label}:{" "}
+                          {progressSummary.isChapterOnly
+                            ? `Chapter ${item.expectedChapter}`
+                            : `Page ${item.expectedPage}${
+                                chapterMode &&
+                                item.expectedChapter !== undefined
+                                  ? ` • Chapter ${item.expectedChapter}`
+                                  : ""
+                              }`}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               )}
             </Card>
           )}
         </div>
 
-        {(canEdit || isPublicBook) && (
-          <Card className="mb-4 p-4 sm:mb-6">
-            <button
-              type="button"
-              onClick={() => setReflectionsOpen((open) => !open)}
-              className="flex w-full items-start justify-between gap-3 text-left"
-              aria-expanded={reflectionsOpen}
-            >
-              <span>
-                <span className="flex items-center gap-2 text-lg font-semibold text-foreground">
-                  <BookOpenText className="h-5 w-5" />
-                  Reflections
-                </span>
-                <span className="mt-1 block text-sm text-muted-foreground">
-                  {canEdit
-                    ? isCommunityBook
-                      ? "Your daily notes are shared with members of this community. You can also share the merged reflection publicly for this book."
-                      : "Your daily notes are private. You can share the merged reflection publicly for this book."
-                    : "Shared merged reflection from this reading journey."}
-                </span>
-              </span>
-              <ChevronDown
-                className={`mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-transform ${
-                  reflectionsOpen ? "rotate-180" : ""
+        {canSeeReflections && (
+          <div
+            role="tablist"
+            aria-label="Book view"
+            className="mb-3 inline-flex rounded-full bg-muted p-1"
+          >
+            {(
+              [
+                { value: "schedule", label: "Schedule", Icon: CalendarDays },
+                { value: "reflections", label: "Reflections", Icon: BookOpenText },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                role="tab"
+                aria-selected={bookView === tab.value}
+                onClick={() => setBookView(tab.value)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                  bookView === tab.value
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
-              />
-            </button>
+              >
+                <tab.Icon className="h-4 w-4" />
+                {tab.label}
+                {tab.value === "reflections" && reflections.length > 0 && (
+                  <span className="rounded-full bg-muted px-1.5 text-[11px] tabular-nums text-muted-foreground">
+                    {reflections.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
 
-            {reflectionsOpen && (
-              <div className="mt-4 border-t border-border pt-4">
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {canEdit && (
-                    <Button
-                      type="button"
-                      variant={
-                        book.shareMergedReflection ? "secondary" : "outline"
+        {canSeeReflections && bookView === "reflections" ? (
+          <Card className="p-4 sm:p-5">
+            <p className="mb-3 text-sm text-muted-foreground">
+              {canEdit
+                ? isCommunityBook
+                  ? "Your daily notes are shared with members of this community. You can also share the merged reflection publicly."
+                  : "Your daily notes are private. You can share the merged reflection publicly."
+                : "Shared merged reflection from this reading journey."}
+            </p>
+            <div className="mb-3 flex flex-wrap gap-2">
+              {canEdit && (
+                <Button
+                  type="button"
+                  variant={
+                    book.shareMergedReflection ? "secondary" : "outline"
+                  }
+                  size="sm"
+                  disabled={shareReflectionPending || !book.isPublic}
+                  onClick={() => {
+                    if (!user?.id) return;
+                    const shareMergedReflection = !book.shareMergedReflection;
+                    void setMergedReflectionSharing({
+                      bookId,
+                      shareMergedReflection,
+                    }).then(() => {
+                      if (shareMergedReflection) {
+                        trackEvent("reflections_shared");
                       }
-                      size="sm"
-                      disabled={shareReflectionPending || !book.isPublic}
-                      onClick={() => {
-                        if (!user?.id) return;
-                        const shareMergedReflection = !book.shareMergedReflection;
-                        void setMergedReflectionSharing({
-                          bookId,
-                          shareMergedReflection,
-                        }).then(() => {
-                          if (shareMergedReflection) {
-                            trackEvent("reflections_shared");
-                          }
-                        });
-                      }}
-                      title={
-                        book.isPublic
-                          ? undefined
-                          : "Make the book public before sharing merged reflections"
-                      }
-                    >
-                      {book.shareMergedReflection
-                        ? "Public reflection on"
-                        : "Share merged note"}
-                    </Button>
+                    });
+                  }}
+                  title={
+                    book.isPublic
+                      ? undefined
+                      : "Make the book public before sharing merged reflections"
+                  }
+                >
+                  {book.shareMergedReflection
+                    ? "Public reflection on"
+                    : "Share merged note"}
+                </Button>
+              )}
+              {reflections.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyReflections}
+                  className="gap-1.5"
+                >
+                  {copiedReflections ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
                   )}
-                  {reflections.length > 0 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCopyReflections}
-                      className="gap-1.5"
-                    >
-                      {copiedReflections ? (
-                        <Check className="h-4 w-4" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                      {copiedReflections ? "Copied" : "Copy"}
-                    </Button>
-                  )}
-                </div>
+                  {copiedReflections ? "Copied" : "Copy"}
+                </Button>
+              )}
+            </div>
 
-                {reflections.length > 0 ? (
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                    {canEdit && (
-                      <div className="space-y-3">
-                        <h4 className="text-sm font-medium text-foreground">
-                          Daily Notes
-                        </h4>
-                        <div className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-3">
-                          {reflections.map((reflection) => (
-                            <article
-                              key={reflection._id}
-                              className="border-b border-border pb-3 last:border-0 last:pb-0"
-                            >
-                              <div className="mb-1 text-xs font-medium text-muted-foreground">
-                                {format(
-                                  parseDateFromStorage(reflection.date),
-                                  "MMMM d, yyyy"
-                                )}
-                              </div>
-                              <p className="whitespace-pre-wrap text-sm text-foreground">
-                                {reflection.reflectionNote}
-                              </p>
-                            </article>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    <div className="space-y-3">
-                      <h4 className="text-sm font-medium text-foreground">
-                        Merged Note
-                      </h4>
-                      <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-muted p-3 font-sans text-sm leading-6 text-foreground">
-                        {mergedReflectionText}
-                      </pre>
+            {reflections.length > 0 ? (
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                {canEdit && (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-foreground">
+                      Daily Notes
+                    </h4>
+                    <div className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-3">
+                      {reflections.map((reflection) => (
+                        <article
+                          key={reflection._id}
+                          className="border-b border-border pb-3 last:border-0 last:pb-0"
+                        >
+                          <div className="mb-1 text-xs font-medium text-muted-foreground">
+                            {format(
+                              parseDateFromStorage(reflection.date),
+                              "MMMM d, yyyy"
+                            )}
+                          </div>
+                          <p className="whitespace-pre-wrap text-sm text-foreground">
+                            {reflection.reflectionNote}
+                          </p>
+                        </article>
+                      ))}
                     </div>
                   </div>
-                ) : (
-                  <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-                    {canEdit
-                      ? "No reflection notes yet. Mark a day as read, then add a note from that day."
-                      : "No shared reflection is available for this book."}
-                  </div>
                 )}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-foreground">
+                    Merged Note
+                  </h4>
+                  <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-muted p-3 font-sans text-sm leading-6 text-foreground">
+                    {mergedReflectionText}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+                {canEdit
+                  ? "No reflection notes yet. Mark a day as read, then add a note from that day."
+                  : "No shared reflection is available for this book."}
+              </div>
+            )}
 
-                {canEdit && staleReflections.length > 0 && (
-                  <div className="mt-4 border-t border-border pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setStaleReflectionsOpen((open) => !open)}
-                      className="flex w-full items-center justify-between gap-3 text-left"
-                      aria-expanded={staleReflectionsOpen}
-                    >
-                      <span className="text-sm font-medium text-foreground">
-                        Previous attempts ({staleReflections.length})
-                      </span>
-                      <ChevronDown
-                        className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${
-                          staleReflectionsOpen ? "rotate-180" : ""
-                        }`}
-                      />
-                    </button>
+            {canEdit && staleReflections.length > 0 && (
+              <div className="mt-4 border-t border-border pt-4">
+                <button
+                  type="button"
+                  onClick={() => setStaleReflectionsOpen((open) => !open)}
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                  aria-expanded={staleReflectionsOpen}
+                >
+                  <span className="text-sm font-medium text-foreground">
+                    Previous attempts ({staleReflections.length})
+                  </span>
+                  <ChevronDown
+                    className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${
+                      staleReflectionsOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
 
-                    {staleReflectionsOpen && (
-                      <div className="mt-3 space-y-2">
-                        <p className="text-xs text-muted-foreground">
-                          Notes from before this book was reset. These are
-                          read-only.
-                        </p>
-                        <div className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-3 opacity-80">
-                          {staleReflections.map((reflection) => (
-                            <article
-                              key={reflection._id}
-                              className="border-b border-border pb-3 last:border-0 last:pb-0"
-                            >
-                              <div className="mb-1 text-xs font-medium text-muted-foreground">
-                                {format(
-                                  parseDateFromStorage(reflection.date),
-                                  "MMMM d, yyyy"
-                                )}
-                              </div>
-                              <p className="whitespace-pre-wrap text-sm text-foreground">
-                                {reflection.reflectionNote}
-                              </p>
-                            </article>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                {staleReflectionsOpen && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Notes from before this book was reset. These are
+                      read-only.
+                    </p>
+                    <div className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-3 opacity-80">
+                      {staleReflections.map((reflection) => (
+                        <article
+                          key={reflection._id}
+                          className="border-b border-border pb-3 last:border-0 last:pb-0"
+                        >
+                          <div className="mb-1 text-xs font-medium text-muted-foreground">
+                            {format(
+                              parseDateFromStorage(reflection.date),
+                              "MMMM d, yyyy"
+                            )}
+                          </div>
+                          <p className="whitespace-pre-wrap text-sm text-foreground">
+                            {reflection.reflectionNote}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
             )}
           </Card>
-        )}
-
-        {book.readingMode === "calendar" ? (
-          <CalendarView
-            bookId={bookId}
-            book={book}
-            canEdit={canEdit}
-          />
         ) : (
-          <DaysView
-            bookId={bookId}
-            book={book}
-            canEdit={canEdit}
-          />
+          <>
+          {book.readingMode === "calendar" ? (
+            <CalendarView
+              bookId={bookId}
+              book={book}
+              canEdit={canEdit}
+            />
+          ) : (
+            <DaysView
+              bookId={bookId}
+              book={book}
+              canEdit={canEdit}
+            />
+          )}
+          </>
         )}
       </div>
 

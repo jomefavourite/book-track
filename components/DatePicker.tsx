@@ -20,7 +20,13 @@ import {
 } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Calendar,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,6 +59,9 @@ const MONTHS = [
   "November",
   "December",
 ];
+
+const NAV_BUTTON =
+  "h-8 w-8 rounded-full text-muted-foreground hover:text-foreground";
 
 export default function DatePicker({
   selectedDate,
@@ -179,50 +188,52 @@ export default function DatePicker({
       <div
         aria-disabled={disabled || undefined}
         className={cn(
-          "rounded-lg border border-border bg-card p-4 shadow-sm",
+          "rounded-lg border border-border bg-card p-3 shadow-sm sm:p-4",
           disabled && "pointer-events-none select-none opacity-60"
         )}
       >
-        {/* Month/Year Navigation */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-1">
+        {/* Month/Year Navigation: compact so it fits half-width columns. */}
+        <div className="mb-3 flex items-center justify-between gap-1">
+          <div className="flex items-center">
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="icon"
               onClick={handlePreviousYear}
-              className="h-8 w-8"
+              className={NAV_BUTTON}
               title="Previous year"
+              aria-label="Previous year"
             >
-              <ChevronLeft className="h-4 w-4" />
-              <ChevronLeft className="h-4 w-4 -ml-2" />
+              <ChevronsLeft />
             </Button>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="icon"
               onClick={handlePreviousMonth}
-              className="h-8 w-8"
+              className={NAV_BUTTON}
               title="Previous month"
+              aria-label="Previous month"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft />
             </Button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-8 px-3 font-semibold hover:bg-accent"
+                  className="h-8 px-1.5 text-sm font-semibold"
+                  aria-label={`Month: ${format(currentMonth, "MMMM")}`}
                 >
-                  {format(currentMonth, "MMMM")}
+                  {format(currentMonth, "MMM")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="center"
-                className="w-32 max-h-[200px] overflow-y-auto"
+                className="max-h-[220px] w-36 overflow-y-auto"
               >
                 {MONTHS.map((month, index) => (
                   <DropdownMenuItem
@@ -230,7 +241,7 @@ export default function DatePicker({
                     onClick={() => handleMonthSelect(index)}
                     className={cn(
                       "cursor-pointer",
-                      currentMonth.getMonth() === index && "bg-accent"
+                      currentMonth.getMonth() === index && "bg-accent font-medium"
                     )}
                   >
                     {month}
@@ -244,22 +255,23 @@ export default function DatePicker({
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-8 px-3 font-semibold hover:bg-accent"
+                  className="h-8 px-1.5 text-sm font-semibold tabular-nums"
+                  aria-label={`Year: ${format(currentMonth, "yyyy")}`}
                 >
                   {format(currentMonth, "yyyy")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="center"
-                className="w-24 max-h-[200px] overflow-y-auto"
+                className="max-h-[220px] w-24 overflow-y-auto"
               >
                 {years.map((year) => (
                   <DropdownMenuItem
                     key={year}
                     onClick={() => handleYearSelect(year)}
                     className={cn(
-                      "cursor-pointer",
-                      currentMonth.getFullYear() === year && "bg-accent"
+                      "cursor-pointer tabular-nums",
+                      currentMonth.getFullYear() === year && "bg-accent font-medium"
                     )}
                   >
                     {year}
@@ -269,27 +281,28 @@ export default function DatePicker({
             </DropdownMenu>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center">
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="icon"
               onClick={handleNextMonth}
-              className="h-8 w-8"
+              className={NAV_BUTTON}
               title="Next month"
+              aria-label="Next month"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight />
             </Button>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="icon"
               onClick={handleNextYear}
-              className="h-8 w-8"
+              className={NAV_BUTTON}
               title="Next year"
+              aria-label="Next year"
             >
-              <ChevronRight className="h-4 w-4" />
-              <ChevronRight className="h-4 w-4 -ml-2" />
+              <ChevronsRight />
             </Button>
           </div>
         </div>
@@ -299,7 +312,7 @@ export default function DatePicker({
           {DAYS_OF_WEEK.map((day) => (
             <div
               key={day}
-              className="text-center text-xs font-semibold text-muted-foreground py-1.5"
+              className="py-1 text-center text-[11px] font-medium text-muted-foreground"
             >
               {day}
             </div>

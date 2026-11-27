@@ -84,6 +84,9 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#18181b",
+  // Lets the mobile tab bar pad itself with env(safe-area-inset-bottom)
+  // so it clears the iOS home indicator.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -108,7 +111,9 @@ export default function RootLayout({
         <ClerkProvider>
           <ThemeProvider
             attribute="class"
-            defaultTheme="light"
+            // Follow the device's light/dark setting until the reader picks one
+            // with the theme toggle (that choice is saved and wins after).
+            defaultTheme="system"
             enableSystem
             disableTransitionOnChange
             storageKey="book-trackr-theme"

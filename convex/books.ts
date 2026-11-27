@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
 import {
   parseDateFromStorage,
   formatDateForStorage,
@@ -15,6 +16,24 @@ import {
 import { sanitizeTags } from "../lib/bookTags";
 import { registerUserTags } from "./userTags";
 import { getClerkId, requireClerkId } from "./authHelpers";
+
+/**
+ * Look up the profile slug (username) for each book owner, so links can use
+ * /user/<slug> instead of the raw Clerk ID. One lookup per distinct owner.
+ */
+async function getOwnerSlugs(ctx: QueryCtx, clerkIds: string[]) {
+  const slugs = new Map<string, string | undefined>();
+  await Promise.all(
+    Array.from(new Set(clerkIds)).map(async (clerkId) => {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
+        .first();
+      slugs.set(clerkId, user?.slug);
+    })
+  );
+  return slugs;
+}
 
 const isValidPositiveInteger = (value: number | undefined): value is number =>
   value !== undefined && Number.isInteger(value) && value > 0;
@@ -228,14 +247,24 @@ export const getBook = query({
 
     // If user is authenticated and owns the book, return it
     const viewerId = await getClerkId(ctx);
-    if (viewerId && book.userId === viewerId) {
-      return book;
+    const isOwner = viewerId != null && book.userId === viewerId;
+    if (!isOwner && !book.isPublic) {
+      // If not owner and not public, return null instead of throwing
+      // This allows the frontend to handle the case gracefully
+      // (e.g., show "private book" message instead of error)
+      return null;
+    }
+    const creatorSlug = (await getOwnerSlugs(ctx, [book.userId])).get(
+      book.userId
+    );
+    if (isOwner) {
+      return { ...book, creatorSlug };
     }
 
     // If book is public, allow access (even without auth)
     if (book.isPublic) {
       // Return book with conditional creator info
-      const result = { ...book };
+      const result = { ...book, creatorSlug };
       if (!book.showCreatorName) {
         result.creatorName = undefined;
       }
@@ -742,6 +771,10 @@ export const getPublicBooks = query({
 
     // Include all public books (archived or not) so archived+public books still appear on public page
     const books = allBooks;
+    const ownerSlugs = await getOwnerSlugs(
+      ctx,
+      books.map((book) => book.userId)
+    );
 
     // Calculate progress and filter creator info based on visibility flags
     const booksWithProgress = await Promise.all(
@@ -754,9 +787,13 @@ export const getPublicBooks = query({
         const progress = getBookProgressPercent(book, sessions);
 
         // Filter creator info based on visibility flags
-        const result: typeof book & { progress: number } = {
+        const result: typeof book & {
+          progress: number;
+          creatorSlug?: string;
+        } = {
           ...book,
           progress,
+          creatorSlug: ownerSlugs.get(book.userId),
         };
 
         if (!book.showCreatorName) {
@@ -841,6 +878,7 @@ export const getPublicBook = query({
     const result = {
       ...book,
       progress,
+      creatorSlug: (await getOwnerSlugs(ctx, [book.userId])).get(book.userId),
     };
 
     if (!book.showCreatorName) {
@@ -910,9 +948,13 @@ export const getBooksForProfile = query({
       .collect();
 
     // Owner sees all books (including archived). Others see all public books (including archived+public).
-    const books = isOwner
-      ? allBooks
-      : allBooks.filter((book) => book.isPublic);
+    const books = (
+      isOwner ? allBooks : allBooks.filter((book) => book.isPublic)
+    ).map((book) => ({ ...book, creatorSlug: undefined as string | undefined }));
+    const ownerSlug = (await getOwnerSlugs(ctx, [args.profileUserId])).get(
+      args.profileUserId
+    );
+    for (const book of books) book.creatorSlug = ownerSlug;
 
     if (!isOwner) {
       const publicOnly = books;

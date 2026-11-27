@@ -58,7 +58,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       if (book.userId && !seenProfiles.has(book.userId)) {
         seenProfiles.add(book.userId);
         dynamicEntries.push({
-          url: `${siteUrl}/user/${book.userId}`,
+          // Match the profile's canonical URL (username, not the Clerk ID).
+          url: `${siteUrl}/user/${book.creatorSlug ?? book.userId}`,
           lastModified,
           changeFrequency: "weekly",
           priority: 0.5,

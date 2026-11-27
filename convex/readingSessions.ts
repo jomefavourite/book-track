@@ -396,3 +396,86 @@ export const getSessionByDate = query({
     );
   },
 });
+
+/**
+ * Per-day reading activity for a profile's heatmap: which books were marked
+ * read each day and how many pages that covered, across ALL of the user's
+ * books. Book titles follow the same rule as `getBooksForProfile`: the owner
+ * sees every title; visitors see public titles only, with private books
+ * reduced to a count.
+ *
+ * Sessions from earlier reset cycles are kept on purpose: the reading still
+ * happened on those days, even if it no longer counts toward progress.
+ */
+export const getReadingActivity = query({
+  args: {
+    profileUserId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const viewerId = await getClerkId(ctx);
+    const isOwner = viewerId != null && viewerId === args.profileUserId;
+
+    const [sessions, books] = await Promise.all([
+      ctx.db
+        .query("readingSessions")
+        .withIndex("by_user", (q) => q.eq("userId", args.profileUserId))
+        .collect(),
+      ctx.db
+        .query("books")
+        .withIndex("by_user", (q) => q.eq("userId", args.profileUserId))
+        .collect(),
+    ]);
+
+    const bookById = new Map(books.map((book) => [book._id, book]));
+
+    const byDate = new Map<
+      string,
+      {
+        books: number;
+        pages: number;
+        titles: string[];
+        privateBooks: number;
+        bookIds: Set<string>;
+      }
+    >();
+    for (const session of sessions) {
+      if (!session.isRead || session.isMissed) continue;
+      const book = bookById.get(session.bookId);
+      if (!book) continue;
+
+      const day = byDate.get(session.date) ?? {
+        books: 0,
+        pages: 0,
+        titles: [],
+        privateBooks: 0,
+        bookIds: new Set<string>(),
+      };
+
+      // Chapter-only books don't track pages, so their planned pages are noise.
+      const chapterOnly =
+        book.progressStyle === "chapters" && book.ignorePages === true;
+      if (!chapterOnly) {
+        day.pages += session.actualPages ?? session.plannedPages ?? 0;
+      }
+
+      if (!day.bookIds.has(book._id)) {
+        day.bookIds.add(book._id);
+        day.books += 1;
+        if (isOwner || book.isPublic) {
+          day.titles.push(book.name);
+        } else {
+          day.privateBooks += 1;
+        }
+      }
+      byDate.set(session.date, day);
+    }
+
+    return Array.from(byDate, ([date, day]) => ({
+      date,
+      books: day.books,
+      pages: day.pages,
+      titles: day.titles,
+      privateBooks: day.privateBooks,
+    })).sort((a, b) => a.date.localeCompare(b.date));
+  },
+});

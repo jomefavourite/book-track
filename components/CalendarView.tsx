@@ -127,18 +127,20 @@ export default function CalendarView({
     enabled: true, // Allow querying even without auth (for public books)
   });
   const communityBookId = book.communityBookId;
-  const { data: scheduleQuery } = useQuery({
-    ...convexQuery(api.communitySchedule.getScheduleForBook, {
-      communityBookId: communityBookId as Id<"communityBooks">,
-    }),
-    enabled: Boolean(communityBookId),
-  });
-  const { data: dayLabelsQuery } = useQuery({
-    ...convexQuery(api.communityDayLabels.listForCommunityBook, {
-      communityBookId: communityBookId as Id<"communityBooks">,
-    }),
-    enabled: Boolean(communityBookId),
-  });
+  // "skip" (not `enabled: false`) so personal books never send these
+  // community-only queries with an empty, invalid argument object.
+  const { data: scheduleQuery } = useQuery(
+    convexQuery(
+      api.communitySchedule.getScheduleForBook,
+      communityBookId ? { communityBookId } : "skip"
+    )
+  );
+  const { data: dayLabelsQuery } = useQuery(
+    convexQuery(
+      api.communityDayLabels.listForCommunityBook,
+      communityBookId ? { communityBookId } : "skip"
+    )
+  );
   const dayLabelByDate = useMemo(
     () => buildDayLabelMap(scheduleQuery, dayLabelsQuery),
     [scheduleQuery, dayLabelsQuery]

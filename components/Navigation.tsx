@@ -1,17 +1,42 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useUser, SignInButton, SignOutButton } from "@clerk/nextjs";
 import { useTheme } from "next-themes";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { api } from "@/convex/_generated/api";
-import { Bell, Settings as SettingsIcon, User, Users } from "lucide-react";
+import {
+  Bell,
+  Check,
+  Compass,
+  Home,
+  LogIn,
+  LogOut,
+  Mail,
+  Menu,
+  MessageCircle,
+  Monitor,
+  Moon,
+  Settings as SettingsIcon,
+  Sun,
+  User,
+  Users,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import ThemeSwitcher from "@/components/ThemeSwitcher";
-import AuthButton from "@/components/AuthButton";
+import { Skeleton } from "@/components/ui/skeleton";
+import MobileTabBar from "@/components/MobileTabBar";
+import {
+  getNavItems,
+  isNavItemActive,
+  type NavKey,
+} from "@/components/navItems";
 import { trackEvent } from "@/lib/analytics";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,14 +50,132 @@ interface NavigationProps {
   showAuth?: boolean;
   isLandingPage?: boolean;
   isDashboard?: boolean;
+  /** Override which primary tab is highlighted (see isNavItemActive). */
+  activeNav?: NavKey | null;
+}
+
+const WHATSAPP_URL = "https://chat.whatsapp.com/KGWk0EFVJIH6CIr24oflLs?mode=gi_t";
+const INSTAGRAM_URL = "https://www.instagram.com/booktrackr.app/";
+const CONTACT_EMAIL = "hello@booktrackr.app";
+
+const NAV_ICONS: Record<string, LucideIcon> = {
+  home: Home,
+  discover: Compass,
+  communities: Users,
+  profile: User,
+};
+
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+    </svg>
+  );
+}
+
+function InstagramIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      fill="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+    </svg>
+  );
+}
+
+/** Contact & feedback links, shared by the desktop dropdown and mobile menu. */
+function FeedbackItems() {
+  return (
+    <>
+      <DropdownMenuItem asChild>
+        <a
+          href={WHATSAPP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex cursor-pointer items-center gap-2.5 py-2.5"
+        >
+          <WhatsAppIcon className="h-4 w-4 shrink-0" />
+          <span className="flex-1 text-sm">Join BookTrackr Community</span>
+        </a>
+      </DropdownMenuItem>
+      <DropdownMenuItem asChild>
+        <a
+          href={`mailto:${CONTACT_EMAIL}`}
+          className="flex cursor-pointer items-center gap-2.5 py-2.5"
+        >
+          <Mail className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 flex-1 break-all text-sm">
+            {CONTACT_EMAIL}
+          </span>
+        </a>
+      </DropdownMenuItem>
+      <DropdownMenuItem asChild>
+        <a
+          href={INSTAGRAM_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex cursor-pointer items-center gap-2.5 py-2.5"
+        >
+          <InstagramIcon className="h-4 w-4 shrink-0" />
+          <span className="flex-1 text-sm">
+            Follow on Instagram: @booktrackr.app
+          </span>
+        </a>
+      </DropdownMenuItem>
+    </>
+  );
+}
+
+function Avatar({
+  imageUrl,
+  name,
+  className,
+}: {
+  imageUrl?: string | null;
+  name: string;
+  className?: string;
+}) {
+  if (imageUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={imageUrl}
+        alt=""
+        className={cn("rounded-full object-cover", className)}
+      />
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "flex items-center justify-center rounded-full bg-muted text-xs font-semibold uppercase text-foreground",
+        className
+      )}
+      aria-hidden="true"
+    >
+      {name.charAt(0)}
+    </span>
+  );
 }
 
 export default function Navigation({
   showAuth = true,
   isLandingPage = false,
+  activeNav,
 }: NavigationProps) {
   const { user, isLoaded, isSignedIn } = useUser();
   const { setTheme, theme, resolvedTheme } = useTheme();
+  const pathname = usePathname() ?? "/";
   const [mounted, setMounted] = useState(false);
 
   const { data: convexUser } = useQuery({
@@ -52,407 +195,367 @@ export default function Navigation({
     };
   }, []);
 
-  const toggleTheme = () => {
-    const currentTheme = resolvedTheme || theme;
-    if (currentTheme === "light") {
-      setTheme("dark");
-    } else {
-      setTheme("light");
-    }
-  };
-
   const displayTheme = mounted ? resolvedTheme || theme : "light";
+  // "system" follows the device's light/dark setting (the default).
+  const themeChoice = mounted ? theme ?? "system" : "system";
+  const themeOptions = [
+    { value: "light", label: "Light", Icon: Sun },
+    { value: "dark", label: "Dark", Icon: Moon },
+    { value: "system", label: "Match device", Icon: Monitor },
+  ] as const;
+  const showAppNav = showAuth && !!isSignedIn;
+  const navItems = getNavItems(profileHref);
+  const displayName =
+    user?.fullName ||
+    user?.firstName ||
+    user?.primaryEmailAddress?.emailAddress?.split("@")[0] ||
+    "Reader";
+
+  const themeToggle = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled={!mounted}
+          aria-label="Theme"
+          className="h-9 w-9 rounded-full"
+        >
+          {displayTheme === "dark" ? (
+            <Moon className="h-[18px] w-[18px]" />
+          ) : (
+            <Sun className="h-[18px] w-[18px]" />
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground">
+          Theme
+        </DropdownMenuLabel>
+        {themeOptions.map(({ value, label, Icon }) => (
+          <DropdownMenuItem
+            key={value}
+            onSelect={() => setTheme(value)}
+            className="flex cursor-pointer items-center gap-2.5"
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            <span className="flex-1">{label}</span>
+            {themeChoice === value && <Check className="h-4 w-4" />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   return (
-    <header className="border-b border-border">
-      <div
-        className={`${isLandingPage ? "px-6" : `  px-3 sm:px-6`} max-w-6xl py-4 mx-auto`}
+    <>
+      <header
+        className={cn(
+          "z-40 border-b border-border bg-background/85 backdrop-blur-lg supports-[backdrop-filter]:bg-background/70",
+          !isLandingPage && "sticky top-0"
+        )}
       >
-        <div className="flex items-center justify-between">
+        <div
+          className={cn(
+            "mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 sm:h-16",
+            isLandingPage ? "px-6" : "px-3 sm:px-6"
+          )}
+        >
           <Link
-            href="/"
-            className="shrink-0 whitespace-nowrap text-xl font-bold text-foreground transition-opacity hover:opacity-80 sm:text-2xl"
+            href={showAppNav ? "/dashboard" : "/"}
+            className="flex shrink-0 items-center gap-2 whitespace-nowrap text-lg font-bold tracking-tight text-foreground transition-opacity hover:opacity-80 sm:text-xl"
           >
+            <Image
+              src="/icon.svg"
+              alt=""
+              width={32}
+              height={32}
+              priority
+              className="h-8 w-8 rounded-lg dark:ring-1 dark:ring-white/15"
+            />
             BookTrackr
           </Link>
-          {/* Desktop Navigation - visible on lg and up (enough room for all items) */}
-          <div className="hidden lg:flex items-center gap-2 xl:gap-3">
-            {/* Feedback/Contact Dropdown */}
+
+          {/* Primary nav – tablet & desktop. Mobile uses the bottom tab bar. */}
+          {showAppNav && (
+            <nav
+              aria-label="Primary"
+              className="hidden flex-1 items-center justify-center md:flex"
+            >
+              <ul className="flex items-center gap-1 rounded-full border border-border bg-muted/50 p-1">
+                {navItems.map((item) => {
+                  const Icon = NAV_ICONS[item.key];
+                  const active = isNavItemActive(
+                    item,
+                    pathname,
+                    profileHref,
+                    activeNav
+                  );
+                  return (
+                    <li key={item.key}>
+                      <Link
+                        href={item.href}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
+                          active
+                            ? "bg-background text-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        <Icon className="hidden h-4 w-4 lg:block" />
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+          )}
+
+          {/* Right side – tablet & desktop */}
+          <div className="hidden shrink-0 items-center gap-1.5 md:flex">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="gap-2"
+                  className="h-9 gap-2 rounded-full px-2.5 lg:px-3"
                   aria-label="Feedback and contact"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                    />
-                  </svg>
-                  <span>Feedback</span>
+                  <MessageCircle className="h-4 w-4" />
+                  <span className="hidden lg:inline">Feedback</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
                 className="w-64"
               >
-                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground">
                   Contact & Feedback
-                </div>
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <a
-                    href="https://chat.whatsapp.com/KGWk0EFVJIH6CIr24oflLs?mode=gi_t"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center cursor-pointer"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mr-2 h-4 w-4 shrink-0"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                    >
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-                    </svg>
-                    <span className="flex-1 text-sm">Join BookTrackr Community</span>
-                  </a>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <a
-                    href="mailto:hello@booktrackr.app"
-                    className="flex items-center cursor-pointer"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mr-2 h-4 w-4 shrink-0"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                      />
-                    </svg>
-                    <span className="flex-1 text-sm break-all">
-                      hello@booktrackr.app
-                    </span>
-                  </a>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <a
-                    href="https://www.instagram.com/booktrackr.app/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center cursor-pointer"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mr-2 h-4 w-4 shrink-0"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
-                    </svg>
-                    <span className="flex-1 text-sm">
-                      Follow on Instagram: @booktrackr.app
-                    </span>
-                  </a>
-                </DropdownMenuItem>
+                <FeedbackItems />
               </DropdownMenuContent>
             </DropdownMenu>
-            {showAuth && (
-              <>
-                {isSignedIn && (
-                  <>
-                    <Button variant="ghost" size="sm" asChild className="gap-2">
-                      <Link href="/dashboard/settings">
-                        <SettingsIcon className="h-4 w-4" />
-                        Settings
-                      </Link>
-                    </Button>
-                    <Button variant="ghost" size="sm" asChild className="gap-2">
-                      <Link href="/communities">
-                        <Users className="h-4 w-4" />
-                        Communities
-                      </Link>
-                    </Button>
-                    {profileHref !== "#" && (
-                      <Button variant="ghost" size="sm" asChild className="gap-2">
-                        <Link href={profileHref}>
-                          <User className="h-4 w-4" />
-                          My profile
-                        </Link>
-                      </Button>
-                    )}
-                  </>
-                )}
-                <AuthButton />
-              </>
+
+            {themeToggle}
+
+            {showAuth && !isLoaded && (
+              <Skeleton className="h-9 w-9 rounded-full" />
             )}
-            <ThemeSwitcher />
+
+            {showAuth && isLoaded && !isSignedIn && (
+              <SignInButton mode="modal">
+                <Button
+                  size="sm"
+                  className="ml-1 rounded-full px-4"
+                >
+                  Sign In
+                </Button>
+              </SignInButton>
+            )}
+
+            {showAppNav && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Account menu"
+                    className="ml-1 rounded-full ring-offset-background transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <Avatar
+                      imageUrl={user?.imageUrl}
+                      name={displayName}
+                      className="h-9 w-9 border border-border"
+                    />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-60"
+                >
+                  <div className="flex items-center gap-3 px-2 py-2">
+                    <Avatar
+                      imageUrl={user?.imageUrl}
+                      name={displayName}
+                      className="h-9 w-9"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {displayName}
+                      </p>
+                      {user?.primaryEmailAddress?.emailAddress && (
+                        <p className="truncate text-xs text-muted-foreground">
+                          {user.primaryEmailAddress.emailAddress}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <DropdownMenuSeparator />
+                  {profileHref !== "#" && (
+                    <DropdownMenuItem asChild>
+                      <Link
+                        href={profileHref}
+                        className="flex cursor-pointer items-center gap-2.5 py-2"
+                      >
+                        <User className="h-4 w-4 shrink-0" />
+                        My profile
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem asChild>
+                    <Link
+                      href="/dashboard/settings"
+                      className="flex cursor-pointer items-center gap-2.5 py-2"
+                    >
+                      <SettingsIcon className="h-4 w-4 shrink-0" />
+                      Settings
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <SignOutButton>
+                    <DropdownMenuItem
+                      className="flex cursor-pointer items-center gap-2.5 py-2"
+                      onClick={() =>
+                        trackEvent("logout", { location: "header" })
+                      }
+                    >
+                      <LogOut className="h-4 w-4 shrink-0" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </SignOutButton>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
 
-          {/* Mobile/Tablet Hamburger Menu - visible below lg */}
-          <div className="lg:hidden flex items-center gap-2">
-            {showAuth && isSignedIn && (
+          {/* Right side – mobile */}
+          <div className="flex items-center gap-1 md:hidden">
+            {showAppNav && (
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon"
                 asChild
                 aria-label="Reminder settings"
+                className="h-9 w-9 rounded-full"
               >
                 <Link href="/dashboard/settings">
-                  <Bell className="h-5 w-5" />
+                  <Bell className="h-[18px] w-[18px]" />
                 </Link>
               </Button>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
                   aria-label="Menu"
+                  className="h-9 w-9 rounded-full"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-6 w-6"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 6h16M4 12h16M4 18h16"
+                  {showAppNav ? (
+                    <Avatar
+                      imageUrl={user?.imageUrl}
+                      name={displayName}
+                      className="h-8 w-8 border border-border"
                     />
-                  </svg>
+                  ) : (
+                    <Menu className="h-5 w-5" />
+                  )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="w-[calc(100vw-2rem)] max-w-56 min-w-[200px]"
+                className="w-[calc(100vw-2rem)] min-w-[220px] max-w-64"
               >
-                <DropdownMenuLabel>Menu</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-
-                {/* Feedback Section */}
-                <div className="px-2 py-1.5">
-                  <div className="flex items-center text-sm font-medium text-foreground">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mr-2 h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                      />
-                    </svg>
-                    <span>Feedback</span>
-                  </div>
-                </div>
-                <DropdownMenuItem asChild>
-                  <a
-                    href="https://chat.whatsapp.com/KGWk0EFVJIH6CIr24oflLs?mode=gi_t"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center cursor-pointer py-3 pl-8"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mr-3 h-4 w-4 shrink-0"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                    >
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-                    </svg>
-                    <span className="flex-1 text-sm">Join BookTrackr Community</span>
-                  </a>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <a
-                    href="mailto:hello@booktrackr.app"
-                    className="flex items-center cursor-pointer py-3 pl-8"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mr-3 h-4 w-4 shrink-0"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                      />
-                    </svg>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm break-all block">
-                        hello@booktrackr.app
-                      </span>
+                {showAppNav ? (
+                  <div className="flex items-center gap-3 px-2 py-2">
+                    <Avatar
+                      imageUrl={user?.imageUrl}
+                      name={displayName}
+                      className="h-9 w-9"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {displayName}
+                      </p>
+                      {user?.primaryEmailAddress?.emailAddress && (
+                        <p className="truncate text-xs text-muted-foreground">
+                          {user.primaryEmailAddress.emailAddress}
+                        </p>
+                      )}
                     </div>
-                  </a>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <a
-                    href="https://www.instagram.com/booktrackr.app/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center cursor-pointer py-3 pl-8"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="mr-3 h-4 w-4 shrink-0"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
-                    </svg>
-                    <span className="flex-1 text-sm">
-                      Follow on Instagram: @booktrackr.app
-                    </span>
-                  </a>
-                </DropdownMenuItem>
-
+                  </div>
+                ) : (
+                  <DropdownMenuLabel>Menu</DropdownMenuLabel>
+                )}
                 <DropdownMenuSeparator />
 
-                {/* Theme Switcher */}
-                {mounted && (
-                  <DropdownMenuItem
-                    onClick={toggleTheme}
-                    className="cursor-pointer py-3"
-                  >
-                    {displayTheme === "light" ? (
-                      <>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="mr-2 h-4 w-4"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                        >
-                          <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
-                        </svg>
-                        <span>Dark Mode</span>
-                      </>
-                    ) : (
-                      <>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="mr-2 h-4 w-4"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        <span>Light Mode</span>
-                      </>
-                    )}
-                  </DropdownMenuItem>
+                {showAppNav && (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link
+                        href="/dashboard/settings"
+                        className="flex cursor-pointer items-center gap-2.5 py-2.5"
+                      >
+                        <SettingsIcon className="h-4 w-4 shrink-0" />
+                        Settings
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
                 )}
 
-                {/* Sign Out / Sign In */}
+                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground">
+                  Contact & Feedback
+                </DropdownMenuLabel>
+                <FeedbackItems />
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground">
+                  Theme
+                </DropdownMenuLabel>
+                {mounted &&
+                  themeOptions.map(({ value, label, Icon }) => (
+                    <DropdownMenuItem
+                      key={value}
+                      onSelect={(event) => {
+                        // Keep the menu open so the change is visible.
+                        event.preventDefault();
+                        setTheme(value);
+                      }}
+                      className="flex cursor-pointer items-center gap-2.5 py-2.5"
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span className="flex-1">{label}</span>
+                      {themeChoice === value && <Check className="h-4 w-4" />}
+                    </DropdownMenuItem>
+                  ))}
+
                 {showAuth && isLoaded && (
                   <>
                     <DropdownMenuSeparator />
                     {isSignedIn ? (
-                      <>
-                        <DropdownMenuItem asChild>
-                          <Link
-                            href="/dashboard/settings"
-                            className="flex cursor-pointer items-center gap-2 py-3"
-                          >
-                            <SettingsIcon className="h-4 w-4 shrink-0" />
-                            <span>Settings</span>
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link
-                            href="/communities"
-                            className="flex cursor-pointer items-center gap-2 py-3"
-                          >
-                            <Users className="h-4 w-4 shrink-0" />
-                            <span>Communities</span>
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link
-                            href={profileHref}
-                            className="flex cursor-pointer items-center gap-2 py-3"
-                          >
-                            <User className="h-4 w-4 shrink-0" />
-                            <span>My profile</span>
-                          </Link>
-                        </DropdownMenuItem>
-                        <SignOutButton>
+                      <SignOutButton>
                         <DropdownMenuItem
-                          className="cursor-pointer py-3"
-                          onClick={() => trackEvent("logout", { location: "nav_menu" })}
+                          className="flex cursor-pointer items-center gap-2.5 py-2.5"
+                          onClick={() =>
+                            trackEvent("logout", { location: "nav_menu" })
+                          }
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="mr-2 h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                            />
-                          </svg>
-                          <span>Sign Out</span>
+                          <LogOut className="h-4 w-4 shrink-0" />
+                          Sign Out
                         </DropdownMenuItem>
                       </SignOutButton>
-                      </>
                     ) : (
                       <SignInButton mode="modal">
                         <DropdownMenuItem
-                          className="cursor-pointer py-3"
+                          className="flex cursor-pointer items-center gap-2.5 py-2.5"
                           onSelect={(e) => e.preventDefault()}
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="mr-2 h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
-                            />
-                          </svg>
-                          <span>Sign In</span>
+                          <LogIn className="h-4 w-4 shrink-0" />
+                          Sign In
                         </DropdownMenuItem>
                       </SignInButton>
                     )}
@@ -462,7 +565,11 @@ export default function Navigation({
             </DropdownMenu>
           </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {showAppNav && !isLandingPage && (
+        <MobileTabBar profileHref={profileHref} activeNav={activeNav} />
+      )}
+    </>
   );
 }
