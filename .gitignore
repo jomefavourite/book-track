@@ -40,8 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# next-pwa generated service worker files (regenerated on every build)
-/public/sw.js
+# Leftovers from the old next-pwa build (public/sw.js is now hand-written and committed)
 /public/sw.js.map
 /public/workbox-*.js
 /public/workbox-*.js.map

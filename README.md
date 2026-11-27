@@ -19,7 +19,7 @@ A Progressive Web App (PWA) for tracking your reading progress with calendar and
 - **Convex Auth**: Authentication with GitHub
 - **Tailwind CSS**: Styling
 - **date-fns**: Date utilities
-- **next-pwa**: PWA support
+- **PWA**: web app manifest + a small push-only service worker (`public/sw.js`) for reading reminders
 
 ## Setup
 
