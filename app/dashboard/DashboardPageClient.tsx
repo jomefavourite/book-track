@@ -113,6 +113,15 @@ export default function Dashboard() {
     enabled: isLoaded && !!user?.id,
   });
 
+  // Finished books are usually archived, so count them across ALL books
+  // (getProfileStats includes archived ones), not just the active list.
+  const { data: profileStats } = useQuery({
+    ...convexQuery(api.books.getProfileStats, {
+      profileUserId: user?.id ?? "",
+    }),
+    enabled: isLoaded && !!user?.id,
+  });
+
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const isPending = activeTab === "active" ? booksPending : archivedPending;
@@ -149,10 +158,11 @@ export default function Dashboard() {
       streak: getStreaks(activity ?? []).current,
       pagesThisWeek,
       readingNow: continueReading.length,
-      finished: activeBooks.filter((book) => (book.progress ?? 0) >= 100)
-        .length,
+      finished:
+        profileStats?.completed ??
+        activeBooks.filter((book) => (book.progress ?? 0) >= 100).length,
     };
-  }, [activity, activeBooks, continueReading.length]);
+  }, [activity, activeBooks, continueReading.length, profileStats]);
 
   const statusCounts = useMemo(() => {
     const counts = { all: listBooks.length, reading: 0, "not-started": 0, finished: 0 };
