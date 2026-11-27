@@ -815,7 +815,7 @@ export default function ReadingPlan({
           </div>
         ) : (
           <>
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
               <BookOfTheYear
                 year={activeYear}
                 pick={pick}

@@ -49,7 +49,7 @@ export default function LandingV3() {
       <Navigation isLandingPage={true} />
 
       {/* Hero */}
-      <section className="mx-auto grid max-w-6xl items-center gap-14 px-6 pb-16 pt-16 lg:grid-cols-[1.1fr_1fr] lg:pt-24">
+      <section className="mx-auto grid grid-cols-1 max-w-6xl items-center gap-14 px-6 pb-16 pt-16 lg:grid-cols-[1.1fr_1fr] lg:pt-24">
         <div>
           <p
             className="landing-hero-enter mb-6 inline-flex items-center gap-2 rounded-full bg-muted px-4 py-1.5 text-xs font-semibold text-foreground"
@@ -208,7 +208,7 @@ export default function LandingV3() {
           </p>
         </Reveal>
 
-        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {/* Plans tile */}
           <Reveal className="sm:col-span-2">
             <div className="group h-full rounded-2xl border border-border bg-card p-7 transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
@@ -373,7 +373,7 @@ export default function LandingV3() {
       {/* Community showcase — the centerpiece */}
       <section className="bg-foreground text-background">
         <div className="mx-auto max-w-6xl px-6 py-24">
-          <div className="grid items-center gap-14 lg:grid-cols-[1.15fr_1fr]">
+          <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-[1.15fr_1fr]">
             <div>
               <Reveal>
                 <p className="text-xs font-semibold uppercase tracking-[0.25em] text-background/50">

@@ -471,7 +471,7 @@ export default function CommunityBookDetailPageClient() {
               )}
             </Card>
 
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
               {/* Community reflections — the focus of this page */}
               {isMember ? (
                 <Card className="p-5 sm:p-6">

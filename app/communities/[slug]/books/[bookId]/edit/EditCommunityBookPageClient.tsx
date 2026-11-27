@@ -280,7 +280,7 @@ export default function EditCommunityBookPageClient() {
 
             <Card className="p-5 sm:p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <label className="space-y-2 sm:col-span-2">
                     <span className="text-sm font-medium text-foreground">
                       Book name

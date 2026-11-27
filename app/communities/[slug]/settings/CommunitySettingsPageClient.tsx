@@ -207,7 +207,7 @@ function FormSection({
   children: ReactNode;
 }) {
   return (
-    <section className="grid gap-4 p-5 sm:p-6 xl:grid-cols-[14rem_minmax(0,1fr)] xl:gap-8">
+    <section className="grid grid-cols-1 gap-4 p-5 sm:p-6 xl:grid-cols-[14rem_minmax(0,1fr)] xl:gap-8">
       <SectionHeading title={title} description={description} />
       <div className="min-w-0 space-y-4">{children}</div>
     </section>
@@ -827,7 +827,7 @@ export default function CommunitySettingsPageClient() {
                         title="Visibility & branding"
                         description="Control who can see activity and set your accent color."
                       >
-                        <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                           <Field label="Visibility">
                             <Select name="visibility" defaultValue={detail.visibility}>
                               <SelectTrigger aria-label="Visibility">
@@ -861,7 +861,7 @@ export default function CommunitySettingsPageClient() {
                         title="Links"
                         description="Optional links shown on your community page."
                       >
-                        <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                           <Field label="Instagram" htmlFor="community-instagram">
                             <Input
                               id="community-instagram"
@@ -1015,7 +1015,7 @@ export default function CommunitySettingsPageClient() {
                     description="Choose the role new members get, and limit how long the link works or how many people can use it."
                   />
                   <form className="mt-5 space-y-5" onSubmit={handleCreateInvite}>
-                    <div className="grid gap-4 md:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                       <Field label="Role">
                         <Select
                           value={roleToGrant}

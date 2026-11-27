@@ -900,7 +900,7 @@ export default function BookDetailPage() {
             </div>
 
             {reflections.length > 0 ? (
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 {canEdit && (
                   <div className="space-y-3">
                     <h4 className="text-sm font-medium text-foreground">
