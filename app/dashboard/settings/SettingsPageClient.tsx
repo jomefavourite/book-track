@@ -200,14 +200,17 @@ export default function SettingsPage() {
     }
 
     try {
-      const registration = await navigator.serviceWorker.register("/sw.js");
+      // Per the Next.js PWA guide: always fetch sw.js from the network so an
+      // updated worker is picked up right away instead of from HTTP cache.
+      const registration = await navigator.serviceWorker.register("/sw.js", {
+        scope: "/",
+        updateViaCache: "none",
+      });
       await navigator.serviceWorker.ready;
       return registration;
-    } catch (error) {
+    } catch {
       throw new Error(
-        process.env.NODE_ENV === "production"
-          ? "The push service worker could not be registered. Reload the page and try again."
-          : "Push notifications only work in a production build or deployed app. Use `npm run build && npm start` locally."
+        "The push service worker could not be registered. Reload the page and try again."
       );
     }
   }
